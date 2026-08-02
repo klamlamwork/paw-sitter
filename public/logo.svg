@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none" role="img" aria-label="Paw Sitter logo">
+  <rect width="120" height="120" rx="28" fill="#C45C26"/>
+  <ellipse cx="38" cy="38" rx="12" ry="16" transform="rotate(-20 38 38)" fill="#FFF8F0"/>
+  <ellipse cx="60" cy="28" rx="12" ry="16" fill="#FFF8F0"/>
+  <ellipse cx="82" cy="38" rx="12" ry="16" transform="rotate(20 82 38)" fill="#FFF8F0"/>
+  <ellipse cx="28" cy="58" rx="11" ry="14" transform="rotate(-40 28 58)" fill="#FFF8F0"/>
+  <path d="M60 48c-16 0-28 12-28 28 0 10 8 20 28 28 20-8 28-18 28-28 0-16-12-28-28-28z" fill="#FFF8F0"/>
+</svg>
