@@ -2,10 +2,13 @@ import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth";
 import BookingWizard from "@/components/booking/BookingWizard";
 import { createClient } from "@/lib/supabase/server";
+
 export const metadata = { title: "Book a sitter | Paw Sitter" };
+
 export default async function BookingPage() {
   const profile = await getProfile();
   if (!profile) redirect("/login?next=/booking");
+
   const supabase = await createClient();
   const [
     { data: sitters },
@@ -22,6 +25,7 @@ export default async function BookingPage() {
     supabase.from("holiday_dates").select("holiday_date"),
     supabase.from("sitter_day_availability").select("*"),
   ]);
+
   const sitterIds = (sitters || []).map((s) => s.id);
   let busy = [];
   if (sitterIds.length) {
@@ -37,12 +41,16 @@ export default async function BookingPage() {
     if (!busyBySitter[b.sitter_id]) busyBySitter[b.sitter_id] = [];
     for (const slot of b.booking_slots || []) busyBySitter[b.sitter_id].push(slot);
   }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Book pet sitting</h1>
-      <p className="mt-2 text-[#7a5c4e]">Choose house sit or drop-in, pick times, then choose a sitter.</p>
+      <p className="mt-2 text-[#7a5c4e]">
+        Choose your city, then service and times. Sitters are matched by service area (km) and availability.
+      </p>
       <BookingWizard
         customerId={profile.id}
+        customerProfile={profile}
         sitters={sitters || []}
         services={services || []}
         weekly={weekly || []}
