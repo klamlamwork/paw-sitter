@@ -1,0 +1,11 @@
+PAW SITTER - DO IN ORDER
+0) SQL done
+1) git pull (or download zip from GitHub)
+2) cd ~/Desktop/paw-sitter
+3) npm install @supabase/supabase-js @supabase/ssr
+4) cp .env.local.example .env.local  (fill URL + anon key)
+5) npm run dev
+6) open http://localhost:3000/login -> Continue with Google
+7) AFTER login, Supabase SQL:
+   update public.profiles set role = 'admin' where lower(email) = lower('YOUR_GMAIL@gmail.com');
+8) open http://localhost:3000/admin/sitters
