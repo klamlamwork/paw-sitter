@@ -15,7 +15,10 @@ export default async function AuthButtons() {
         <Link href="/admin/sitters" className="hidden text-sm font-medium text-[#5c4033] sm:inline">Admin</Link>
       ) : null}
       {(profile.role === "sitter" || profile.role === "admin") ? (
-        <Link href="/sitter/dashboard" className="hidden text-sm font-medium text-[#5c4033] sm:inline">Sitter</Link>
+        <>
+          <Link href="/sitter/calendar" className="hidden text-sm font-medium text-[#5c4033] sm:inline">Calendar</Link>
+          <Link href="/sitter/dashboard" className="hidden text-sm font-medium text-[#5c4033] sm:inline">Sitter</Link>
+        </>
       ) : null}
       <Link href="/account" className="hidden max-w-[120px] truncate text-sm font-medium text-[#5c4033] sm:inline">
         {profile.full_name || "Account"}

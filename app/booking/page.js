@@ -7,14 +7,21 @@ export default async function BookingPage() {
   const profile = await getProfile();
   if (!profile) redirect("/login?next=/booking");
   const supabase = await createClient();
-  const [{ data: sitters }, { data: services }, { data: weekly }, { data: overrides }, { data: holidays }] =
-    await Promise.all([
-      supabase.from("sitters").select("*").eq("is_active", true).order("display_name"),
-      supabase.from("sitter_services").select("*").eq("enabled", true),
-      supabase.from("sitter_weekly_availability").select("*"),
-      supabase.from("sitter_date_overrides").select("*"),
-      supabase.from("holiday_dates").select("holiday_date"),
-    ]);
+  const [
+    { data: sitters },
+    { data: services },
+    { data: weekly },
+    { data: overrides },
+    { data: holidays },
+    { data: dayAvailability },
+  ] = await Promise.all([
+    supabase.from("sitters").select("*").eq("is_active", true).order("display_name"),
+    supabase.from("sitter_services").select("*").eq("enabled", true),
+    supabase.from("sitter_weekly_availability").select("*"),
+    supabase.from("sitter_date_overrides").select("*"),
+    supabase.from("holiday_dates").select("holiday_date"),
+    supabase.from("sitter_day_availability").select("*"),
+  ]);
   const sitterIds = (sitters || []).map((s) => s.id);
   let busy = [];
   if (sitterIds.length) {
@@ -41,6 +48,7 @@ export default async function BookingPage() {
         weekly={weekly || []}
         overrides={overrides || []}
         busyBySitter={busyBySitter}
+        dayAvailability={dayAvailability || []}
         holidayDates={(holidays || []).map((h) => h.holiday_date)}
       />
     </div>
