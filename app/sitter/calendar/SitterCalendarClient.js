@@ -5,7 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { SERVICE_TYPES } from "@/lib/booking";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December",
+];
 
 function pad(n) { return String(n).padStart(2, "0"); }
 function dateKey(y, m0, d) { return y + "-" + pad(m0 + 1) + "-" + pad(d); }
@@ -19,10 +22,34 @@ function buildMonthCells(y, m0) {
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }
+function todayParts() {
+  const n = new Date();
+  return {
+    y: n.getFullYear(),
+    m0: n.getMonth(),
+    d: n.getDate(),
+    key: dateKey(n.getFullYear(), n.getMonth(), n.getDate()),
+  };
+}
+function isPastDay(y, m0, d, today) {
+  if (y < today.y) return true;
+  if (y > today.y) return false;
+  if (m0 < today.m0) return true;
+  if (m0 > today.m0) return false;
+  return d < today.d;
+}
 
-export default function SitterCalendarClient({ sitterId, enabledServices, initialDayRows, initialYear }) {
+export default function SitterCalendarClient({
+  sitterId,
+  enabledServices,
+  initialDayRows,
+  initialYear,
+  bookedByDay = {},
+}) {
   const router = useRouter();
-  const [year, setYear] = useState(initialYear);
+  const today = useMemo(() => todayParts(), []);
+  const minYear = today.y;
+  const [year, setYear] = useState(Math.max(initialYear, minYear));
   const [dayRows, setDayRows] = useState(initialDayRows);
   const [selectedKey, setSelectedKey] = useState(null);
   const [error, setError] = useState("");
@@ -39,6 +66,16 @@ export default function SitterCalendarClient({ sitterId, enabledServices, initia
     return map;
   }, [dayRows]);
 
+  const visibleMonths = useMemo(() => {
+    const list = [];
+    for (let m0 = 0; m0 < 12; m0++) {
+      if (year < today.y) continue;
+      if (year === today.y && m0 < today.m0) continue;
+      list.push(m0);
+    }
+    return list;
+  }, [year, today.y, today.m0]);
+
   function daySummary(key) {
     const rows = rowsByDay[key];
     if (!rows || rows.length === 0) return "default";
@@ -48,7 +85,8 @@ export default function SitterCalendarClient({ sitterId, enabledServices, initia
     return "full";
   }
 
-  function openDay(key) {
+  function openDay(key, past) {
+    if (past) return;
     setSelectedKey(key);
     setError("");
     setOk("");
@@ -158,57 +196,94 @@ export default function SitterCalendarClient({ sitterId, enabledServices, initia
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => setYear((y) => y - 1)} className="rounded-full border border-[#e8d5c4] bg-white px-3 py-1.5 text-sm font-semibold">Prev year</button>
+          <button
+            type="button"
+            disabled={year <= minYear}
+            onClick={() => setYear((y) => Math.max(minYear, y - 1))}
+            className="rounded-full border border-[#e8d5c4] bg-white px-3 py-1.5 text-sm font-semibold disabled:opacity-40"
+          >
+            Prev year
+          </button>
           <span className="min-w-[5rem] text-center text-xl font-bold text-[#3b2a22]">{year}</span>
-          <button type="button" onClick={() => setYear((y) => y + 1)} className="rounded-full border border-[#e8d5c4] bg-white px-3 py-1.5 text-sm font-semibold">Next year</button>
+          <button
+            type="button"
+            onClick={() => setYear((y) => y + 1)}
+            className="rounded-full border border-[#e8d5c4] bg-white px-3 py-1.5 text-sm font-semibold"
+          >
+            Next year
+          </button>
         </div>
         <div className="flex flex-wrap gap-3 text-xs text-[#7a5c4e]">
+          <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded border border-slate-300 bg-slate-200" /> Past</span>
           <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded border border-[#e8d5c4] bg-white" /> Default</span>
           <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded border border-green-300 bg-green-100" /> All services</span>
           <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded border border-amber-300 bg-amber-100" /> Some services</span>
           <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded border border-red-300 bg-red-100" /> Unavailable</span>
+          <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded border border-blue-300 bg-blue-100" /> Booked</span>
         </div>
       </div>
 
       {error ? <p className="mb-4 text-sm text-red-600">{error}</p> : null}
       {ok ? <p className="mb-4 text-sm text-green-700">{ok}</p> : null}
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {MONTHS.map((name, m0) => {
-          const cells = buildMonthCells(year, m0);
-          return (
-            <div key={name} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/80 p-3 shadow-sm">
-              <h2 className="mb-2 text-center text-sm font-bold text-[#3b2a22]">{name} {year}</h2>
-              <div className="mb-1 grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold text-[#7a5c4e]">
-                {WEEKDAYS.map((w) => <div key={w}>{w}</div>)}
+      {!visibleMonths.length ? (
+        <p className="rounded-2xl border border-dashed border-[#e8d5c4] bg-white p-6 text-sm text-[#7a5c4e]">
+          No remaining months in this year. Use Next year.
+        </p>
+      ) : (
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {visibleMonths.map((m0) => {
+            const name = MONTHS[m0];
+            const cells = buildMonthCells(year, m0);
+            return (
+              <div key={name} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/80 p-3 shadow-sm">
+                <h2 className="mb-2 text-center text-sm font-bold text-[#3b2a22]">{name} {year}</h2>
+                <div className="mb-1 grid grid-cols-7 gap-0.5 text-center text-[10px] font-semibold text-[#7a5c4e]">
+                  {WEEKDAYS.map((w) => <div key={w}>{w}</div>)}
+                </div>
+                <div className="grid grid-cols-7 gap-0.5">
+                  {cells.map((d, i) => {
+                    if (d == null) return <div key={i} className="h-10" />;
+                    const key = dateKey(year, m0, d);
+                    const past = isPastDay(year, m0, d, today);
+                    const booked = Number(bookedByDay[key] || 0);
+                    const summary = daySummary(key);
+                    let bg =
+                      summary === "off" ? "bg-red-100 border-red-300" :
+                      summary === "partial" ? "bg-amber-100 border-amber-300" :
+                      summary === "full" ? "bg-green-100 border-green-300" :
+                      "bg-white border-[#e8d5c4]";
+                    if (booked > 0 && !past) bg = "bg-blue-100 border-blue-300";
+                    if (past) bg = "bg-slate-200 border-slate-300 text-slate-500";
+                    const selected = selectedKey === key;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        disabled={past}
+                        onClick={() => openDay(key, past)}
+                        className={
+                          "relative flex h-10 flex-col items-center justify-center rounded border text-[11px] font-medium " +
+                          bg +
+                          (past ? " cursor-not-allowed opacity-70" : " text-[#3b2a22] hover:ring-2 hover:ring-[#c45c26]/40") +
+                          (selected ? " ring-2 ring-[#c45c26]" : "")
+                        }
+                      >
+                        <span>{d}</span>
+                        {booked > 0 ? (
+                          <span className={"text-[8px] font-bold leading-none " + (past ? "text-slate-500" : "text-blue-800")}>
+                            {booked} booked
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="grid grid-cols-7 gap-0.5">
-                {cells.map((d, i) => {
-                  if (d == null) return <div key={i} className="h-8" />;
-                  const key = dateKey(year, m0, d);
-                  const summary = daySummary(key);
-                  const bg =
-                    summary === "off" ? "bg-red-100 border-red-300" :
-                    summary === "partial" ? "bg-amber-100 border-amber-300" :
-                    summary === "full" ? "bg-green-100 border-green-300" :
-                    "bg-white border-[#e8d5c4]";
-                  const selected = selectedKey === key;
-                  return (
-                    <button
-                      key={i}
-                      type="button"
-                      onClick={() => openDay(key)}
-                      className={"h-8 rounded border text-xs font-medium text-[#3b2a22] hover:ring-2 hover:ring-[#c45c26]/40 " + bg + (selected ? " ring-2 ring-[#c45c26]" : "")}
-                    >
-                      {d}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {selectedKey ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
@@ -216,7 +291,14 @@ export default function SitterCalendarClient({ sitterId, enabledServices, initia
             <div className="mb-4 flex items-start justify-between gap-2">
               <div>
                 <h3 className="text-lg font-bold text-[#3b2a22]">{selectedKey}</h3>
-                <p className="text-xs text-[#7a5c4e]">Choose services for this day. Uncheck = not bookable.</p>
+                <p className="text-xs text-[#7a5c4e]">
+                  Choose services for this day. Uncheck = not bookable.
+                  {bookedByDay[selectedKey] ? (
+                    <span className="mt-1 block font-semibold text-blue-800">
+                      {bookedByDay[selectedKey]} booked (paid)
+                    </span>
+                  ) : null}
+                </p>
               </div>
               <button type="button" onClick={closeDay} className="rounded-full border border-[#e8d5c4] bg-white px-2 py-1 text-sm">Close</button>
             </div>
