@@ -1,0 +1,21 @@
+import { redirect } from "next/navigation";
+import { requireRole } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
+import AdminSittersClient from "./AdminSittersClient";
+export const metadata = { title: "Admin Sitters | Paw Sitter" };
+export default async function AdminSittersPage() {
+  const profile = await requireRole("admin");
+  if (!profile) redirect("/login?next=/admin/sitters");
+  const supabase = await createClient();
+  const { data: sitters } = await supabase
+    .from("sitters")
+    .select("*, sitter_services(*), sitter_gallery(*)")
+    .order("created_at", { ascending: false });
+  return (
+    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <h1 className="text-3xl font-bold text-[#3b2a22]">Admin - Sitters</h1>
+      <p className="mt-2 text-sm text-[#7a5c4e]">Add sitters by Google invite email.</p>
+      <AdminSittersClient initialSitters={sitters || []} />
+    </div>
+  );
+}
