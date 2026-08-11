@@ -16,7 +16,3 @@ alter table public.sitters
 
 alter table public.sitter_services
   add column if not exists radius_km numeric(6,1) not null default 15;
-
-comment on column public.profiles.timezone is 'IANA timezone e.g. America/Vancouver';
-comment on column public.sitters.timezone is 'IANA timezone of sitter base city';
-comment on column public.sitter_services.radius_km is 'How far this service is offered from sitter base (km)';
