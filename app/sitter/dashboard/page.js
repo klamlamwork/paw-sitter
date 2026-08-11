@@ -18,7 +18,9 @@ export default async function SitterDashboardPage() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-12">
         <h1 className="text-2xl font-bold">Sitter dashboard</h1>
-        <p className="mt-3 text-[#7a5c4e]">No sitter profile linked to <strong>{profile.email}</strong>.</p>
+        <p className="mt-3 text-[#7a5c4e]">
+          No sitter profile linked to <strong>{profile.email}</strong>. Ask admin to add this email.
+        </p>
       </div>
     );
   }
@@ -26,10 +28,16 @@ export default async function SitterDashboardPage() {
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Sitter dashboard</h1>
       <div className="mt-3 flex flex-wrap gap-3 text-sm">
-        <Link className="font-semibold text-[#c45c26] hover:underline" href="/sitter/calendar">Availability calendar</Link>
-        <Link className="font-semibold text-[#c45c26] hover:underline" href="/sitter/bookings">Booking requests</Link>
+        <Link className="font-semibold text-[#c45c26] hover:underline" href="/sitter/calendar">
+          Availability calendar
+        </Link>
+        <Link className="font-semibold text-[#c45c26] hover:underline" href="/sitter/bookings">
+          Booking requests
+        </Link>
       </div>
-      <p className="mt-2 text-sm text-[#7a5c4e]">Weekly hours below are the default. Use the calendar for specific days and services.</p>
+      <p className="mt-2 text-sm text-[#7a5c4e]">
+        Weekly hours below are the default. Use the calendar for specific days and services.
+      </p>
       <SitterDashboardClient sitter={sitter} />
     </div>
   );

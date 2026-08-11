@@ -8,7 +8,7 @@ import {
 } from "@/lib/booking";
 const steps = ["Service", "Schedule", "Sitter", "Confirm"];
 export default function BookingWizard({
-  customerId, sitters, services, weekly, overrides, busyBySitter, holidayDates,
+  customerId, sitters, services, weekly, overrides, busyBySitter, dayAvailability, holidayDates,
 }) {
   const router = useRouter();
   const holidaySet = useMemo(() => new Set(holidayDates || []), [holidayDates]);
@@ -41,8 +41,10 @@ export default function BookingWizard({
   }, [serviceType, hsDate, hsStartTime, hsEndDate, hsEndTime, visits]);
   const availableSitters = useMemo(() => {
     if (!slots.length) return [];
-    return filterAvailableSitters({ sitters, services, weekly, overrides, busyBySitter, serviceType, slots });
-  }, [sitters, services, weekly, overrides, busyBySitter, serviceType, slots]);
+    return filterAvailableSitters({
+      sitters, services, weekly, overrides, busyBySitter, dayAvailability, serviceType, slots,
+    });
+  }, [sitters, services, weekly, overrides, busyBySitter, dayAvailability, serviceType, slots]);
   const selectedSitter = sitters.find((s) => s.id === selectedSitterId);
   const selectedService = services.find((s) => s.sitter_id === selectedSitterId && s.service_type === serviceType);
   const estimate = useMemo(() => {
@@ -140,7 +142,7 @@ export default function BookingWizard({
       {step === 2 && (
         <div className="space-y-3">
           {availableSitters.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-[#e8d5c4] p-6 text-sm text-[#7a5c4e]">No sitters available. Add sitters in Admin first.</p>
+            <p className="rounded-2xl border border-dashed border-[#e8d5c4] p-6 text-sm text-[#7a5c4e]">No sitters available for these times. Try another day or check the sitter calendar.</p>
           ) : availableSitters.map((s) => {
             const svc = services.find((x) => x.sitter_id === s.id && x.service_type === serviceType);
             return (
