@@ -1,169 +1,207 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+import { SERVICE_TYPES } from "@/lib/booking";
+import LocationPicker from "@/components/LocationPicker";
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 export default function SitterDashboardClient({ sitter }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [saving, setSaving] = useState(false);
   const [profile, setProfile] = useState({
-    display_name: sitter.display_name || "", bio: sitter.bio || "",
-    service_city: sitter.service_city || "", service_country: sitter.service_country || "",
-    profile_pic_url: sitter.profile_pic_url || "",
+    display_name: sitter.display_name || "",
+    bio: sitter.bio || "",
+    phone: sitter.phone || "",
+    service_city: sitter.service_city || "",
+    service_country: sitter.service_country || "Canada",
+    location_id: sitter.location_id || "",
+    timezone: sitter.timezone || "",
+    lat: sitter.lat,
+    lng: sitter.lng,
   });
-  const initialServices = useMemo(() => {
-    const map = {
-      house_sit: { enabled: false, rate_regular: 0, rate_holiday: 0, id: null },
-      drop_in: { enabled: false, rate_regular: 0, rate_holiday: 0, id: null },
-    };
-    for (const s of sitter.sitter_services || []) {
-      map[s.service_type] = { enabled: s.enabled, rate_regular: s.rate_regular, rate_holiday: s.rate_holiday, id: s.id };
-    }
-    return map;
-  }, [sitter]);
-  const [svc, setSvc] = useState(initialServices);
-  const initialWeekly = useMemo(() => {
-    const byDay = {};
-    for (let d = 0; d < 7; d++) {
-      byDay[d] = { day_of_week: d, is_available: false, start_time: "09:00", end_time: "17:00", id: null };
-    }
-    for (const w of sitter.sitter_weekly_availability || []) {
-      byDay[w.day_of_week] = {
-        day_of_week: w.day_of_week, is_available: w.is_available,
-        start_time: (w.start_time || "09:00").slice(0, 5), end_time: (w.end_time || "17:00").slice(0, 5), id: w.id,
+
+  const [services, setServices] = useState(() => {
+    const map = {};
+    for (const s of sitter.sitter_services || []) map[s.service_type] = s;
+    return Object.keys(SERVICE_TYPES).map((type) => {
+      const row = map[type];
+      return {
+        service_type: type,
+        enabled: row ? !!row.enabled : type === "drop_in",
+        rate_regular: row?.rate_regular ?? 25,
+        rate_holiday: row?.rate_holiday ?? 35,
+        radius_km: row?.radius_km ?? 15,
       };
+    });
+  });
+
+  const [weekly, setWeekly] = useState(() => {
+    const map = {};
+    for (const w of sitter.sitter_weekly_availability || []) map[w.day_of_week] = w;
+    return DAYS.map((_, i) => {
+      const row = map[i];
+      return {
+        day_of_week: i,
+        is_available: row ? !!row.is_available : i >= 1 && i <= 5,
+        start_time: (row?.start_time || "09:00").slice(0, 5),
+        end_time: (row?.end_time || "17:00").slice(0, 5),
+      };
+    });
+  });
+
+  async function saveAll() {
+    setSaving(true);
+    setError("");
+    setOk("");
+    if (!profile.location_id || profile.lat == null) {
+      setError("Please select your base city from the list (needed for service area matching).");
+      setSaving(false);
+      return;
     }
-    return byDay;
-  }, [sitter]);
-  const [weekly, setWeekly] = useState(initialWeekly);
-  const [galleryUrl, setGalleryUrl] = useState("");
-  const [gallery, setGallery] = useState(sitter.sitter_gallery || []);
-  async function saveAll(e) {
-    e.preventDefault();
-    setSaving(true); setError(""); setOk("");
     const supabase = createClient();
     try {
-      const { error: pErr } = await supabase.from("sitters").update({
-        display_name: profile.display_name, bio: profile.bio,
-        service_city: profile.service_city, service_country: profile.service_country,
-        profile_pic_url: profile.profile_pic_url || null,
-      }).eq("id", sitter.id);
+      const { error: pErr } = await supabase
+        .from("sitters")
+        .update({
+          display_name: profile.display_name,
+          bio: profile.bio,
+          phone: profile.phone,
+          service_city: profile.service_city,
+          service_country: profile.service_country,
+          location_id: profile.location_id,
+          timezone: profile.timezone,
+          lat: profile.lat,
+          lng: profile.lng,
+        })
+        .eq("id", sitter.id);
       if (pErr) throw pErr;
-      for (const type of ["house_sit", "drop_in"]) {
-        const row = svc[type];
-        const payload = {
-          sitter_id: sitter.id, service_type: type, enabled: !!row.enabled,
-          rate_regular: Number(row.rate_regular) || 0, rate_holiday: Number(row.rate_holiday) || 0,
-        };
-        if (row.id) {
-          const { error } = await supabase.from("sitter_services").update(payload).eq("id", row.id);
-          if (error) throw error;
-        } else {
-          const { data, error } = await supabase.from("sitter_services").insert(payload).select("id").single();
-          if (error) throw error;
-          setSvc((s) => ({ ...s, [type]: { ...s[type], id: data.id } }));
-        }
+
+      for (const svc of services) {
+        const { error: sErr } = await supabase.from("sitter_services").upsert(
+          {
+            sitter_id: sitter.id,
+            service_type: svc.service_type,
+            enabled: svc.enabled,
+            rate_regular: Number(svc.rate_regular),
+            rate_holiday: Number(svc.rate_holiday),
+            radius_km: Number(svc.radius_km) || 15,
+          },
+          { onConflict: "sitter_id,service_type" }
+        );
+        if (sErr) throw sErr;
       }
-      for (let d = 0; d < 7; d++) {
-        const w = weekly[d];
-        const payload = {
-          sitter_id: sitter.id, day_of_week: d, is_available: !!w.is_available,
-          start_time: w.start_time, end_time: w.end_time,
-        };
-        if (w.id) {
-          const { error } = await supabase.from("sitter_weekly_availability").update(payload).eq("id", w.id);
-          if (error) throw error;
-        } else {
-          const { data, error } = await supabase.from("sitter_weekly_availability").insert(payload).select("id").single();
-          if (error) throw error;
-          setWeekly((prev) => ({ ...prev, [d]: { ...prev[d], id: data.id } }));
-        }
+
+      for (const day of weekly) {
+        const { error: wErr } = await supabase.from("sitter_weekly_availability").upsert(
+          {
+            sitter_id: sitter.id,
+            day_of_week: day.day_of_week,
+            is_available: day.is_available,
+            start_time: day.start_time,
+            end_time: day.end_time,
+          },
+          { onConflict: "sitter_id,day_of_week" }
+        );
+        if (wErr) throw wErr;
       }
-      setOk("Saved.");
+
+      setOk("Saved profile, service areas, and weekly hours.");
       router.refresh();
-    } catch (err) {
-      setError(err.message || "Save failed");
+    } catch (e) {
+      setError(e.message || "Save failed");
     } finally {
       setSaving(false);
     }
   }
-  async function addGalleryImage(e) {
-    e.preventDefault();
-    if (!galleryUrl.trim()) return;
-    const supabase = createClient();
-    const { data, error: err } = await supabase.from("sitter_gallery").insert({
-      sitter_id: sitter.id, image_url: galleryUrl.trim(), sort_order: gallery.length,
-    }).select("*").single();
-    if (err) { setError(err.message); return; }
-    setGallery((g) => [...g, data]);
-    setGalleryUrl("");
-  }
-  async function removeGallery(id) {
-    const supabase = createClient();
-    const { error: err } = await supabase.from("sitter_gallery").delete().eq("id", id);
-    if (err) { setError(err.message); return; }
-    setGallery((g) => g.filter((x) => x.id !== id));
-  }
+
   return (
-    <form onSubmit={saveAll} className="mt-8 space-y-8">
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {ok ? <p className="text-sm text-green-700">{ok}</p> : null}
-      <section className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
-        <h2 className="font-semibold">Profile</h2>
-        <label className="block text-sm">Display name<input className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={profile.display_name} onChange={(e) => setProfile({ ...profile, display_name: e.target.value })} /></label>
-        <label className="block text-sm">Bio<textarea className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" rows={4} value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} /></label>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm">City<input className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={profile.service_city} onChange={(e) => setProfile({ ...profile, service_city: e.target.value })} /></label>
-          <label className="block text-sm">Country<input className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={profile.service_country} onChange={(e) => setProfile({ ...profile, service_country: e.target.value })} /></label>
+    <div className="mt-8 space-y-8">
+      {error ? <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      {ok ? <p className="rounded-xl bg-green-50 px-3 py-2 text-sm text-green-800">{ok}</p> : null}
+
+      <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
+        <h2 className="text-lg font-semibold text-[#3b2a22]">Profile</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="text-sm">
+            Display name
+            <input value={profile.display_name} onChange={(e) => setProfile({ ...profile, display_name: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
+          </label>
+          <label className="text-sm">
+            Phone
+            <input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
+          </label>
+          <div className="sm:col-span-2">
+            <LocationPicker
+              valueId={profile.location_id}
+              label="Base city (service area center)"
+              onChange={(loc) => {
+                if (!loc) {
+                  setProfile((p) => ({ ...p, location_id: "", service_city: "", service_country: "", timezone: "", lat: null, lng: null }));
+                  return;
+                }
+                setProfile((p) => ({
+                  ...p,
+                  location_id: loc.location_id,
+                  service_city: loc.city,
+                  service_country: loc.country,
+                  timezone: loc.timezone,
+                  lat: loc.lat,
+                  lng: loc.lng,
+                }));
+              }}
+            />
+          </div>
+          <label className="text-sm sm:col-span-2">
+            Bio
+            <textarea value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
+          </label>
         </div>
-        <label className="block text-sm">Profile picture URL<input className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={profile.profile_pic_url} onChange={(e) => setProfile({ ...profile, profile_pic_url: e.target.value })} /></label>
       </section>
-      <section className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
-        <h2 className="font-semibold">Services and rates</h2>
-        {["house_sit", "drop_in"].map((type) => (
-          <div key={type} className="rounded-xl border border-[#e8d5c4] bg-white p-3">
-            <label className="flex items-center gap-2 text-sm font-medium">
-              <input type="checkbox" checked={svc[type].enabled} onChange={(e) => setSvc({ ...svc, [type]: { ...svc[type], enabled: e.target.checked } })} />
-              {type === "house_sit" ? "House sit (per night)" : "Drop-in (per 30 min)"}
-            </label>
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <label className="text-xs">Regular $<input type="number" className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" value={svc[type].rate_regular} onChange={(e) => setSvc({ ...svc, [type]: { ...svc[type], rate_regular: e.target.value } })} /></label>
-              <label className="text-xs">Holiday $<input type="number" className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" value={svc[type].rate_holiday} onChange={(e) => setSvc({ ...svc, [type]: { ...svc[type], rate_holiday: e.target.value } })} /></label>
-            </div>
-          </div>
-        ))}
-      </section>
-      <section className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
-        <h2 className="font-semibold">Weekly availability</h2>
-        {DAY_NAMES.map((name, d) => (
-          <div key={d} className="grid grid-cols-[3rem_1fr_1fr_1fr] items-center gap-2 text-sm">
-            <span className="font-medium">{name}</span>
-            <label className="flex items-center gap-1 text-xs">
-              <input type="checkbox" checked={weekly[d].is_available} onChange={(e) => setWeekly({ ...weekly, [d]: { ...weekly[d], is_available: e.target.checked } })} /> Open
-            </label>
-            <input type="time" value={weekly[d].start_time} onChange={(e) => setWeekly({ ...weekly, [d]: { ...weekly[d], start_time: e.target.value } })} className="rounded-lg border border-[#e8d5c4] px-2 py-1" />
-            <input type="time" value={weekly[d].end_time} onChange={(e) => setWeekly({ ...weekly, [d]: { ...weekly[d], end_time: e.target.value } })} className="rounded-lg border border-[#e8d5c4] px-2 py-1" />
-          </div>
-        ))}
-      </section>
-      <section className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
-        <h2 className="font-semibold">Gallery</h2>
-        <div className="flex flex-wrap gap-2">
-          {gallery.map((g) => (
-            <div key={g.id} className="relative h-20 w-20 overflow-hidden rounded-xl border border-[#e8d5c4]">
-              <img src={g.image_url} alt="" className="h-full w-full object-cover" />
-              <button type="button" onClick={() => removeGallery(g.id)} className="absolute right-0 top-0 bg-black/60 px-1 text-xs text-white">x</button>
+
+      <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
+        <h2 className="text-lg font-semibold text-[#3b2a22]">Services, rates & area (km)</h2>
+        <p className="mt-1 text-xs text-[#7a5c4e]">
+          Radius is how far from your base city you offer each service. Customers outside that range will not see you.
+        </p>
+        <div className="mt-3 space-y-3">
+          {services.map((svc, i) => (
+            <div key={svc.service_type} className="grid gap-2 rounded-xl border border-[#e8d5c4] bg-white p-3 sm:grid-cols-5">
+              <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2">
+                <input type="checkbox" checked={svc.enabled} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, enabled: e.target.checked } : row)))} />
+                {SERVICE_TYPES[svc.service_type]?.label}
+              </label>
+              <label className="text-xs">Regular $<input type="number" min="0" step="0.5" value={svc.rate_regular} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, rate_regular: e.target.value } : row)))} className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" /></label>
+              <label className="text-xs">Holiday $<input type="number" min="0" step="0.5" value={svc.rate_holiday} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, rate_holiday: e.target.value } : row)))} className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" /></label>
+              <label className="text-xs">Radius km<input type="number" min="1" max="500" step="1" value={svc.radius_km} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, radius_km: e.target.value } : row)))} className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" /></label>
             </div>
           ))}
         </div>
-        <div className="flex gap-2">
-          <input value={galleryUrl} onChange={(e) => setGalleryUrl(e.target.value)} placeholder="Image URL" className="flex-1 rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm" />
-          <button type="button" onClick={addGalleryImage} className="rounded-full border border-[#e8d5c4] bg-white px-4 text-sm font-semibold">Add</button>
+      </section>
+
+      <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
+        <h2 className="text-lg font-semibold text-[#3b2a22]">Weekly default hours</h2>
+        <p className="mt-1 text-xs text-[#7a5c4e]">Times are in your base city timezone ({profile.timezone || "not set"}).</p>
+        <div className="mt-3 space-y-2">
+          {weekly.map((day, i) => (
+            <div key={day.day_of_week} className="grid grid-cols-2 gap-2 rounded-xl border border-[#e8d5c4] bg-white p-3 sm:grid-cols-4">
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={day.is_available} onChange={(e) => setWeekly((list) => list.map((row, idx) => (idx === i ? { ...row, is_available: e.target.checked } : row)))} />
+                {DAYS[day.day_of_week]}
+              </label>
+              <input type="time" disabled={!day.is_available} value={day.start_time} onChange={(e) => setWeekly((list) => list.map((row, idx) => (idx === i ? { ...row, start_time: e.target.value } : row)))} className="rounded-lg border border-[#e8d5c4] px-2 py-1.5 text-sm disabled:opacity-40" />
+              <input type="time" disabled={!day.is_available} value={day.end_time} onChange={(e) => setWeekly((list) => list.map((row, idx) => (idx === i ? { ...row, end_time: e.target.value } : row)))} className="rounded-lg border border-[#e8d5c4] px-2 py-1.5 text-sm disabled:opacity-40" />
+            </div>
+          ))}
         </div>
       </section>
-      <button type="submit" disabled={saving} className="w-full rounded-full bg-[#c45c26] py-3 text-sm font-semibold text-white disabled:opacity-60">{saving ? "Saving..." : "Save changes"}</button>
-    </form>
+
+      <button type="button" disabled={saving} onClick={saveAll} className="w-full rounded-full bg-[#c45c26] py-3 text-sm font-semibold text-white disabled:opacity-60">
+        {saving ? "Saving..." : "Save dashboard"}
+      </button>
+    </div>
   );
 }
