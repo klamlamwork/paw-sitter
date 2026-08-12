@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { formatBlogDate } from "@/lib/blog";
+import { formatBlogDate, getSiteUrl } from "@/lib/blog";
 import ShareButtons from "@/components/blog/ShareButtons";
 import RelatedProducts from "@/components/blog/RelatedProducts";
 import RelatedPosts from "@/components/blog/RelatedPosts";
@@ -28,8 +28,7 @@ export default async function BlogPostPage({ params }) {
   const tags = (postTags || []).map((r) => r.blog_tags).filter(Boolean);
   const products = (postProducts || []).map((r) => r.blog_products).filter((p) => p && p.is_active !== false);
   const related = (relatedRows || []).map((r) => r.related).filter((p) => p && p.published);
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://paw-sitter.vercel.app";
-  const shareUrl = `${siteUrl}/blog/${post.slug}`;
+  const shareUrl = `${getSiteUrl()}/blog/${post.slug}`;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 pb-36 lg:pb-10">
@@ -42,17 +41,24 @@ export default async function BlogPostPage({ params }) {
             {tags.length ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {tags.map((t) => (
-                  <span key={t.id} className="rounded-full border border-[#e8d5c4] bg-white px-2.5 py-0.5 text-xs font-medium text-[#5c4033]">{t.name}</span>
+                  <Link
+                    key={t.id}
+                    href={`/blog?tag=${encodeURIComponent(t.slug)}`}
+                    className="rounded-full border border-[#e8d5c4] bg-white px-2.5 py-0.5 text-xs font-medium text-[#5c4033] hover:border-[#c45c26] hover:text-[#c45c26]"
+                  >
+                    {t.name}
+                  </Link>
                 ))}
               </div>
             ) : null}
-            <div className="mt-5"><ShareButtons url={shareUrl} title={post.headline} /></div>
+            <div className="mt-5">
+              <ShareButtons url={shareUrl} title={post.headline} />
+            </div>
           </header>
           <div
             className="blog-html mt-8 max-w-none space-y-4 text-[15px] leading-relaxed text-[#3b2a22] [&_a]:font-semibold [&_a]:text-[#c45c26] [&_h2]:mt-8 [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:mt-6 [&_h3]:text-xl [&_h3]:font-bold [&_img]:rounded-xl [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-3 [&_ul]:list-disc"
             dangerouslySetInnerHTML={{ __html: post.content_html || "" }}
           />
-          <div className="mt-10"><ShareButtons url={shareUrl} title={post.headline} /></div>
           <RelatedPosts posts={related} />
         </article>
         <RelatedProducts products={products} />

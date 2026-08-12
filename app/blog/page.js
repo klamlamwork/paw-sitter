@@ -1,6 +1,9 @@
+import { Suspense } from "react";
 import BlogIndexClient from "./BlogIndexClient";
 import { createClient } from "@/lib/supabase/server";
+
 export const metadata = { title: "Blog | Paw Sitter" };
+
 export default async function BlogPage() {
   const supabase = await createClient();
   const [{ data: posts }, { data: tags }, { data: postTags }] = await Promise.all([
@@ -18,7 +21,11 @@ export default async function BlogPage() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Blog</h1>
       <p className="mt-2 text-sm text-[#7a5c4e]">Tips and stories for pet parents and sitters.</p>
-      <div className="mt-8"><BlogIndexClient posts={list} tags={tags || []} /></div>
+      <div className="mt-8">
+        <Suspense fallback={<p className="text-sm text-[#7a5c4e]">Loading posts…</p>}>
+          <BlogIndexClient posts={list} tags={tags || []} />
+        </Suspense>
+      </div>
     </div>
   );
 }
