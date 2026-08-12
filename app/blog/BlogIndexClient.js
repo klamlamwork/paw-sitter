@@ -4,37 +4,103 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatBlogDate } from "@/lib/blog";
 
+function uniqueStrings(list) {
+  const out = [];
+  const seen = new Set();
+  for (const v of list || []) {
+    const s = String(v || "").trim();
+    if (!s || seen.has(s)) continue;
+    seen.add(s);
+    out.push(s);
+  }
+  return out;
+}
+
 export default function BlogIndexClient({ posts = [], tags = [], loadError = "" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tagParam = searchParams.get("tag");
-  const [active, setActive] = useState(null);
   const safePosts = Array.isArray(posts) ? posts : [];
   const safeTags = Array.isArray(tags) ? tags : [];
 
+  // Support ?tag=a&tag=b and legacy ?tag=a,b
+  const tagParams = useMemo(() => {
+    const raw = [];
+    try {
+      raw.push(...(searchParams.getAll("tag") || []));
+    } catch {
+      const one = searchParams.get("tag");
+      if (one) raw.push(one);
+    }
+    const expanded = [];
+    for (const part of raw) {
+      String(part || "")
+        .split(",")
+        .forEach((p) => expanded.push(p));
+    }
+    return uniqueStrings(expanded);
+  }, [searchParams]);
+
+  const [activeIds, setActiveIds] = useState([]);
+
   useEffect(() => {
-    if (!tagParam) {
-      setActive(null);
+    if (!tagParams.length) {
+      setActiveIds([]);
       return;
     }
-    const match = safeTags.find((t) => t.slug === tagParam);
-    setActive(match ? String(match.id) : null);
-  }, [tagParam, safeTags]);
+    const ids = [];
+    for (const slug of tagParams) {
+      const match = safeTags.find((t) => t.slug === slug);
+      if (match) ids.push(String(match.id));
+    }
+    setActiveIds(uniqueStrings(ids));
+  }, [tagParams, safeTags]);
 
-  function selectTag(id, slug) {
-    if (id == null || String(id) === String(active)) {
-      setActive(null);
+  function writeUrl(nextIds) {
+    const slugs = nextIds
+      .map((id) => safeTags.find((t) => String(t.id) === String(id))?.slug)
+      .filter(Boolean);
+    if (!slugs.length) {
       router.replace("/blog", { scroll: false });
       return;
     }
-    setActive(String(id));
-    router.replace(`/blog?tag=${encodeURIComponent(slug)}`, { scroll: false });
+    const qs = slugs.map((s) => `tag=${encodeURIComponent(s)}`).join("&");
+    router.replace(`/blog?${qs}`, { scroll: false });
+  }
+
+  function clearTags() {
+    setActiveIds([]);
+    writeUrl([]);
+  }
+
+  function toggleTag(id, slug) {
+    const sid = String(id);
+    const exists = activeIds.includes(sid);
+    const next = exists ? activeIds.filter((x) => x !== sid) : [...activeIds, sid];
+    setActiveIds(next);
+    // Prefer slug list from next ids for URL
+    if (!next.length) {
+      writeUrl([]);
+      return;
+    }
+    // Ensure the toggled slug is reflected even if tags list is briefly stale
+    const slugs = next
+      .map((nid) => {
+        if (String(nid) === sid) return slug;
+        return safeTags.find((t) => String(t.id) === String(nid))?.slug;
+      })
+      .filter(Boolean);
+    const qs = uniqueStrings(slugs).map((s) => `tag=${encodeURIComponent(s)}`).join("&");
+    router.replace(qs ? `/blog?${qs}` : "/blog", { scroll: false });
   }
 
   const filtered = useMemo(() => {
-    if (!active) return safePosts;
-    return safePosts.filter((p) => (p.tagIds || []).map(String).includes(String(active)));
-  }, [safePosts, active]);
+    if (!activeIds.length) return safePosts;
+    // AND: post must include every selected tag id
+    return safePosts.filter((p) => {
+      const ids = (p.tagIds || []).map(String);
+      return activeIds.every((id) => ids.includes(String(id)));
+    });
+  }, [safePosts, activeIds]);
 
   if (loadError) {
     return (
@@ -46,46 +112,66 @@ export default function BlogIndexClient({ posts = [], tags = [], loadError = "" 
 
   return (
     <div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => selectTag(null)}
+          onClick={clearTags}
           className={
             "rounded-full px-3 py-1.5 text-xs font-semibold " +
-            (active == null ? "bg-[#c45c26] text-white" : "border border-[#e8d5c4] bg-white text-[#5c4033]")
+            (activeIds.length === 0
+              ? "bg-[#c45c26] text-white"
+              : "border border-[#e8d5c4] bg-white text-[#5c4033]")
           }
         >
           All
         </button>
-        {safeTags.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => selectTag(t.id, t.slug)}
-            className={
-              "rounded-full px-3 py-1.5 text-xs font-semibold " +
-              (String(active) === String(t.id) ? "bg-[#c45c26] text-white" : "border border-[#e8d5c4] bg-white text-[#5c4033]")
-            }
-          >
-            {t.name}
-          </button>
-        ))}
+        {safeTags.map((t) => {
+          const selected = activeIds.includes(String(t.id));
+          return (
+            <button
+              key={t.id}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => toggleTag(t.id, t.slug)}
+              className={
+                "rounded-full px-3 py-1.5 text-xs font-semibold " +
+                (selected
+                  ? "bg-[#c45c26] text-white"
+                  : "border border-[#e8d5c4] bg-white text-[#5c4033]")
+              }
+            >
+              {t.name}
+            </button>
+          );
+        })}
       </div>
+
+      {activeIds.length > 0 ? (
+        <p className="mt-3 text-xs text-[#7a5c4e]">
+          Showing posts that include <strong>all</strong> selected tags
+          {activeIds.length > 1 ? ` (${activeIds.length})` : ""}.{" "}
+          <button type="button" onClick={clearTags} className="font-semibold text-[#c45c26] hover:underline">
+            Clear filters
+          </button>
+        </p>
+      ) : null}
 
       {filtered.length === 0 ? (
         <div className="mt-10 space-y-3">
           <p className="text-sm text-[#7a5c4e]">
             {safePosts.length === 0
               ? "No published posts yet."
-              : "No posts in this tag yet."}
+              : activeIds.length > 0
+                ? "No posts match all selected tags."
+                : "No posts yet."}
           </p>
-          {active != null && safePosts.length > 0 ? (
+          {activeIds.length > 0 && safePosts.length > 0 ? (
             <button
               type="button"
-              onClick={() => selectTag(null)}
+              onClick={clearTags}
               className="text-sm font-semibold text-[#c45c26] hover:underline"
             >
-              Clear tag filter
+              Clear tag filters
             </button>
           ) : null}
         </div>
