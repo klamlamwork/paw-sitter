@@ -21,16 +21,16 @@ export default async function AdminShopPage() {
     ]);
 
   const links = [
-    { href: "/admin/shop/brands", label: "Brands", desc: "Product brands · Shop by brand" },
-    { href: "/admin/shop/shops", label: "Shops", desc: "Vendors & brand shops · /shop/shops/…" },
-    { href: "/admin/shop/categories", label: "Categories", desc: "Catalog tree" },
-    { href: "/admin/shop/products", label: "Products", desc: "Create, approve, affiliate / cart flags" },
+    { href: "/admin/shop/brands", label: "Brands", desc: "Ready · Shop by brand", ready: true },
+    { href: "/admin/shop/shops", label: "Shops", desc: "Next · /shop/shops/…", ready: false },
+    { href: "/admin/shop/categories", label: "Categories", desc: "Next", ready: false },
+    { href: "/admin/shop/products", label: "Products", desc: "Next · approve & CTAs", ready: false },
   ];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Shop admin</h1>
-      <p className="mt-2 text-sm text-[#7a5c4e]">Phase 1B — manage catalog entities.</p>
+      <p className="mt-2 text-sm text-[#7a5c4e]">Phase 1B-1: Brands. More sections land in following batches.</p>
 
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
@@ -48,17 +48,27 @@ export default async function AdminShopPage() {
       </dl>
 
       <ul className="mt-8 space-y-2">
-        {links.map((l) => (
-          <li key={l.href}>
-            <Link
-              href={l.href}
-              className="flex flex-col rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 hover:border-[#c45c26]/50 sm:flex-row sm:items-center sm:justify-between"
+        {links.map((l) =>
+          l.ready ? (
+            <li key={l.href}>
+              <Link
+                href={l.href}
+                className="flex flex-col rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 hover:border-[#c45c26]/50 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <span className="font-semibold text-[#3b2a22]">{l.label}</span>
+                <span className="text-xs text-[#7a5c4e]">{l.desc}</span>
+              </Link>
+            </li>
+          ) : (
+            <li
+              key={l.href}
+              className="flex flex-col rounded-2xl border border-dashed border-[#e8d5c4] px-4 py-3 text-[#7a5c4e] sm:flex-row sm:items-center sm:justify-between"
             >
-              <span className="font-semibold text-[#3b2a22]">{l.label}</span>
-              <span className="text-xs text-[#7a5c4e]">{l.desc}</span>
-            </Link>
-          </li>
-        ))}
+              <span className="font-semibold">{l.label}</span>
+              <span className="text-xs">{l.desc}</span>
+            </li>
+          )
+        )}
       </ul>
 
       <p className="mt-6 text-sm">
