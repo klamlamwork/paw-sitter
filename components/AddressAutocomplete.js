@@ -126,7 +126,7 @@ export default function AddressAutocomplete({
   function emitManual(patch) {
     const nextLocal = { ...local, ...patch };
     setLocal(nextLocal);
-    onChange?({
+    onChange?.({
       address_line1: nextLocal.address_line1,
       address_line2: nextLocal.address_line2,
       postal_code: nextLocal.postal_code,
@@ -139,7 +139,7 @@ export default function AddressAutocomplete({
   function clearAddress() {
     setLocal({ address_line1: "", address_line2: "", postal_code: "" });
     setStatus("");
-    onChange?({
+    onChange?.({
       address_line1: "",
       address_line2: "",
       postal_code: "",
