@@ -19,10 +19,7 @@ export default function AuthNav({ profile }) {
   }, []);
   if (!profile) {
     return (
-      <div className="flex items-center gap-2">
-        <Link href="/blog" className="hidden text-sm font-medium text-[#5c4033] hover:text-[#c45c26] sm:inline">Blog</Link>
-        <Link href="/login" className="rounded-full bg-[#c45c26] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9a4519]">Log in</Link>
-      </div>
+      <Link href="/login" className="rounded-full bg-[#c45c26] px-4 py-2 text-sm font-semibold text-white hover:bg-[#9a4519]">Log in</Link>
     );
   }
   const links = [];
@@ -35,7 +32,6 @@ export default function AuthNav({ profile }) {
     links.push({ href: "/sitter/bookings", label: "Requests" });
     links.push({ href: "/sitter/dashboard", label: "Sitter Profile & Settings" });
   }
-  links.push({ href: "/blog", label: "Blog" });
   links.push({ href: "/account", label: profile.full_name || "Account" });
   const menuItemClass = "block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5c4033] hover:bg-[#fff8f0]";
   const deskLinkClass = "text-sm font-medium text-[#5c4033] hover:text-[#c45c26]";
