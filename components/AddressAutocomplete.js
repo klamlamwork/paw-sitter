@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+
 let mapsLoadPromise = null;
 
 function loadGoogleMaps(apiKey) {
@@ -17,7 +18,10 @@ function loadGoogleMaps(apiKey) {
       return;
     }
     const script = document.createElement("script");
-    script.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(apiKey) + "&libraries=places&loading=async";
+    script.src =
+      "https://maps.googleapis.com/maps/api/js?key=" +
+      encodeURIComponent(apiKey) +
+      "&libraries=places&loading=async";
     script.async = true;
     script.dataset.gmapsPlaces = "1";
     script.onload = () => resolve(window.google.maps);
@@ -34,8 +38,9 @@ function parseAddressComponents(components) {
   };
   const streetNumber = get("street_number");
   const route = get("route");
+  const line1 = [streetNumber, route].filter(Boolean).join(" ").trim();
   return {
-    address_line1: [streetNumber, route].filter(Boolean).join(" ").trim(),
+    address_line1: line1 || "",
     postal_code: get("postal_code"),
   };
 }
@@ -105,21 +110,23 @@ export default function AddressAutocomplete({
             address_line2: next.address_line2,
             postal_code: next.postal_code,
           });
-          setStatus("Address set — coordinates updated for radius matching.");
+          setStatus("Address set — map coordinates updated for radius matching.");
           onChange?.(next);
         });
       })
       .catch(() => {
-        setStatus("Google Maps unavailable. Type the address manually.");
+        setStatus("Google Maps unavailable. You can type the address manually.");
         setManual(true);
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [API_KEY, disabled, manual, countryCode]);
 
   function emitManual(patch) {
     const nextLocal = { ...local, ...patch };
     setLocal(nextLocal);
-    onChange?.({
+    onChange?({
       address_line1: nextLocal.address_line1,
       address_line2: nextLocal.address_line2,
       postal_code: nextLocal.postal_code,
@@ -132,7 +139,7 @@ export default function AddressAutocomplete({
   function clearAddress() {
     setLocal({ address_line1: "", address_line2: "", postal_code: "" });
     setStatus("");
-    onChange?.({
+    onChange?({
       address_line1: "",
       address_line2: "",
       postal_code: "",
@@ -143,8 +150,50 @@ export default function AddressAutocomplete({
     });
   }
 
-  const subFields = (
-    <>
+  if (!API_KEY) {
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-semibold text-[#3b2a22]">{label}</p>
+        <p className="text-xs text-[#7a5c4e]">
+          Optional. Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY (Places API) for Google autocomplete; until then type manually (city pin used for km).
+        </p>
+        <label className="block text-xs text-[#7a5c4e]">
+          Street / road + number
+          <input type="text" disabled={disabled} value={local.address_line1} onChange={(e) => emitManual({ address_line1: e.target.value })} placeholder="e.g. 123 King St W" className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
+        </label>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="text-xs text-[#7a5c4e]">
+            Apt / unit (optional)
+            <input type="text" disabled={disabled} value={local.address_line2} onChange={(e) => emitManual({ address_line2: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
+          </label>
+          <label className="text-xs text-[#7a5c4e]">
+            Postal code
+            <input type="text" disabled={disabled} value={local.postal_code} onChange={(e) => emitManual({ postal_code: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
+          </label>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-sm font-semibold text-[#3b2a22]">{label}</p>
+      <p className="text-xs text-[#7a5c4e]">
+        Optional. Start typing and pick a Google suggestion for precise coordinates. City/timezone still come from the city list.
+      </p>
+      <label className="block text-xs text-[#7a5c4e]">
+        Street / road + number
+        <input
+          ref={inputRef}
+          type="text"
+          disabled={disabled}
+          defaultValue={local.address_line1}
+          key={local.address_line1}
+          placeholder={ready ? "Start typing address…" : "Loading Google…"}
+          className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
+          autoComplete="off"
+        />
+      </label>
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-[#7a5c4e]">
           Apt / unit (optional)
@@ -158,43 +207,16 @@ export default function AddressAutocomplete({
       <div className="flex flex-wrap items-center gap-3">
         {status ? <p className="text-xs text-green-800">{status}</p> : null}
         {(local.address_line1 || value.lat) ? (
-          <button type="button" onClick={clearAddress} className="text-xs font-semibold text-[#c45c26] hover:underline">Clear street address</button>
+          <button type="button" onClick={clearAddress} className="text-xs font-semibold text-[#c45c26] hover:underline">
+            Clear street address
+          </button>
         ) : null}
         {value.lat != null && value.lng != null ? (
-          <p className="text-xs text-[#7a5c4e]">Pin: {Number(value.lat).toFixed(5)}, {Number(value.lng).toFixed(5)}</p>
+          <p className="text-xs text-[#7a5c4e]">
+            Pin: {Number(value.lat).toFixed(5)}, {Number(value.lng).toFixed(5)}
+          </p>
         ) : null}
       </div>
-    </>
-  );
-
-  if (!API_KEY || manual) {
-    return (
-      <div className="space-y-2">
-        <p className="text-sm font-semibold text-[#3b2a22]">{label}</p>
-        <p className="text-xs text-[#7a5c4e]">
-          Optional. {!API_KEY ? "Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY for Google autocomplete." : "Enter address manually."}
-          {" "}City list sets timezone; street pin improves km accuracy when geocoded.
-        </p>
-        <label className="block text-xs text-[#7a5c4e]">
-          Street / road + number
-          <input type="text" disabled={disabled} value={local.address_line1} onChange={(e) => emitManual({ address_line1: e.target.value })} placeholder="e.g. 123 King St W" className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
-        </label>
-        {subFields}
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-2">
-      <p className="text-sm font-semibold text-[#3b2a22]">{label}</p>
-      <p className="text-xs text-[#7a5c4e]">
-        Optional. Start typing and pick a Google suggestion for a precise map pin used in km radius.
-      </p>
-      <label className="block text-xs text-[#7a5c4e]">
-        Street / road + number
-        <input ref={inputRef} type="text" disabled={disabled} defaultValue={local.address_line1} key={local.address_line1} placeholder={ready ? "Start typing address..." : "Loading Google..."} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" autoComplete="off" />
-      </label>
-      {subFields}
     </div>
   );
 }

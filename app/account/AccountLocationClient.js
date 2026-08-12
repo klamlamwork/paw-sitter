@@ -29,7 +29,11 @@ export default function AccountLocationClient({ profile }) {
 
   async function save() {
     setSaving(true); setError(""); setOk("");
-    if (!locId) { setError("Please choose your city from the list."); setSaving(false); return; }
+    if (!locId) {
+      setError("Please choose your city from the list.");
+      setSaving(false);
+      return;
+    }
     const supabase = createClient();
     const { error: err } = await supabase.from("profiles").update({
       full_name: fields.full_name,
@@ -46,7 +50,7 @@ export default function AccountLocationClient({ profile }) {
     }).eq("id", profile.id);
     setSaving(false);
     if (err) { setError(err.message); return; }
-    setOk("Location saved. Precise address improves distance matching.");
+    setOk("Location saved. Precise address improves sitter distance matching.");
     router.refresh();
   }
 
@@ -56,25 +60,36 @@ export default function AccountLocationClient({ profile }) {
       <p className="mt-1 text-sm text-[#7a5c4e]">
         City sets timezone. Optional street address sets a more accurate map pin for km matching.
       </p>
-      <label className="mt-3 block text-sm">Full name
+      <label className="mt-3 block text-sm">
+        Full name
         <input value={fields.full_name} onChange={(e) => setFields({ ...fields, full_name: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
       </label>
       <div className="mt-3">
-        <LocationPicker valueId={locId} onChange={(loc) => {
-          if (!loc) {
-            setLocId("");
-            setFields((f) => ({ ...f, city: "", country: "", country_code: "", timezone: "", lat: null, lng: null }));
-            setCityLatLng({ lat: null, lng: null });
-            return;
-          }
-          setLocId(loc.location_id);
-          setCityLatLng({ lat: loc.lat, lng: loc.lng });
-          setFields((f) => ({
-            ...f,
-            city: loc.city, country: loc.country, country_code: loc.country_code, timezone: loc.timezone,
-            lat: loc.lat, lng: loc.lng, address_line1: "", address_line2: "", postal_code: "",
-          }));
-        }} />
+        <LocationPicker
+          valueId={locId}
+          onChange={(loc) => {
+            if (!loc) {
+              setLocId("");
+              setFields((f) => ({ ...f, city: "", country: "", country_code: "", timezone: "", lat: null, lng: null }));
+              setCityLatLng({ lat: null, lng: null });
+              return;
+            }
+            setLocId(loc.location_id);
+            setCityLatLng({ lat: loc.lat, lng: loc.lng });
+            setFields((f) => ({
+              ...f,
+              city: loc.city,
+              country: loc.country,
+              country_code: loc.country_code,
+              timezone: loc.timezone,
+              lat: loc.lat,
+              lng: loc.lng,
+              address_line1: "",
+              address_line2: "",
+              postal_code: "",
+            }));
+          }}
+        />
       </div>
       <div className="mt-4">
         <AddressAutocomplete
