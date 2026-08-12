@@ -29,6 +29,8 @@ export default function BookingWizard({
   );
   const [step, setStep] = useState(custLoc?.lat != null ? 1 : 0);
   const [serviceType, setServiceType] = useState("drop_in");
+  const [petsDogs, setPetsDogs] = useState(true);
+  const [petsCats, setPetsCats] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [hsDate, setHsDate] = useState("");
@@ -40,10 +42,13 @@ export default function BookingWizard({
   const [petNotes, setPetNotes] = useState("");
   const [customerNotes, setCustomerNotes] = useState("");
   const tz = custLoc?.timezone || undefined;
+  const meta = SERVICE_TYPES[serviceType];
+  const isRange = meta?.schedule === "range";
+  const petsRequired = !!meta?.petsRequired;
 
   const slots = useMemo(() => {
     try {
-      if (serviceType === "house_sit") {
+      if (isRange) {
         if (!hsDate || !hsEndDate) return [];
         const startsAt = parseLocalDateTime(hsDate, hsStartTime, tz);
         const endsAt = parseLocalDateTime(hsEndDate, hsEndTime, tz);
@@ -55,22 +60,25 @@ export default function BookingWizard({
         return { startsAt, endsAt: addMinutes(startsAt, Number(v.durationMinutes)), durationMinutes: Number(v.durationMinutes) };
       });
     } catch { return []; }
-  }, [serviceType, hsDate, hsStartTime, hsEndDate, hsEndTime, visits, tz]);
+  }, [isRange, hsDate, hsStartTime, hsEndDate, hsEndTime, visits, tz]);
 
   const availableSitters = useMemo(() => {
     if (!slots.length || !custLoc?.lat) return [];
+    if (petsRequired && !petsDogs && !petsCats) return [];
     return filterAvailableSitters({
       sitters, services, weekly, overrides, busyBySitter, dayAvailability,
       serviceType, slots, customerLocation: custLoc, serviceTimezone: tz,
+      petsDogs: petsRequired ? petsDogs : false,
+      petsCats: petsRequired ? petsCats : false,
     });
-  }, [sitters, services, weekly, overrides, busyBySitter, dayAvailability, serviceType, slots, custLoc, tz]);
+  }, [sitters, services, weekly, overrides, busyBySitter, dayAvailability, serviceType, slots, custLoc, tz, petsDogs, petsCats, petsRequired]);
 
   const selectedSitter = availableSitters.find((s) => s.id === selectedSitterId) || sitters.find((s) => s.id === selectedSitterId);
   const selectedService = services.find((s) => s.sitter_id === selectedSitterId && s.service_type === serviceType);
 
   const estimate = useMemo(() => {
     if (!selectedService || !slots.length) return { total: 0, detail: "" };
-    if (serviceType === "house_sit") {
+    if (isRange) {
       const r = estimateHouseSitTotal({ start: slots[0].startsAt, end: slots[0].endsAt, rateRegular: selectedService.rate_regular, rateHoliday: selectedService.rate_holiday, holidaySet });
       return { total: r.total, detail: r.nights + " night(s)" };
     }
@@ -79,7 +87,7 @@ export default function BookingWizard({
       total += estimateDropInVisitTotal({ minutes: slot.durationMinutes, startsAt: slot.startsAt, rateRegular: selectedService.rate_regular, rateHoliday: selectedService.rate_holiday, holidaySet }).total;
     }
     return { total, detail: slots.length + " visit(s)" };
-  }, [selectedService, slots, serviceType, holidaySet]);
+  }, [selectedService, slots, isRange, holidaySet]);
 
   async function persistCustomerLocation() {
     if (!custLoc?.location_id) return;
@@ -96,6 +104,10 @@ export default function BookingWizard({
       if (!custLoc?.lat) { setError("Select your city so we can match sitters in your area."); return; }
       persistCustomerLocation();
     }
+    if (step === 1 && petsRequired && !petsDogs && !petsCats) {
+      setError("Select dog and/or cat for this service.");
+      return;
+    }
     if (step === 2 && !slots.length) { setError("Set valid date and time (in your city timezone)."); return; }
     if (step === 3 && !selectedSitterId) { setError("Choose a sitter."); return; }
     setStep((s) => Math.min(s + 1, steps.length - 1));
@@ -108,7 +120,7 @@ export default function BookingWizard({
       await persistCustomerLocation();
       const slotRows = slots.map((slot) => {
         let duration_minutes, line_total;
-        if (serviceType === "house_sit") {
+        if (isRange) {
           duration_minutes = Math.round((slot.endsAt - slot.startsAt) / 60000);
           line_total = estimateHouseSitTotal({ start: slot.startsAt, end: slot.endsAt, rateRegular: selectedService.rate_regular, rateHoliday: selectedService.rate_holiday, holidaySet }).total;
         } else {
@@ -121,6 +133,8 @@ export default function BookingWizard({
       const { data: booking, error: bErr } = await supabase.from("bookings").insert({
         customer_id: customerId, sitter_id: selectedSitterId, service_type: serviceType, status: "pending",
         pet_notes: petNotes, customer_notes: customerNotes, estimated_total, currency: "CAD",
+        pets_dogs: petsRequired ? !!petsDogs : false,
+        pets_cats: petsRequired ? !!petsCats : false,
       }).select("id").single();
       if (bErr) throw bErr;
       const { error: sErr } = await supabase.from("booking_slots").insert(slotRows.map((r) => ({ ...r, booking_id: booking.id })));
@@ -146,8 +160,8 @@ export default function BookingWizard({
 
       {step === 0 && (
         <div className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
-          <h2 className="font-semibold text-[#3b2a22]">Where do you need pet sitting?</h2>
-          <p className="mt-1 text-sm text-[#7a5c4e]">Choose city from the shared list. Times use that timezone; only sitters covering this area appear.</p>
+          <h2 className="font-semibold text-[#3b2a22]">Where do you need pet care?</h2>
+          <p className="mt-1 text-sm text-[#7a5c4e]">Choose city from the shared list. Times use that timezone.</p>
           <div className="mt-4"><LocationPicker valueId={custLoc?.location_id || ""} onChange={setCustLoc} /></div>
           {custLoc ? <p className="mt-3 text-sm text-[#5c4033]">Service location: <strong>{locationLabel(custLoc)}</strong> ({custLoc.timezone})</p> : null}
           <p className="mt-2 text-xs text-[#7a5c4e]">Also under <Link href="/account" className="font-semibold text-[#c45c26] hover:underline">Account</Link>.</p>
@@ -155,20 +169,36 @@ export default function BookingWizard({
       )}
 
       {step === 1 && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {Object.values(SERVICE_TYPES).map((svc) => (
-            <button key={svc.id} type="button" onClick={() => setServiceType(svc.id)} className={"rounded-2xl border p-5 text-left " + (serviceType === svc.id ? "border-[#c45c26] bg-[#fff8f0]" : "border-[#e8d5c4] bg-white")}>
-              <h2 className="text-lg font-semibold">{svc.label}</h2>
-              <p className="mt-1 text-sm text-[#7a5c4e]">{svc.description}</p>
-            </button>
-          ))}
+        <div className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {Object.values(SERVICE_TYPES).map((svc) => (
+              <button key={svc.id} type="button" onClick={() => setServiceType(svc.id)} className={"rounded-2xl border p-4 text-left " + (serviceType === svc.id ? "border-[#c45c26] bg-[#fff8f0]" : "border-[#e8d5c4] bg-white")}>
+                <h2 className="text-base font-semibold">{svc.label}</h2>
+                <p className="mt-1 text-xs text-[#7a5c4e]">{svc.description}</p>
+                <p className="mt-1 text-xs font-medium text-[#c45c26]">Rate unit: {svc.rateUnit}</p>
+              </button>
+            ))}
+          </div>
+          {petsRequired ? (
+            <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
+              <p className="text-sm font-semibold text-[#3b2a22]">Which pets?</p>
+              <div className="mt-2 flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={petsDogs} onChange={(e) => setPetsDogs(e.target.checked)} /> Dogs
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={petsCats} onChange={(e) => setPetsCats(e.target.checked)} /> Cats
+                </label>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 
       {step === 2 && (
         <div>
           <p className="mb-3 text-xs text-[#7a5c4e]">Times are in <strong>{tz || "your local"}</strong> ({locationLabel(custLoc)}).</p>
-          {serviceType === "house_sit" ? (
+          {isRange ? (
             <div className="grid gap-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5 sm:grid-cols-2">
               <label className="text-sm">Start date<input type="date" value={hsDate} onChange={(e) => setHsDate(e.target.value)} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" /></label>
               <label className="text-sm">Start time<input type="time" value={hsStartTime} onChange={(e) => setHsStartTime(e.target.value)} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" /></label>
@@ -178,8 +208,8 @@ export default function BookingWizard({
           ) : (
             <div className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
               <div className="flex justify-between">
-                <h2 className="font-semibold">Drop-in visits</h2>
-                <button type="button" className="text-sm font-semibold text-[#c45c26]" onClick={() => setVisits((v) => [...v, { date: "", startTime: "10:00", durationMinutes: 30 }])}>+ Add visit</button>
+                <h2 className="font-semibold">{serviceType === "walking" ? "Walks" : "Visits"}</h2>
+                <button type="button" className="text-sm font-semibold text-[#c45c26]" onClick={() => setVisits((v) => [...v, { date: "", startTime: "10:00", durationMinutes: 30 }])}>+ Add</button>
               </div>
               {visits.map((v, i) => (
                 <div key={i} className="grid gap-2 rounded-xl border border-[#e8d5c4] bg-white p-3 sm:grid-cols-4">
@@ -199,12 +229,12 @@ export default function BookingWizard({
       {step === 3 && (
         <div className="space-y-3">
           <p className="text-sm text-[#7a5c4e]">
-            Showing sitters whose <strong>{SERVICE_TYPES[serviceType]?.label}</strong> area covers <strong>{locationLabel(custLoc)}</strong>.
+            Showing sitters for <strong>{meta?.label}</strong>
+            {petsRequired ? <> ({[petsDogs && "dogs", petsCats && "cats"].filter(Boolean).join(" + ")})</> : null}
+            {" "}covering <strong>{locationLabel(custLoc)}</strong>.
           </p>
           {availableSitters.length === 0 ? (
-            <p className="rounded-2xl border border-dashed border-[#e8d5c4] p-6 text-sm text-[#7a5c4e]">
-              No sitters cover this area for the selected service and times. Try another time, or ask a sitter to expand their km radius.
-            </p>
+            <p className="rounded-2xl border border-dashed border-[#e8d5c4] p-6 text-sm text-[#7a5c4e]">No sitters match this service, pets, area, and times.</p>
           ) : availableSitters.map((s) => {
             const svc = services.find((x) => x.sitter_id === s.id && x.service_type === serviceType);
             return (
@@ -212,11 +242,14 @@ export default function BookingWizard({
                 <h3 className="font-semibold">{s.display_name}</h3>
                 <p className="text-xs text-[#7a5c4e]">
                   Base: {s.service_city}, {s.service_country}
+                  {s._unlimited ? " · Anywhere" : s._radiusKm != null ? ` · covers ${s._radiusKm} km` : ""}
                   {s._distanceKm != null ? ` · ~${s._distanceKm.toFixed(1)} km away` : ""}
-                  {s._radiusKm != null ? ` · covers ${s._radiusKm} km` : ""}
                 </p>
+                {petsRequired ? (
+                  <p className="text-xs text-[#7a5c4e]">Accepts: {[s._acceptsDogs && "dogs", s._acceptsCats && "cats"].filter(Boolean).join(", ") || "—"}</p>
+                ) : null}
                 <p className="mt-1 text-sm">{s.bio || "No bio yet."}</p>
-                {svc ? <p className="mt-1 text-xs font-medium text-[#c45c26]">${svc.rate_regular} regular / ${svc.rate_holiday} holiday</p> : null}
+                {svc ? <p className="mt-1 text-xs font-medium text-[#c45c26]">${svc.rate_regular} regular / ${svc.rate_holiday} holiday per {meta?.rateUnit}</p> : null}
               </button>
             );
           })}
@@ -226,7 +259,8 @@ export default function BookingWizard({
       {step === 4 && (
         <div className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5 text-sm">
           <p><strong>Location:</strong> {locationLabel(custLoc)} ({tz})</p>
-          <p><strong>Service:</strong> {SERVICE_TYPES[serviceType]?.label}</p>
+          <p><strong>Service:</strong> {meta?.label}</p>
+          {petsRequired ? <p><strong>Pets:</strong> {[petsDogs && "Dogs", petsCats && "Cats"].filter(Boolean).join(", ")}</p> : null}
           <p><strong>Sitter:</strong> {selectedSitter?.display_name}</p>
           <p><strong>Estimate:</strong> ${estimate.total.toFixed(2)} CAD ({estimate.detail})</p>
           <ul className="space-y-1 text-[#5c4033]">
