@@ -2,12 +2,14 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { formatBlogDate } from "@/lib/blog";
+
 export default function BlogIndexClient({ posts, tags }) {
   const [active, setActive] = useState(null);
   const filtered = useMemo(() => {
     if (!active) return posts;
     return posts.filter((p) => (p.tagIds || []).includes(active));
   }, [posts, active]);
+
   return (
     <div>
       <div className="flex flex-wrap gap-2">
