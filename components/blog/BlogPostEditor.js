@@ -29,7 +29,7 @@ export default function BlogPostEditor({
   const [contentHtml, setContentHtml] = useState(post?.content_html || "");
   const [published, setPublished] = useState(!!post?.published);
   const [tagIds, setTagIds] = useState(initialTagIds || []);
-  const [productIds, setProductIds] = useState(initialProductIds || []);
+  const [productIds] = useState(initialProductIds || []);
   const [relatedIds, setRelatedIds] = useState(initialRelatedIds || []);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
@@ -40,6 +40,7 @@ export default function BlogPostEditor({
     [allPosts, post?.id]
   );
   const coverPreview = coverImageUrl.trim();
+  const catalogReady = Array.isArray(allProducts) && allProducts.length > 0;
 
   function onHeadline(v) {
     setHeadline(v);
@@ -103,7 +104,6 @@ export default function BlogPostEditor({
       let saved = null;
       let coverSkipped = false;
 
-      // 1) Try with cover column
       {
         const payload = { ...basePayload, cover_image_url: cover };
         const { data, error: err } = await writePost(supabase, payload, postId);
@@ -111,7 +111,6 @@ export default function BlogPostEditor({
           saved = data;
           postId = data.id;
         } else if (err && /cover_image_url/i.test(err.message || "")) {
-          // Column missing or schema cache stale — save core fields without cover
           coverSkipped = true;
           const { data: data2, error: err2 } = await writePost(supabase, basePayload, postId);
           if (err2) throw err2;
@@ -125,7 +124,6 @@ export default function BlogPostEditor({
         }
       }
 
-      // 2) Relations (best-effort with hard errors)
       const { error: delTagsErr } = await supabase.from("blog_post_tags").delete().eq("post_id", postId);
       if (delTagsErr) throw delTagsErr;
       if (tagIds.length) {
@@ -135,17 +133,21 @@ export default function BlogPostEditor({
         if (tErr) throw tErr;
       }
 
-      const { error: delProdErr } = await supabase.from("blog_post_products").delete().eq("post_id", postId);
-      if (delProdErr) throw delProdErr;
-      if (productIds.length) {
-        const { error: pErr } = await supabase.from("blog_post_products").insert(
-          productIds.map((product_id, i) => ({
-            post_id: postId,
-            product_id,
-            sort_order: i,
-          }))
-        );
-        if (pErr) throw pErr;
+      // Product links: only rewrite when shop catalog options are provided.
+      // Until then, leave existing blog_post_products rows untouched.
+      if (catalogReady) {
+        const { error: delProdErr } = await supabase.from("blog_post_products").delete().eq("post_id", postId);
+        if (delProdErr) throw delProdErr;
+        if (productIds.length) {
+          const { error: pErr } = await supabase.from("blog_post_products").insert(
+            productIds.map((product_id, i) => ({
+              post_id: postId,
+              product_id,
+              sort_order: i,
+            }))
+          );
+          if (pErr) throw pErr;
+        }
       }
 
       const { error: delRelErr } = await supabase.from("blog_post_related").delete().eq("post_id", postId);
@@ -161,7 +163,6 @@ export default function BlogPostEditor({
         if (rErr) throw rErr;
       }
 
-      // Sync UI from DB row
       if (saved) {
         setHeadline(saved.headline || "");
         setSlug(saved.slug || "");
@@ -259,11 +260,7 @@ export default function BlogPostEditor({
       <div>
         <div className="mb-2 flex items-center justify-between">
           <p className="text-sm font-semibold">Content (HTML)</p>
-          <button
-            type="button"
-            onClick={() => setPreview((v) => !v)}
-            className="text-xs font-semibold text-[#c45c26]"
-          >
+          <button type="button" onClick={() => setPreview((v) => !v)} className="text-xs font-semibold text-[#c45c26]">
             {preview ? "Edit HTML" : "Preview"}
           </button>
         </div>
@@ -302,19 +299,26 @@ export default function BlogPostEditor({
 
       <fieldset className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
         <legend className="px-1 text-sm font-semibold">Related products (sidebar / mobile bar)</legend>
-        <div className="space-y-2">
-          {allProducts.map((p) => (
-            <label key={p.id} className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={hasId(productIds, p.id)}
-                onChange={() => toggleId(productIds, setProductIds, p.id)}
-              />{" "}
-              {p.title}
-            </label>
-          ))}
-          {!allProducts.length ? <p className="text-xs text-[#7a5c4e]">No products yet.</p> : null}
-        </div>
+        {catalogReady ? (
+          <div className="space-y-2">
+            {allProducts.map((p) => (
+              <label key={p.id} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={hasId(productIds, p.id)} disabled readOnly /> {p.title}
+              </label>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-[#7a5c4e]">
+            Product picks will come from the <strong>Shop</strong> catalog when it launches.
+            This section stays here for the post sidebar / mobile bar. Existing product links on this
+            post are left unchanged until then.
+            {productIds.length ? (
+              <span className="mt-2 block text-xs">
+                Currently linked product IDs: {productIds.length}
+              </span>
+            ) : null}
+          </p>
+        )}
       </fieldset>
 
       <fieldset className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
