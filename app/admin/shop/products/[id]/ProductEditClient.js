@@ -131,8 +131,8 @@ export default function ProductEditClient({ product, brands, shops, categories, 
         <label className="block text-sm font-medium">Price CAD<input type="number" step="0.01" className={inp} value={form.price} onChange={(e) => set("price", e.target.value)} /></label>
         <div className="flex flex-wrap gap-4 text-sm">
           <label className="flex items-center gap-2"><input type="checkbox" checked={form.hide_price} onChange={(e) => set("hide_price", e.target.checked)} /> Hide price</label>
-          <label className="flex items-center gap-2"><input type="checkbox" checked={form.show_affiliate} onChange={(e) => set("show_affiliate", e.target.checked)} /> Affiliate button</label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={form.show_add_to_cart} onChange={(e) => set("show_add_to_cart", e.target.checked)} /> Add to cart</label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={form.show_affiliate} onChange={(e) => set("show_affiliate", e.target.checked)} /> Affiliate button</label>
         </div>
         <label className="block text-sm font-medium">Affiliate URL<input className={inp} value={form.affiliate_url} onChange={(e) => set("affiliate_url", e.target.value)} /></label>
         <label className="block text-sm font-medium">Status
