@@ -1,68 +1,62 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const API_KEY = (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
 
-let mapsLoadPromise = null;
+let bootstrapPromise = null;
 
-function loadGoogleMaps(apiKey) {
+function ensureMapsBootstrap(apiKey) {
   if (typeof window === "undefined") {
     return Promise.reject(new Error("no window"));
   }
   if (window.google?.maps?.importLibrary) {
-    return Promise.resolve(window.google.maps);
+    return Promise.resolve();
   }
-  if (mapsLoadPromise) return mapsLoadPromise;
+  if (bootstrapPromise) return bootstrapPromise;
 
-  mapsLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector("script[data-gmaps-places]");
-    const done = () => {
-      if (window.google?.maps?.importLibrary) resolve(window.google.maps);
-      else reject(new Error("google.maps.importLibrary missing after script load"));
-    };
-    if (existing) {
-      if (window.google?.maps?.importLibrary) done();
-      else {
-        existing.addEventListener("load", done);
-        existing.addEventListener("error", () =>
-          reject(new Error("Existing Maps script failed to load"))
-        );
-      }
-      return;
-    }
-    const script = document.createElement("script");
-    script.src =
-      "https://maps.googleapis.com/maps/api/js?key=" +
-      encodeURIComponent(apiKey) +
-      "&v=weekly&loading=async";
-    script.async = true;
-    script.dataset.gmapsPlaces = "1";
-    script.onload = done;
-    script.onerror = () =>
-      reject(
-        new Error(
-          "Script blocked or invalid key. Check billing, API enablement, and HTTP referrer restrictions."
-        )
-      );
-    document.head.appendChild(script);
+  bootstrapPromise = new Promise((resolve, reject) => {
+    const g = { key: apiKey, v: "weekly" };
+    ((g) => {
+      var h, a, k, p = "The Google Maps JavaScript API", c = "google", l = "importLibrary", q = "__ib__", m = document, b = window;
+      b = b[c] || (b[c] = {});
+      var d = b.maps || (b.maps = {}), r = new Set(), e = new URLSearchParams(),
+        u = () => h || (h = new Promise(async (f, n) => {
+          await (a = m.createElement("script"));
+          e.set("libraries", [...r] + "");
+          for (k in g) e.set(k.replace(/[A-Z]/g, (t) => "_" + t[0].toLowerCase()), g[k]);
+          e.set("callback", c + ".maps." + q);
+          a.src = `https://maps.${c}apis.com/maps/api/js?` + e;
+          d[q] = f;
+          a.onerror = () => (h = n(Error(p + " could not load. Check API key, billing, and referrer restrictions.")));
+          a.nonce = m.querySelector("script[nonce]")?.nonce || "";
+          m.head.append(a);
+        }));
+      d[l] ? console.warn(p + " only loads once. Ignoring:", g) : (d[l] = (f, ...n) => r.add(f) && u().then(() => d[l](f, ...n)));
+    })(g);
+
+    window.google.maps.importLibrary("places").then(() => resolve()).catch((err) => {
+      bootstrapPromise = null;
+      reject(err);
+    });
   });
-  return mapsLoadPromise;
+
+  return bootstrapPromise;
 }
 
-function componentLongName(components, type) {
+function componentText(components, type) {
   const list = components || [];
   const c = list.find((x) => (x.types || []).includes(type));
-  return c?.longText || c?.long_name || "";
+  return c?.longText || c?.long_name || c?.shortText || "";
 }
 
-function parseNewAddressComponents(components) {
-  const streetNumber = componentLongName(components, "street_number");
-  const route = componentLongName(components, "route");
+function parseComponents(components) {
+  const streetNumber = componentText(components, "street_number");
+  const route = componentText(components, "route");
   const line1 = [streetNumber, route].filter(Boolean).join(" ").trim();
   return {
     address_line1: line1,
-    postal_code: componentLongName(components, "postal_code"),
+    postal_code: componentText(components, "postal_code"),
   };
 }
 
@@ -73,17 +67,21 @@ export default function AddressAutocomplete({
   label = "Street address (optional)",
   disabled = false,
 }) {
-  const hostRef = useRef(null);
-  const widgetRef = useRef(null);
-  const [ready, setReady] = useState(false);
-  const [manual, setManual] = useState(!API_KEY);
+  const [manualOnly, setManualOnly] = useState(!API_KEY);
   const [loadError, setLoadError] = useState("");
+  const [status, setStatus] = useState("");
+  const [query, setQuery] = useState(value.address_line1 || "");
+  const [suggestions, setSuggestions] = useState([]);
+  const [open, setOpen] = useState(false);
+  const [loadingSug, setLoadingSug] = useState(false);
   const [local, setLocal] = useState({
     address_line1: value.address_line1 || "",
     address_line2: value.address_line2 || "",
     postal_code: value.postal_code || "",
   });
-  const [status, setStatus] = useState("");
+  const debounceRef = useRef(null);
+  const boxRef = useRef(null);
+  const placesReady = useRef(false);
 
   useEffect(() => {
     setLocal({
@@ -91,108 +89,137 @@ export default function AddressAutocomplete({
       address_line2: value.address_line2 || "",
       postal_code: value.postal_code || "",
     });
+    if (value.address_line1) setQuery(value.address_line1);
   }, [value.address_line1, value.address_line2, value.postal_code]);
 
   useEffect(() => {
     if (!API_KEY) {
-      setManual(true);
+      setManualOnly(true);
       setLoadError(
-        "No NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in this deployment. Add it in Vercel → Environment Variables, then Redeploy."
+        "No NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in this build. Set it in Vercel → Environment Variables (Production), then Redeploy."
       );
       return;
     }
-    if (disabled || manual) return;
-    if (!hostRef.current) return;
-
     let cancelled = false;
     setLoadError("");
-
-    (async () => {
-      try {
-        await loadGoogleMaps(API_KEY);
-        if (cancelled || !hostRef.current) return;
-
-        const placesLib = await window.google.maps.importLibrary("places");
-        const PlaceAutocompleteElement =
-          placesLib.PlaceAutocompleteElement ||
-          window.google.maps.places?.PlaceAutocompleteElement;
-
-        if (!PlaceAutocompleteElement) {
-          throw new Error(
-            "PlaceAutocompleteElement not available. Enable Places API (New) + Maps JavaScript API, then retry."
-          );
-        }
-
-        hostRef.current.innerHTML = "";
-        const el = new PlaceAutocompleteElement(
-          countryCode
-            ? { includedRegionCodes: [String(countryCode).toLowerCase()] }
-            : {}
-        );
-        el.id = "paw-place-autocomplete";
-        el.style.display = "block";
-        el.style.width = "100%";
-        el.style.borderRadius = "0.75rem";
-
-        hostRef.current.appendChild(el);
-        widgetRef.current = el;
-        setReady(true);
-
-        el.addEventListener("gmp-select", async (event) => {
-          try {
-            const prediction = event.placePrediction;
-            if (!prediction) return;
-            const place = prediction.toPlace ? prediction.toPlace() : prediction;
-            await place.fetchFields({
-              fields: ["formattedAddress", "location", "addressComponents"],
-            });
-
-            const loc = place.location;
-            if (!loc) {
-              setStatus("Could not read coordinates for that place.");
-              return;
-            }
-            const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
-            const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
-            const parsed = parseNewAddressComponents(place.addressComponents);
-            const line1 = parsed.address_line1 || place.formattedAddress || "";
-
-            const next = {
-              address_line1: line1,
-              address_line2: local.address_line2 || "",
-              postal_code: parsed.postal_code || "",
-              lat,
-              lng,
-              formatted: place.formattedAddress || line1,
-            };
-            setLocal({
-              address_line1: next.address_line1,
-              address_line2: next.address_line2,
-              postal_code: next.postal_code,
-            });
-            setStatus("Address set — map coordinates updated for radius matching.");
-            onChange?.(next);
-          } catch (e) {
-            console.error("[AddressAutocomplete] select", e);
-            setStatus(e?.message || "Failed to read selected place.");
-          }
-        });
-      } catch (err) {
-        console.error("[AddressAutocomplete]", err);
+    ensureMapsBootstrap(API_KEY)
+      .then(() => {
+        if (cancelled) return;
+        placesReady.current = true;
+        setManualOnly(false);
+      })
+      .catch((err) => {
+        console.error("[AddressAutocomplete] bootstrap", err);
         setLoadError(err?.message || String(err));
-        setManual(true);
-        mapsLoadPromise = null;
+        setManualOnly(true);
+        placesReady.current = false;
+        bootstrapPromise = null;
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    function onDoc(e) {
+      if (!boxRef.current?.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const fetchSuggestions = useCallback(async (input) => {
+    if (!placesReady.current || !input || input.trim().length < 3) {
+      setSuggestions([]);
+      return;
+    }
+    setLoadingSug(true);
+    try {
+      const { AutocompleteSuggestion } = await window.google.maps.importLibrary("places");
+      const req = {
+        input: input.trim(),
+        includedPrimaryTypes: ["street_address", "premise", "subpremise", "route"],
+      };
+      if (countryCode) {
+        req.includedRegionCodes = [String(countryCode).toLowerCase()];
       }
-    })();
+      const { suggestions: list } =
+        await AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
+      setSuggestions(list || []);
+      setOpen(true);
+    } catch (err) {
+      console.error("[AddressAutocomplete] suggest", err);
+      setLoadError(
+        err?.message ||
+          "Places suggestions failed. Enable Places API (New) on the key's project."
+      );
+      setSuggestions([]);
+    } finally {
+      setLoadingSug(false);
+    }
+  }, [countryCode]);
 
-    return () => {
-      cancelled = true;
-      if (hostRef.current) hostRef.current.innerHTML = "";
-      widgetRef.current = null;
-    };
-  }, [API_KEY, disabled, manual, countryCode]);
+  function onQueryChange(text) {
+    setQuery(text);
+    setLocal((L) => ({ ...L, address_line1: text }));
+    onChange?.({
+      address_line1: text,
+      address_line2: local.address_line2,
+      postal_code: local.postal_code,
+      lat: value.lat,
+      lng: value.lng,
+      formatted: text,
+    });
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (manualOnly || !placesReady.current) return;
+    debounceRef.current = setTimeout(() => fetchSuggestions(text), 280);
+  }
 
-  function emitManual(patch) {
+  async function pickSuggestion(suggestion) {
+    try {
+      setOpen(false);
+      setLoadingSug(true);
+      const prediction = suggestion.placePrediction;
+      if (!prediction) return;
+      const place = prediction.toPlace();
+      await place.fetchFields({
+        fields: ["formattedAddress", "location", "addressComponents"],
+      });
+      const loc = place.location;
+      if (!loc) {
+        setStatus("Could not read coordinates for that place.");
+        return;
+      }
+      const lat = typeof loc.lat === "function" ? loc.lat() : Number(loc.lat);
+      const lng = typeof loc.lng === "function" ? loc.lng() : Number(loc.lng);
+      const parsed = parseComponents(place.addressComponents);
+      const line1 =
+        parsed.address_line1 ||
+        place.formattedAddress ||
+        prediction.text?.text ||
+        query;
+
+      const nextLocal = {
+        address_line1: line1,
+        address_line2: local.address_line2,
+        postal_code: parsed.postal_code || local.postal_code,
+      };
+      setLocal(nextLocal);
+      setQuery(line1);
+      setStatus("Address set — map coordinates updated for radius matching.");
+      onChange?.({
+        ...nextLocal,
+        lat,
+        lng,
+        formatted: place.formattedAddress || line1,
+      });
+    } catch (err) {
+      console.error("[AddressAutocomplete] pick", err);
+      setStatus(err?.message || "Failed to load place details.");
+    } finally {
+      setLoadingSug(false);
+    }
+  }
+
+  function emitExtra(patch) {
     const nextLocal = { ...local, ...patch };
     setLocal(nextLocal);
     onChange?.({
@@ -207,6 +234,8 @@ export default function AddressAutocomplete({
 
   function clearAddress() {
     setLocal({ address_line1: "", address_line2: "", postal_code: "" });
+    setQuery("");
+    setSuggestions([]);
     setStatus("");
     onChange?.({
       address_line1: "",
@@ -220,76 +249,77 @@ export default function AddressAutocomplete({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2" ref={boxRef}>
       <p className="text-sm font-semibold text-[#3b2a22]">{label}</p>
       <p className="text-xs text-[#7a5c4e]">
-        Optional. City/timezone come from the city list. Street pin improves km accuracy.
+        Optional. City sets timezone; street pin improves km accuracy.
       </p>
 
       {loadError ? (
         <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-          <p className="font-semibold">Google Maps autocomplete unavailable</p>
-          <p className="mt-1">{loadError}</p>
-          <p className="mt-2">You can still type the address manually below.</p>
+          <p className="font-semibold">Google autocomplete issue</p>
+          <p className="mt-1 break-words">{loadError}</p>
+          <p className="mt-2">You can still type the address manually.</p>
         </div>
       ) : null}
 
-      {!manual ? (
-        <div>
-          <p className="text-xs text-[#7a5c4e]">Street / road + number</p>
-          <div
-            ref={hostRef}
-            className="mt-1 min-h-[42px] w-full rounded-xl border border-[#e8d5c4] bg-white px-1 py-1 [&_input]:w-full [&_input]:border-0 [&_input]:bg-transparent [&_input]:px-2 [&_input]:py-2 [&_input]:text-sm [&_input]:outline-none"
-          />
-          {!ready && !loadError ? (
-            <p className="mt-1 text-xs text-[#7a5c4e]">Loading Google autocomplete…</p>
-          ) : null}
-        </div>
-      ) : (
-        <label className="block text-xs text-[#7a5c4e]">
-          Street / road + number
-          <input
-            type="text"
-            disabled={disabled}
-            value={local.address_line1}
-            onChange={(e) => emitManual({ address_line1: e.target.value })}
-            placeholder="e.g. 123 King St W"
-            className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
-          />
-        </label>
-      )}
+      <label className="relative block text-xs text-[#7a5c4e]">
+        Street / road + number
+        <input
+          type="text"
+          disabled={disabled}
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onFocus={() => suggestions.length && setOpen(true)}
+          placeholder="Start typing address…"
+          className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
+          autoComplete="off"
+        />
+        {loadingSug ? (
+          <span className="absolute right-3 top-8 text-[10px] text-[#7a5c4e]">…</span>
+        ) : null}
+        {open && suggestions.length > 0 ? (
+          <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-[#e8d5c4] bg-white py-1 shadow-lg">
+            {suggestions.map((s, idx) => {
+              const text =
+                s.placePrediction?.text?.text ||
+                s.placePrediction?.mainText?.text ||
+                "Place";
+              const secondary = s.placePrediction?.secondaryText?.text || "";
+              return (
+                <li key={idx}>
+                  <button
+                    type="button"
+                    className="w-full px-3 py-2 text-left text-sm text-[#3b2a22] hover:bg-[#fff8f0]"
+                    onClick={() => pickSuggestion(s)}
+                  >
+                    <span className="font-medium">{text}</span>
+                    {secondary ? (
+                      <span className="mt-0.5 block text-xs text-[#7a5c4e]">{secondary}</span>
+                    ) : null}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        ) : null}
+      </label>
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-[#7a5c4e]">
           Apt / unit (optional)
-          <input
-            type="text"
-            disabled={disabled}
-            value={local.address_line2}
-            onChange={(e) => emitManual({ address_line2: e.target.value })}
-            className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
-          />
+          <input type="text" disabled={disabled} value={local.address_line2} onChange={(e) => emitExtra({ address_line2: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
         </label>
         <label className="text-xs text-[#7a5c4e]">
           Postal code
-          <input
-            type="text"
-            disabled={disabled}
-            value={local.postal_code}
-            onChange={(e) => emitManual({ postal_code: e.target.value })}
-            className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
-          />
+          <input type="text" disabled={disabled} value={local.postal_code} onChange={(e) => emitExtra({ postal_code: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
         </label>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
         {status ? <p className="text-xs text-green-800">{status}</p> : null}
-        {local.address_line1 || value.lat ? (
-          <button
-            type="button"
-            onClick={clearAddress}
-            className="text-xs font-semibold text-[#c45c26] hover:underline"
-          >
+        {query || value.lat ? (
+          <button type="button" onClick={clearAddress} className="text-xs font-semibold text-[#c45c26] hover:underline">
             Clear street address
           </button>
         ) : null}
@@ -297,19 +327,6 @@ export default function AddressAutocomplete({
           <p className="text-xs text-[#7a5c4e]">
             Pin: {Number(value.lat).toFixed(5)}, {Number(value.lng).toFixed(5)}
           </p>
-        ) : null}
-        {API_KEY && manual ? (
-          <button
-            type="button"
-            className="text-xs font-semibold text-[#5c4033] underline"
-            onClick={() => {
-              setManual(false);
-              setLoadError("");
-              mapsLoadPromise = null;
-            }}
-          >
-            Retry Google autocomplete
-          </button>
         ) : null}
       </div>
     </div>
