@@ -29,12 +29,15 @@ export default function SitterDashboardClient({ sitter }) {
     for (const s of sitter.sitter_services || []) map[s.service_type] = s;
     return Object.keys(SERVICE_TYPES).map((type) => {
       const row = map[type];
+      const raw = row?.radius_km;
+      const unlimited = raw == null || Number(raw) <= 0;
       return {
         service_type: type,
         enabled: row ? !!row.enabled : type === "drop_in",
         rate_regular: row?.rate_regular ?? 25,
         rate_holiday: row?.rate_holiday ?? 35,
-        radius_km: row?.radius_km != null ? Number(row.radius_km) : 15,
+        unlimited,
+        radius_km: unlimited ? 50 : Number(raw),
       };
     });
   });
@@ -58,7 +61,7 @@ export default function SitterDashboardClient({ sitter }) {
     setError("");
     setOk("");
     if (!profile.location_id || profile.lat == null) {
-      setError("Please select your base city from the list (needed for service area matching).");
+      setError("Please select your base city from the list (needed for timezone and default matching).");
       setSaving(false);
       return;
     }
@@ -81,14 +84,14 @@ export default function SitterDashboardClient({ sitter }) {
       if (pErr) throw pErr;
 
       for (const svc of services) {
-        const radius = Math.max(1, Number(svc.radius_km) || 15);
+        const radiusVal = svc.unlimited ? null : Math.max(1, Number(svc.radius_km) || 1);
         const payload = {
           sitter_id: sitter.id,
           service_type: svc.service_type,
           enabled: !!svc.enabled,
           rate_regular: Number(svc.rate_regular) || 0,
           rate_holiday: Number(svc.rate_holiday) || 0,
-          radius_km: radius,
+          radius_km: radiusVal,
         };
 
         const { data: existing, error: findErr } = await supabase
@@ -124,12 +127,12 @@ export default function SitterDashboardClient({ sitter }) {
           saved = data;
         }
 
-        if (Number(saved?.radius_km) !== radius) {
-          throw new Error(
-            "Radius did not save for " +
-              svc.service_type +
-              ". Run SQL to add sitter_services.radius_km, then notify pgrst reload schema."
-          );
+        const savedUnlimited = saved?.radius_km == null || Number(saved.radius_km) <= 0;
+        if (svc.unlimited && !savedUnlimited) {
+          throw new Error("Could not save unlimited radius. Run SQL to allow null on radius_km.");
+        }
+        if (!svc.unlimited && Number(saved?.radius_km) !== radiusVal) {
+          throw new Error("Radius did not save for " + svc.service_type + ". Ensure sitter_services.radius_km exists.");
         }
       }
 
@@ -147,7 +150,7 @@ export default function SitterDashboardClient({ sitter }) {
         if (wErr) throw wErr;
       }
 
-      setOk("Saved profile, service areas (km), and weekly hours.");
+      setOk("Saved profile, service areas, and weekly hours.");
       router.refresh();
     } catch (e) {
       setError(e.message || "Save failed");
@@ -164,18 +167,16 @@ export default function SitterDashboardClient({ sitter }) {
       <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
         <h2 className="text-lg font-semibold text-[#3b2a22]">Profile</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
-            Display name
+          <label className="text-sm">Display name
             <input value={profile.display_name} onChange={(e) => setProfile({ ...profile, display_name: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
           </label>
-          <label className="text-sm">
-            Phone
+          <label className="text-sm">Phone
             <input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
           </label>
           <div className="sm:col-span-2">
             <LocationPicker
               valueId={profile.location_id}
-              label="Base city (service area center)"
+              label="Base city (timezone / home base)"
               onChange={(loc) => {
                 if (!loc) {
                   setProfile((p) => ({ ...p, location_id: "", service_city: "", service_country: "", timezone: "", lat: null, lng: null }));
@@ -193,28 +194,39 @@ export default function SitterDashboardClient({ sitter }) {
               }}
             />
           </div>
-          <label className="text-sm sm:col-span-2">
-            Bio
+          <label className="text-sm sm:col-span-2">Bio
             <textarea value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
           </label>
         </div>
       </section>
 
       <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
-        <h2 className="text-lg font-semibold text-[#3b2a22]">Services, rates & area (km)</h2>
+        <h2 className="text-lg font-semibold text-[#3b2a22]">Services, rates & area</h2>
         <p className="mt-1 text-xs text-[#7a5c4e]">
-          Radius is how far from your base city you offer each service. Customers outside that range will not see you.
+          Set a km radius from your base city, or choose <strong>Anywhere</strong> for no distance limit.
         </p>
         <div className="mt-3 space-y-3">
           {services.map((svc, i) => (
-            <div key={svc.service_type} className="grid gap-2 rounded-xl border border-[#e8d5c4] bg-white p-3 sm:grid-cols-5">
-              <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2">
-                <input type="checkbox" checked={svc.enabled} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, enabled: e.target.checked } : row)))} />
-                {SERVICE_TYPES[svc.service_type]?.label}
+            <div key={svc.service_type} className="rounded-xl border border-[#e8d5c4] bg-white p-3">
+              <div className="grid gap-2 sm:grid-cols-5">
+                <label className="flex items-center gap-2 text-sm font-semibold sm:col-span-2">
+                  <input type="checkbox" checked={svc.enabled} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, enabled: e.target.checked } : row)))} />
+                  {SERVICE_TYPES[svc.service_type]?.label}
+                </label>
+                <label className="text-xs">Regular $
+                  <input type="number" min="0" step="0.5" value={svc.rate_regular} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, rate_regular: e.target.value } : row)))} className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" />
+                </label>
+                <label className="text-xs">Holiday $
+                  <input type="number" min="0" step="0.5" value={svc.rate_holiday} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, rate_holiday: e.target.value } : row)))} className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" />
+                </label>
+                <label className="text-xs">Radius km
+                  <input type="number" min="1" step="1" disabled={svc.unlimited} value={svc.radius_km} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, radius_km: e.target.value, unlimited: false } : row)))} className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5 disabled:opacity-40" />
+                </label>
+              </div>
+              <label className="mt-2 flex items-center gap-2 text-xs font-semibold text-[#5c4033]">
+                <input type="checkbox" checked={!!svc.unlimited} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, unlimited: e.target.checked } : row)))} />
+                Anywhere (no distance limit — pet sit any city)
               </label>
-              <label className="text-xs">Regular $<input type="number" min="0" step="0.5" value={svc.rate_regular} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, rate_regular: e.target.value } : row)))} className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" /></label>
-              <label className="text-xs">Holiday $<input type="number" min="0" step="0.5" value={svc.rate_holiday} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, rate_holiday: e.target.value } : row)))} className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" /></label>
-              <label className="text-xs">Radius km<input type="number" min="1" max="500" step="1" value={svc.radius_km} onChange={(e) => setServices((list) => list.map((row, idx) => (idx === i ? { ...row, radius_km: e.target.value } : row)))} className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1.5" /></label>
             </div>
           ))}
         </div>
