@@ -34,7 +34,7 @@ export default function SitterDashboardClient({ sitter }) {
         enabled: row ? !!row.enabled : type === "drop_in",
         rate_regular: row?.rate_regular ?? 25,
         rate_holiday: row?.rate_holiday ?? 35,
-        radius_km: row?.radius_km ?? 15,
+        radius_km: row?.radius_km != null ? Number(row.radius_km) : 15,
       };
     });
   });
@@ -69,7 +69,7 @@ export default function SitterDashboardClient({ sitter }) {
         .update({
           display_name: profile.display_name,
           bio: profile.bio,
-          phone: profile.phone,
+          phone: profile.phone || null,
           service_city: profile.service_city,
           service_country: profile.service_country,
           location_id: profile.location_id,
@@ -81,18 +81,56 @@ export default function SitterDashboardClient({ sitter }) {
       if (pErr) throw pErr;
 
       for (const svc of services) {
-        const { error: sErr } = await supabase.from("sitter_services").upsert(
-          {
-            sitter_id: sitter.id,
-            service_type: svc.service_type,
-            enabled: svc.enabled,
-            rate_regular: Number(svc.rate_regular),
-            rate_holiday: Number(svc.rate_holiday),
-            radius_km: Number(svc.radius_km) || 15,
-          },
-          { onConflict: "sitter_id,service_type" }
-        );
-        if (sErr) throw sErr;
+        const radius = Math.max(1, Number(svc.radius_km) || 15);
+        const payload = {
+          sitter_id: sitter.id,
+          service_type: svc.service_type,
+          enabled: !!svc.enabled,
+          rate_regular: Number(svc.rate_regular) || 0,
+          rate_holiday: Number(svc.rate_holiday) || 0,
+          radius_km: radius,
+        };
+
+        const { data: existing, error: findErr } = await supabase
+          .from("sitter_services")
+          .select("id")
+          .eq("sitter_id", sitter.id)
+          .eq("service_type", svc.service_type)
+          .maybeSingle();
+        if (findErr) throw findErr;
+
+        let saved;
+        if (existing?.id) {
+          const { data, error: uErr } = await supabase
+            .from("sitter_services")
+            .update({
+              enabled: payload.enabled,
+              rate_regular: payload.rate_regular,
+              rate_holiday: payload.rate_holiday,
+              radius_km: payload.radius_km,
+            })
+            .eq("id", existing.id)
+            .select("id, service_type, radius_km")
+            .single();
+          if (uErr) throw uErr;
+          saved = data;
+        } else {
+          const { data, error: iErr } = await supabase
+            .from("sitter_services")
+            .insert(payload)
+            .select("id, service_type, radius_km")
+            .single();
+          if (iErr) throw iErr;
+          saved = data;
+        }
+
+        if (Number(saved?.radius_km) !== radius) {
+          throw new Error(
+            "Radius did not save for " +
+              svc.service_type +
+              ". Run SQL to add sitter_services.radius_km, then notify pgrst reload schema."
+          );
+        }
       }
 
       for (const day of weekly) {
@@ -109,7 +147,7 @@ export default function SitterDashboardClient({ sitter }) {
         if (wErr) throw wErr;
       }
 
-      setOk("Saved profile, service areas, and weekly hours.");
+      setOk("Saved profile, service areas (km), and weekly hours.");
       router.refresh();
     } catch (e) {
       setError(e.message || "Save failed");
