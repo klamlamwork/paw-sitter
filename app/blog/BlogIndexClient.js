@@ -4,35 +4,45 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatBlogDate } from "@/lib/blog";
 
-export default function BlogIndexClient({ posts, tags }) {
+export default function BlogIndexClient({ posts = [], tags = [], loadError = "" }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const tagParam = searchParams.get("tag");
   const [active, setActive] = useState(null);
+  const safePosts = Array.isArray(posts) ? posts : [];
+  const safeTags = Array.isArray(tags) ? tags : [];
 
   useEffect(() => {
     if (!tagParam) {
       setActive(null);
       return;
     }
-    const match = (tags || []).find((t) => t.slug === tagParam);
-    setActive(match ? match.id : null);
-  }, [tagParam, tags]);
+    const match = safeTags.find((t) => t.slug === tagParam);
+    setActive(match ? String(match.id) : null);
+  }, [tagParam, safeTags]);
 
   function selectTag(id, slug) {
-    if (id == null || id === active) {
+    if (id == null || String(id) === String(active)) {
       setActive(null);
       router.replace("/blog", { scroll: false });
       return;
     }
-    setActive(id);
+    setActive(String(id));
     router.replace(`/blog?tag=${encodeURIComponent(slug)}`, { scroll: false });
   }
 
   const filtered = useMemo(() => {
-    if (!active) return posts;
-    return posts.filter((p) => (p.tagIds || []).includes(active));
-  }, [posts, active]);
+    if (!active) return safePosts;
+    return safePosts.filter((p) => (p.tagIds || []).map(String).includes(String(active)));
+  }, [safePosts, active]);
+
+  if (loadError) {
+    return (
+      <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        Could not load posts: {loadError}
+      </p>
+    );
+  }
 
   return (
     <div>
@@ -47,22 +57,38 @@ export default function BlogIndexClient({ posts, tags }) {
         >
           All
         </button>
-        {tags.map((t) => (
+        {safeTags.map((t) => (
           <button
             key={t.id}
             type="button"
             onClick={() => selectTag(t.id, t.slug)}
             className={
               "rounded-full px-3 py-1.5 text-xs font-semibold " +
-              (active === t.id ? "bg-[#c45c26] text-white" : "border border-[#e8d5c4] bg-white text-[#5c4033]")
+              (String(active) === String(t.id) ? "bg-[#c45c26] text-white" : "border border-[#e8d5c4] bg-white text-[#5c4033]")
             }
           >
             {t.name}
           </button>
         ))}
       </div>
+
       {filtered.length === 0 ? (
-        <p className="mt-10 text-sm text-[#7a5c4e]">No posts in this tag yet.</p>
+        <div className="mt-10 space-y-3">
+          <p className="text-sm text-[#7a5c4e]">
+            {safePosts.length === 0
+              ? "No published posts yet."
+              : "No posts in this tag yet."}
+          </p>
+          {active != null && safePosts.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => selectTag(null)}
+              className="text-sm font-semibold text-[#c45c26] hover:underline"
+            >
+              Clear tag filter
+            </button>
+          ) : null}
+        </div>
       ) : (
         <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((p) => (
@@ -86,7 +112,9 @@ export default function BlogIndexClient({ posts, tags }) {
               </div>
               <div className="p-5">
                 <h2 className="text-lg font-bold leading-snug text-[#3b2a22]">{p.headline}</h2>
-                <p className="mt-3 text-xs font-medium text-[#7a5c4e]">{formatBlogDate(p.published_at || p.created_at)}</p>
+                <p className="mt-3 text-xs font-medium text-[#7a5c4e]">
+                  {formatBlogDate(p.published_at || p.created_at)}
+                </p>
               </div>
             </Link>
           ))}
