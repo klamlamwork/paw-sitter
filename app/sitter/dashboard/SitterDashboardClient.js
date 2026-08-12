@@ -4,6 +4,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { SERVICE_TYPES } from "@/lib/booking";
 import LocationPicker from "@/components/LocationPicker";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { findLocationById } from "@/lib/locations";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const PET_SERVICES = new Set(["walking", "boarding"]);
@@ -11,8 +13,7 @@ const PET_SERVICES = new Set(["walking", "boarding"]);
 function weekFromRows(allRows, scope) {
   const map = {};
   for (const w of allRows || []) {
-    const s = w.service_scope || "default";
-    if (s === scope) map[w.day_of_week] = w;
+    if ((w.service_scope || "default") === scope) map[w.day_of_week] = w;
   }
   if (!Object.keys(map).length && scope !== "default") {
     for (const w of allRows || []) {
@@ -66,12 +67,23 @@ export default function SitterDashboardClient({ sitter }) {
   const [openDefault, setOpenDefault] = useState(true);
   const [openDropIn, setOpenDropIn] = useState(false);
   const [openWalking, setOpenWalking] = useState(false);
+  const [cityLatLng, setCityLatLng] = useState({ lat: sitter.lat, lng: sitter.lng });
   const [profile, setProfile] = useState({
-    display_name: sitter.display_name || "", bio: sitter.bio || "", phone: sitter.phone || "",
-    service_city: sitter.service_city || "", service_country: sitter.service_country || "Canada",
-    location_id: sitter.location_id || "", timezone: sitter.timezone || "", lat: sitter.lat, lng: sitter.lng,
+    display_name: sitter.display_name || "",
+    bio: sitter.bio || "",
+    phone: sitter.phone || "",
+    service_city: sitter.service_city || "",
+    service_country: sitter.service_country || "Canada",
+    location_id: sitter.location_id || "",
+    timezone: sitter.timezone || "",
+    lat: sitter.lat,
+    lng: sitter.lng,
+    address_line1: sitter.address_line1 || "",
+    address_line2: sitter.address_line2 || "",
+    postal_code: sitter.postal_code || "",
   });
   const weeklyAll = sitter.sitter_weekly_availability || [];
+  const countryCode = findLocationById(profile.location_id)?.countryCode || "";
 
   const [services, setServices] = useState(() => {
     const map = {};
@@ -96,7 +108,6 @@ export default function SitterDashboardClient({ sitter }) {
   const [weekDefault, setWeekDefault] = useState(() => weekFromRows(weeklyAll, "default"));
   const [weekDropIn, setWeekDropIn] = useState(() => weekFromRows(weeklyAll, "drop_in"));
   const [weekWalking, setWeekWalking] = useState(() => weekFromRows(weeklyAll, "walking"));
-
   const dropInEnabled = useMemo(() => services.some((s) => s.service_type === "drop_in" && s.enabled), [services]);
   const walkingEnabled = useMemo(() => services.some((s) => s.service_type === "walking" && s.enabled), [services]);
 
@@ -114,12 +125,8 @@ export default function SitterDashboardClient({ sitter }) {
         start_time: day.start_time,
         end_time: day.end_time,
       };
-      const { error: dErr } = await supabase
-        .from("sitter_weekly_availability")
-        .delete()
-        .eq("sitter_id", sitter.id)
-        .eq("day_of_week", day.day_of_week)
-        .eq("service_scope", scope);
+      const { error: dErr } = await supabase.from("sitter_weekly_availability").delete()
+        .eq("sitter_id", sitter.id).eq("day_of_week", day.day_of_week).eq("service_scope", scope);
       if (dErr) throw dErr;
       const { error: iErr } = await supabase.from("sitter_weekly_availability").insert(row);
       if (iErr) throw iErr;
@@ -144,6 +151,8 @@ export default function SitterDashboardClient({ sitter }) {
         display_name: profile.display_name, bio: profile.bio, phone: profile.phone || null,
         service_city: profile.service_city, service_country: profile.service_country,
         location_id: profile.location_id, timezone: profile.timezone, lat: profile.lat, lng: profile.lng,
+        address_line1: profile.address_line1 || null, address_line2: profile.address_line2 || null,
+        postal_code: profile.postal_code || null,
       }).eq("id", sitter.id);
       if (pErr) throw pErr;
 
@@ -175,7 +184,7 @@ export default function SitterDashboardClient({ sitter }) {
       if (dropInEnabled) await saveWeeklyScope(supabase, "drop_in", weekDropIn);
       if (walkingEnabled) await saveWeeklyScope(supabase, "walking", weekWalking);
 
-      setOk("Saved. Drop-in and walking weekly hours are stored separately when those services are enabled.");
+      setOk("Saved. Street pin (if set) is used for km radius matching.");
       router.refresh();
     } catch (e) {
       setError(e.message || "Save failed");
@@ -192,21 +201,69 @@ export default function SitterDashboardClient({ sitter }) {
       <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
         <h2 className="text-lg font-semibold text-[#3b2a22]">Profile</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">Display name<input value={profile.display_name} onChange={(e) => setProfile({ ...profile, display_name: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" /></label>
-          <label className="text-sm">Phone<input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" /></label>
+          <label className="text-sm">Display name
+            <input value={profile.display_name} onChange={(e) => setProfile({ ...profile, display_name: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
+          </label>
+          <label className="text-sm">Phone
+            <input value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
+          </label>
           <div className="sm:col-span-2">
-            <LocationPicker valueId={profile.location_id} label="Base city (timezone / home base)" onChange={(loc) => {
-              if (!loc) { setProfile((p) => ({ ...p, location_id: "", service_city: "", service_country: "", timezone: "", lat: null, lng: null })); return; }
-              setProfile((p) => ({ ...p, location_id: loc.location_id, service_city: loc.city, service_country: loc.country, timezone: loc.timezone, lat: loc.lat, lng: loc.lng }));
-            }} />
+            <LocationPicker
+              valueId={profile.location_id}
+              label="Base city (timezone)"
+              onChange={(loc) => {
+                if (!loc) {
+                  setProfile((p) => ({ ...p, location_id: "", service_city: "", service_country: "", timezone: "", lat: null, lng: null, address_line1: "", address_line2: "", postal_code: "" }));
+                  setCityLatLng({ lat: null, lng: null });
+                  return;
+                }
+                setCityLatLng({ lat: loc.lat, lng: loc.lng });
+                setProfile((p) => ({
+                  ...p,
+                  location_id: loc.location_id,
+                  service_city: loc.city,
+                  service_country: loc.country,
+                  timezone: loc.timezone,
+                  lat: loc.lat,
+                  lng: loc.lng,
+                  address_line1: "",
+                  address_line2: "",
+                  postal_code: "",
+                }));
+              }}
+            />
           </div>
-          <label className="text-sm sm:col-span-2">Bio<textarea value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" /></label>
+          <div className="sm:col-span-2">
+            <AddressAutocomplete
+              countryCode={countryCode}
+              value={{
+                address_line1: profile.address_line1,
+                address_line2: profile.address_line2,
+                postal_code: profile.postal_code,
+                lat: profile.lat,
+                lng: profile.lng,
+              }}
+              onChange={(addr) => {
+                setProfile((p) => ({
+                  ...p,
+                  address_line1: addr.address_line1 || "",
+                  address_line2: addr.address_line2 ?? p.address_line2,
+                  postal_code: addr.postal_code || "",
+                  lat: addr.clearCoords ? cityLatLng.lat : addr.lat != null ? addr.lat : p.lat,
+                  lng: addr.clearCoords ? cityLatLng.lng : addr.lng != null ? addr.lng : p.lng,
+                }));
+              }}
+            />
+          </div>
+          <label className="text-sm sm:col-span-2">Bio
+            <textarea value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" />
+          </label>
         </div>
       </section>
 
       <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
         <h2 className="text-lg font-semibold text-[#3b2a22]">Services, rates & area</h2>
-        <p className="mt-1 text-xs text-[#7a5c4e]">Walking and boarding: choose dog and/or cat. Enable a service to unlock its weekly hours below.</p>
+        <p className="mt-1 text-xs text-[#7a5c4e]">Radius is from your street pin (if set) or city center.</p>
         <div className="mt-3 space-y-3">
           {services.map((svc, i) => (
             <div key={svc.service_type} className="rounded-xl border border-[#e8d5c4] bg-white p-3">
@@ -242,41 +299,14 @@ export default function SitterDashboardClient({ sitter }) {
 
       <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
         <h2 className="text-lg font-semibold text-[#3b2a22]">Weekly hours</h2>
-        <p className="mt-1 text-xs text-[#7a5c4e]">
-          Timezone: {profile.timezone || "not set"}. Default hours apply to house sit & boarding.
-          <strong> Expand</strong> Drop-in visit and Dog / cat walking to set different available times for each.
-        </p>
+        <p className="mt-1 text-xs text-[#7a5c4e]">Timezone: {profile.timezone || "not set"}. Expand Drop-in / Walking for service-specific times.</p>
         <div className="mt-4 space-y-3">
-          <WeeklyEditor title="Default weekly hours" hint="House sit, boarding, and fallback for other services" week={weekDefault} setWeek={setWeekDefault} open={openDefault} onToggle={() => setOpenDefault((v) => !v)} />
-
+          <WeeklyEditor title="Default weekly hours" hint="House sit, boarding, fallback" week={weekDefault} setWeek={setWeekDefault} open={openDefault} onToggle={() => setOpenDefault((v) => !v)} />
           <div className={!dropInEnabled ? "opacity-60" : ""}>
-            <WeeklyEditor
-              title="▸ Drop-in visit hours"
-              hint={dropInEnabled ? "Expand to adjust times when drop-ins can be booked" : "Enable Drop-in visit in Services first"}
-              week={weekDropIn}
-              setWeek={setWeekDropIn}
-              open={openDropIn && dropInEnabled}
-              onToggle={() => {
-                if (!dropInEnabled) { setError("Enable Drop-in visit in Services first, then expand its weekly hours."); return; }
-                setError("");
-                setOpenDropIn((v) => !v);
-              }}
-            />
+            <WeeklyEditor title="▸ Drop-in visit hours" hint={dropInEnabled ? "Expand to set drop-in availability" : "Enable Drop-in first"} week={weekDropIn} setWeek={setWeekDropIn} open={openDropIn && dropInEnabled} onToggle={() => { if (!dropInEnabled) { setError("Enable Drop-in first."); return; } setError(""); setOpenDropIn((v) => !v); }} />
           </div>
-
           <div className={!walkingEnabled ? "opacity-60" : ""}>
-            <WeeklyEditor
-              title="▸ Dog / cat walking hours"
-              hint={walkingEnabled ? "Expand to adjust times when walks can be booked" : "Enable Dog / cat walking in Services first"}
-              week={weekWalking}
-              setWeek={setWeekWalking}
-              open={openWalking && walkingEnabled}
-              onToggle={() => {
-                if (!walkingEnabled) { setError("Enable Dog / cat walking in Services first, then expand its weekly hours."); return; }
-                setError("");
-                setOpenWalking((v) => !v);
-              }}
-            />
+            <WeeklyEditor title="▸ Dog / cat walking hours" hint={walkingEnabled ? "Expand to set walking availability" : "Enable Walking first"} week={weekWalking} setWeek={setWeekWalking} open={openWalking && walkingEnabled} onToggle={() => { if (!walkingEnabled) { setError("Enable Walking first."); return; } setError(""); setOpenWalking((v) => !v); }} />
           </div>
         </div>
       </section>
