@@ -132,7 +132,7 @@ export default function AddressAutocomplete({
   function clearAddress() {
     setLocal({ address_line1: "", address_line2: "", postal_code: "" });
     setStatus("");
-    onChange?({
+    onChange?.({
       address_line1: "",
       address_line2: "",
       postal_code: "",
