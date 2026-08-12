@@ -11,48 +11,61 @@ export default async function AdminShopPage() {
   if (profile.role !== "admin") redirect("/account");
 
   const supabase = await createClient();
-  const [{ count: brands }, { count: shops }, { count: products }, { count: pending }] =
+  const [{ count: brands }, { count: shops }, { count: cats }, { count: products }, { count: pending }] =
     await Promise.all([
       supabase.from("shop_brands").select("id", { count: "exact", head: true }),
       supabase.from("shop_shops").select("id", { count: "exact", head: true }),
+      supabase.from("shop_categories").select("id", { count: "exact", head: true }),
       supabase.from("shop_products").select("id", { count: "exact", head: true }),
       supabase.from("shop_products").select("id", { count: "exact", head: true }).eq("status", "pending"),
     ]);
 
+  const links = [
+    { href: "/admin/shop/brands", label: "Brands", desc: "Product brands · Shop by brand" },
+    { href: "/admin/shop/shops", label: "Shops", desc: "Vendors & brand shops · /shop/shops/…" },
+    { href: "/admin/shop/categories", label: "Categories", desc: "Catalog tree" },
+    { href: "/admin/shop/products", label: "Products", desc: "Create, approve, affiliate / cart flags" },
+  ];
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Shop admin</h1>
-      <p className="mt-2 text-sm text-[#7a5c4e]">
-        Phase 1A foundation. Phase 1B adds full CRUD for brands, shops, categories, and products.
-      </p>
-      <p className="mt-2 text-xs text-[#7a5c4e]">
-        Run <code className="rounded bg-[#fff1e6] px-1">sql/20-shop-core.sql</code> in Supabase first.
-      </p>
+      <p className="mt-2 text-sm text-[#7a5c4e]">Phase 1B — manage catalog entities.</p>
 
-      <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
           ["Brands", brands ?? 0],
           ["Shops", shops ?? 0],
+          ["Categories", cats ?? 0],
           ["Products", products ?? 0],
           ["Pending", pending ?? 0],
         ].map(([label, n]) => (
-          <div key={label} className="rounded-2xl border border-[#e8d5c4] bg-white p-4 text-center">
-            <dt className="text-xs font-semibold uppercase text-[#7a5c4e]">{label}</dt>
-            <dd className="mt-1 text-2xl font-bold text-[#3b2a22]">{n}</dd>
+          <div key={label} className="rounded-2xl border border-[#e8d5c4] bg-white p-3 text-center">
+            <dt className="text-[10px] font-semibold uppercase text-[#7a5c4e]">{label}</dt>
+            <dd className="mt-1 text-xl font-bold text-[#3b2a22]">{n}</dd>
           </div>
         ))}
       </dl>
 
-      <ul className="mt-8 space-y-2 text-sm">
-        <li className="rounded-xl border border-dashed border-[#e8d5c4] px-4 py-3 text-[#7a5c4e]">
-          Brands / Shops / Categories / Products editors — Phase 1B
-        </li>
-        <li>
-          <Link href="/shop" className="font-semibold text-[#c45c26] hover:underline">
-            View public shop →
-          </Link>
-        </li>
+      <ul className="mt-8 space-y-2">
+        {links.map((l) => (
+          <li key={l.href}>
+            <Link
+              href={l.href}
+              className="flex flex-col rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 hover:border-[#c45c26]/50 sm:flex-row sm:items-center sm:justify-between"
+            >
+              <span className="font-semibold text-[#3b2a22]">{l.label}</span>
+              <span className="text-xs text-[#7a5c4e]">{l.desc}</span>
+            </Link>
+          </li>
+        ))}
       </ul>
+
+      <p className="mt-6 text-sm">
+        <Link href="/shop" className="font-semibold text-[#c45c26] hover:underline">
+          View public shop →
+        </Link>
+      </p>
     </div>
   );
 }
