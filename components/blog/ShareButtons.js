@@ -21,6 +21,23 @@ function ShareIcon({ className = "h-4 w-4" }) {
   );
 }
 
+function ChevronIcon({ open, className = "h-3 w-3" }) {
+  return (
+    <svg
+      className={className + (open ? " rotate-180" : "")}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
+}
+
 export default function ShareButtons({ url, title }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -79,9 +96,7 @@ export default function ShareButtons({ url, title }) {
       >
         <ShareIcon />
         <span>Share</span>
-        <span className="text-[10px] leading-none text-[#7a5c4e]" aria-hidden="true">
-          {open ? "\u25B2" : "\u25BC"}
-        </span>
+        <ChevronIcon open={open} />
       </button>
       {open ? (
         <div

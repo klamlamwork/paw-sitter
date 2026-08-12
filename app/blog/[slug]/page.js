@@ -32,7 +32,7 @@ export default async function BlogPostPage({ params }) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 pb-36 lg:pb-10">
-      <Link href="/blog" className="text-sm font-semibold text-[#c45c26] hover:underline">\u2190 Blog</Link>
+      <Link href="/blog" className="text-sm font-semibold text-[#c45c26] hover:underline">&larr; Blog</Link>
       <div className="mt-6 grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
         <article>
           <header>
