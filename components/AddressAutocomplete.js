@@ -7,56 +7,38 @@ const API_KEY = (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
 let mapsLoadPromise = null;
 
 function loadGoogleMaps(apiKey) {
-  if (typeof window === "undefined") return Promise.reject(new Error("no window"));
-  if (window.google?.maps?.places) return Promise.resolve(window.google.maps);
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("no window"));
+  }
+  if (window.google?.maps?.importLibrary) {
+    return Promise.resolve(window.google.maps);
+  }
   if (mapsLoadPromise) return mapsLoadPromise;
 
   mapsLoadPromise = new Promise((resolve, reject) => {
-    const finish = async () => {
-      try {
-        if (!window.google?.maps) {
-          reject(new Error("google.maps missing after script load"));
-          return;
-        }
-        if (typeof window.google.maps.importLibrary === "function") {
-          await window.google.maps.importLibrary("places");
-        }
-        if (!window.google.maps.places) {
-          reject(
-            new Error(
-              "Places library missing. Enable Places API (legacy) on this key's project."
-            )
-          );
-          return;
-        }
-        resolve(window.google.maps);
-      } catch (e) {
-        reject(e);
-      }
-    };
-
     const existing = document.querySelector("script[data-gmaps-places]");
+    const done = () => {
+      if (window.google?.maps?.importLibrary) resolve(window.google.maps);
+      else reject(new Error("google.maps.importLibrary missing after script load"));
+    };
     if (existing) {
-      if (window.google?.maps) {
-        finish();
-      } else {
-        existing.addEventListener("load", () => finish());
+      if (window.google?.maps?.importLibrary) done();
+      else {
+        existing.addEventListener("load", done);
         existing.addEventListener("error", () =>
           reject(new Error("Existing Maps script failed to load"))
         );
       }
       return;
     }
-
     const script = document.createElement("script");
     script.src =
       "https://maps.googleapis.com/maps/api/js?key=" +
       encodeURIComponent(apiKey) +
-      "&libraries=places&v=weekly";
+      "&v=weekly&loading=async";
     script.async = true;
-    script.defer = true;
     script.dataset.gmapsPlaces = "1";
-    script.onload = () => finish();
+    script.onload = done;
     script.onerror = () =>
       reject(
         new Error(
@@ -65,21 +47,22 @@ function loadGoogleMaps(apiKey) {
       );
     document.head.appendChild(script);
   });
-
   return mapsLoadPromise;
 }
 
-function parseAddressComponents(components) {
-  const get = (type) => {
-    const c = (components || []).find((x) => x.types.includes(type));
-    return c?.long_name || "";
-  };
-  const streetNumber = get("street_number");
-  const route = get("route");
+function componentLongName(components, type) {
+  const list = components || [];
+  const c = list.find((x) => (x.types || []).includes(type));
+  return c?.longText || c?.long_name || "";
+}
+
+function parseNewAddressComponents(components) {
+  const streetNumber = componentLongName(components, "street_number");
+  const route = componentLongName(components, "route");
   const line1 = [streetNumber, route].filter(Boolean).join(" ").trim();
   return {
-    address_line1: line1 || "",
-    postal_code: get("postal_code"),
+    address_line1: line1,
+    postal_code: componentLongName(components, "postal_code"),
   };
 }
 
@@ -90,8 +73,8 @@ export default function AddressAutocomplete({
   label = "Street address (optional)",
   disabled = false,
 }) {
-  const inputRef = useRef(null);
-  const acRef = useRef(null);
+  const hostRef = useRef(null);
+  const widgetRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [manual, setManual] = useState(!API_KEY);
   const [loadError, setLoadError] = useState("");
@@ -114,69 +97,98 @@ export default function AddressAutocomplete({
     if (!API_KEY) {
       setManual(true);
       setLoadError(
-        "No NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in this deployment. Add it in Vercel → Settings → Environment Variables, then Redeploy."
+        "No NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in this deployment. Add it in Vercel → Environment Variables, then Redeploy."
       );
       return;
     }
     if (disabled || manual) return;
+    if (!hostRef.current) return;
 
     let cancelled = false;
     setLoadError("");
 
-    loadGoogleMaps(API_KEY)
-      .then((maps) => {
-        if (cancelled || !inputRef.current) return;
-        setReady(true);
-        if (acRef.current) return;
+    (async () => {
+      try {
+        await loadGoogleMaps(API_KEY);
+        if (cancelled || !hostRef.current) return;
 
-        const opts = {
-          fields: ["address_components", "geometry", "formatted_address"],
-          types: ["address"],
-        };
-        if (countryCode) {
-          opts.componentRestrictions = {
-            country: String(countryCode).toLowerCase(),
-          };
+        const placesLib = await window.google.maps.importLibrary("places");
+        const PlaceAutocompleteElement =
+          placesLib.PlaceAutocompleteElement ||
+          window.google.maps.places?.PlaceAutocompleteElement;
+
+        if (!PlaceAutocompleteElement) {
+          throw new Error(
+            "PlaceAutocompleteElement not available. Enable Places API (New) + Maps JavaScript API, then retry."
+          );
         }
 
-        const ac = new maps.places.Autocomplete(inputRef.current, opts);
-        acRef.current = ac;
-        ac.addListener("place_changed", () => {
-          const place = ac.getPlace();
-          if (!place?.geometry?.location) {
-            setStatus("Could not read that address. Try again or enter manually.");
-            return;
+        hostRef.current.innerHTML = "";
+        const el = new PlaceAutocompleteElement(
+          countryCode
+            ? { includedRegionCodes: [String(countryCode).toLowerCase()] }
+            : {}
+        );
+        el.id = "paw-place-autocomplete";
+        el.style.display = "block";
+        el.style.width = "100%";
+        el.style.borderRadius = "0.75rem";
+
+        hostRef.current.appendChild(el);
+        widgetRef.current = el;
+        setReady(true);
+
+        el.addEventListener("gmp-select", async (event) => {
+          try {
+            const prediction = event.placePrediction;
+            if (!prediction) return;
+            const place = prediction.toPlace ? prediction.toPlace() : prediction;
+            await place.fetchFields({
+              fields: ["formattedAddress", "location", "addressComponents"],
+            });
+
+            const loc = place.location;
+            if (!loc) {
+              setStatus("Could not read coordinates for that place.");
+              return;
+            }
+            const lat = typeof loc.lat === "function" ? loc.lat() : loc.lat;
+            const lng = typeof loc.lng === "function" ? loc.lng() : loc.lng;
+            const parsed = parseNewAddressComponents(place.addressComponents);
+            const line1 = parsed.address_line1 || place.formattedAddress || "";
+
+            const next = {
+              address_line1: line1,
+              address_line2: local.address_line2 || "",
+              postal_code: parsed.postal_code || "",
+              lat,
+              lng,
+              formatted: place.formattedAddress || line1,
+            };
+            setLocal({
+              address_line1: next.address_line1,
+              address_line2: next.address_line2,
+              postal_code: next.postal_code,
+            });
+            setStatus("Address set — map coordinates updated for radius matching.");
+            onChange?.(next);
+          } catch (e) {
+            console.error("[AddressAutocomplete] select", e);
+            setStatus(e?.message || "Failed to read selected place.");
           }
-          const parsed = parseAddressComponents(place.address_components);
-          const lat = place.geometry.location.lat();
-          const lng = place.geometry.location.lng();
-          const next = {
-            address_line1: parsed.address_line1 || place.formatted_address || "",
-            address_line2: local.address_line2 || "",
-            postal_code: parsed.postal_code || "",
-            lat,
-            lng,
-            formatted: place.formatted_address || "",
-          };
-          setLocal({
-            address_line1: next.address_line1,
-            address_line2: next.address_line2,
-            postal_code: next.postal_code,
-          });
-          setStatus("Address set — map coordinates updated for radius matching.");
-          onChange?.(next);
         });
-      })
-      .catch((err) => {
+      } catch (err) {
         console.error("[AddressAutocomplete]", err);
-        const msg = err?.message || String(err);
-        setLoadError(msg);
-        setStatus("");
+        setLoadError(err?.message || String(err));
         setManual(true);
-      });
+        mapsLoadPromise = null;
+      }
+    })();
 
     return () => {
       cancelled = true;
+      if (hostRef.current) hostRef.current.innerHTML = "";
+      widgetRef.current = null;
     };
   }, [API_KEY, disabled, manual, countryCode]);
 
@@ -211,7 +223,7 @@ export default function AddressAutocomplete({
     <div className="space-y-2">
       <p className="text-sm font-semibold text-[#3b2a22]">{label}</p>
       <p className="text-xs text-[#7a5c4e]">
-        Optional. City/timezone still come from the city list. Street pin improves km accuracy.
+        Optional. City/timezone come from the city list. Street pin improves km accuracy.
       </p>
 
       {loadError ? (
@@ -222,26 +234,31 @@ export default function AddressAutocomplete({
         </div>
       ) : null}
 
-      <label className="block text-xs text-[#7a5c4e]">
-        Street / road + number
-        <input
-          ref={inputRef}
-          type="text"
-          disabled={disabled}
-          value={manual ? local.address_line1 : undefined}
-          defaultValue={!manual ? local.address_line1 : undefined}
-          onChange={manual ? (e) => emitManual({ address_line1: e.target.value }) : undefined}
-          placeholder={
-            manual
-              ? "e.g. 123 King St W"
-              : ready
-                ? "Start typing address…"
-                : "Loading Google Maps…"
-          }
-          className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
-          autoComplete="off"
-        />
-      </label>
+      {!manual ? (
+        <div>
+          <p className="text-xs text-[#7a5c4e]">Street / road + number</p>
+          <div
+            ref={hostRef}
+            className="mt-1 min-h-[42px] w-full rounded-xl border border-[#e8d5c4] bg-white px-1 py-1 [&_input]:w-full [&_input]:border-0 [&_input]:bg-transparent [&_input]:px-2 [&_input]:py-2 [&_input]:text-sm [&_input]:outline-none"
+          />
+          {!ready && !loadError ? (
+            <p className="mt-1 text-xs text-[#7a5c4e]">Loading Google autocomplete…</p>
+          ) : null}
+        </div>
+      ) : (
+        <label className="block text-xs text-[#7a5c4e]">
+          Street / road + number
+          <input
+            type="text"
+            disabled={disabled}
+            value={local.address_line1}
+            onChange={(e) => emitManual({ address_line1: e.target.value })}
+            placeholder="e.g. 123 King St W"
+            className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
+          />
+        </label>
+      )}
+
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-[#7a5c4e]">
           Apt / unit (optional)
@@ -264,6 +281,7 @@ export default function AddressAutocomplete({
           />
         </label>
       </div>
+
       <div className="flex flex-wrap items-center gap-3">
         {status ? <p className="text-xs text-green-800">{status}</p> : null}
         {local.address_line1 || value.lat ? (
@@ -288,7 +306,6 @@ export default function AddressAutocomplete({
               setManual(false);
               setLoadError("");
               mapsLoadPromise = null;
-              acRef.current = null;
             }}
           >
             Retry Google autocomplete
