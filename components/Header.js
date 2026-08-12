@@ -9,7 +9,7 @@ export default function Header() {
           <span className="truncate text-base font-bold text-[#3b2a22] sm:text-lg">Paw Sitter</span>
         </Link>
         <nav className="flex shrink-0 items-center gap-2 sm:gap-4">
-          <Link href="/blog" className="hidden text-sm font-medium text-[#5c4033] hover:text-[#c45c26] sm:inline">Blog</Link>
+          <Link href="/blog" className="text-sm font-medium text-[#5c4033] hover:text-[#c45c26]">Blog</Link>
           <Link href="/booking" className="rounded-full border border-[#e8d5c4] bg-white px-3 py-1.5 text-xs font-semibold text-[#5c4033] sm:px-4 sm:py-2 sm:text-sm">Book</Link>
           <AuthButtons />
         </nav>
