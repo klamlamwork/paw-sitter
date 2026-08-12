@@ -1,13 +1,20 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth";
-import BookingWizard from "@/components/booking/BookingWizard";
 import { createClient } from "@/lib/supabase/server";
+import BookingWizardBridge from "@/components/booking/BookingWizardBridge";
 
 export const metadata = { title: "Book a sitter | Paw Sitter" };
 
-export default async function BookingPage() {
+export default async function BookingPage({ searchParams }) {
+  const sp = await searchParams;
+  const preferredSitterId = typeof sp?.sitter === "string" ? sp.sitter.trim() : "";
+  const nextPath = preferredSitterId
+    ? `/booking?sitter=${encodeURIComponent(preferredSitterId)}`
+    : "/booking";
+
   const profile = await getProfile();
-  if (!profile) redirect("/login?next=/booking");
+  if (!profile) redirect(`/login?next=${encodeURIComponent(nextPath)}`);
 
   const supabase = await createClient();
   const [
@@ -42,23 +49,31 @@ export default async function BookingPage() {
     for (const slot of b.booking_slots || []) busyBySitter[b.sitter_id].push(slot);
   }
 
+  const preferred =
+    preferredSitterId && (sitters || []).find((s) => String(s.id) === String(preferredSitterId));
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Book pet sitting</h1>
       <p className="mt-2 text-[#7a5c4e]">
-        Choose your city, then service and times. Sitters are matched by service area (km) and availability.
+        Choose your city, then service and times. Sitters are matched by service area (km) and
+        availability.
       </p>
-      <BookingWizard
-        customerId={profile.id}
-        customerProfile={profile}
-        sitters={sitters || []}
-        services={services || []}
-        weekly={weekly || []}
-        overrides={overrides || []}
-        busyBySitter={busyBySitter}
-        dayAvailability={dayAvailability || []}
-        holidayDates={(holidays || []).map((h) => h.holiday_date)}
-      />
+      <Suspense fallback={<p className="mt-8 text-sm text-[#7a5c4e]">Loading booking…</p>}>
+        <BookingWizardBridge
+          customerId={profile.id}
+          customerProfile={profile}
+          sitters={sitters || []}
+          services={services || []}
+          weekly={weekly || []}
+          overrides={overrides || []}
+          busyBySitter={busyBySitter}
+          dayAvailability={dayAvailability || []}
+          holidayDates={(holidays || []).map((h) => h.holiday_date)}
+          preferredSitterId={preferred ? String(preferred.id) : ""}
+          preferredSitterName={preferred?.display_name || ""}
+        />
+      </Suspense>
     </div>
   );
 }

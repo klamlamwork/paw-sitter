@@ -51,6 +51,7 @@ export default async function PublicSitterPage({ params }) {
   if (!sitter) notFound();
 
   const svcs = enabledServices(sitter);
+  const bookHref = `/booking?sitter=${encodeURIComponent(sitter.id)}`;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
@@ -113,7 +114,7 @@ export default async function PublicSitterPage({ params }) {
 
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
-              href="/booking"
+              href={bookHref}
               className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#9a4519]"
             >
               Book this sitter
