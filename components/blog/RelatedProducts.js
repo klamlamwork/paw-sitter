@@ -2,9 +2,9 @@
 export default function RelatedProducts({ products }) {
   if (!products?.length) return null;
   const card = (p) => (
-    <a key={p.id} href={p.url || "#"} target="_blank" rel="noopener noreferrer" className="flex min-w-[220px] max-w-[260px] shrink-0 gap-3 rounded-2xl border border-[#e8d5c4] bg-white p-3 shadow-sm hover:border-[#c45c26]/50 lg:max-w-none lg:min-w-0">
+    <a key={p.id} href={p.url || "#"} target="_blank" rel="noopener noreferrer"
+      className="flex min-w-[220px] max-w-[260px] shrink-0 gap-3 rounded-2xl border border-[#e8d5c4] bg-white p-3 shadow-sm hover:border-[#c45c26]/50 lg:max-w-none lg:min-w-0">
       {p.image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={p.image_url} alt="" className="h-14 w-14 rounded-xl object-cover" />
       ) : (
         <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[#fff8f0] text-xs text-[#7a5c4e]">Product</div>

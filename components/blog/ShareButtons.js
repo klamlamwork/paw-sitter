@@ -1,12 +1,12 @@
 "use client";
 export default function ShareButtons({ url, title }) {
-  const encodedUrl = encodeURIComponent(url || "");
-  const encodedTitle = encodeURIComponent(title || "");
+  const u = encodeURIComponent(url || "");
+  const t = encodeURIComponent(title || "");
   const items = [
-    { name: "X", href: `https://twitter.com/intent/tweet?url=${encodedUrl}&text=${encodedTitle}` },
-    { name: "Facebook", href: `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}` },
-    { name: "LinkedIn", href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}` },
-    { name: "Email", href: `mailto:?subject=${encodedTitle}&body=${encodedUrl}` },
+    { name: "X", href: `https://twitter.com/intent/tweet?url=${u}&text=${t}` },
+    { name: "Facebook", href: `https://www.facebook.com/sharer/sharer.php?u=${u}` },
+    { name: "LinkedIn", href: `https://www.linkedin.com/sharing/share-offsite/?url=${u}` },
+    { name: "Email", href: `mailto:?subject=${t}&body=${u}` },
   ];
   async function copyLink() {
     try { await navigator.clipboard.writeText(url); alert("Link copied"); }
