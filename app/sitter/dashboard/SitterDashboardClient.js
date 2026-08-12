@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { SERVICE_TYPES } from "@/lib/booking";
@@ -8,16 +8,70 @@ import LocationPicker from "@/components/LocationPicker";
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const PET_SERVICES = new Set(["walking", "boarding"]);
 
+function weekFromRows(allRows, scope) {
+  const map = {};
+  for (const w of allRows || []) {
+    const s = w.service_scope || "default";
+    if (s === scope) map[w.day_of_week] = w;
+  }
+  if (!Object.keys(map).length && scope !== "default") {
+    for (const w of allRows || []) {
+      if ((w.service_scope || "default") === "default") map[w.day_of_week] = w;
+    }
+  }
+  return DAYS.map((_, i) => {
+    const row = map[i];
+    return {
+      day_of_week: i,
+      is_available: row ? !!row.is_available : i >= 1 && i <= 5,
+      start_time: (row?.start_time || "09:00").slice(0, 5),
+      end_time: (row?.end_time || "17:00").slice(0, 5),
+    };
+  });
+}
+
+function WeeklyEditor({ title, hint, week, setWeek, open, onToggle }) {
+  return (
+    <div className="rounded-xl border border-[#e8d5c4] bg-white overflow-hidden">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-2 px-4 py-3 text-left hover:bg-[#fff8f0]">
+        <div>
+          <p className="text-sm font-semibold text-[#3b2a22]">{title}</p>
+          {hint ? <p className="text-xs text-[#7a5c4e]">{hint}</p> : null}
+        </div>
+        <span className="shrink-0 text-xs font-bold text-[#c45c26]">{open ? "Hide ▲" : "Expand ▼"}</span>
+      </button>
+      {open ? (
+        <div className="space-y-2 border-t border-[#e8d5c4] px-3 py-3">
+          {week.map((day, i) => (
+            <div key={day.day_of_week} className="grid grid-cols-2 gap-2 rounded-lg border border-[#e8d5c4]/80 bg-[#fff8f0]/50 p-2 sm:grid-cols-4">
+              <label className="flex items-center gap-2 text-sm font-semibold">
+                <input type="checkbox" checked={day.is_available} onChange={(e) => setWeek((list) => list.map((row, idx) => (idx === i ? { ...row, is_available: e.target.checked } : row)))} />
+                {DAYS[day.day_of_week]}
+              </label>
+              <input type="time" disabled={!day.is_available} value={day.start_time} onChange={(e) => setWeek((list) => list.map((row, idx) => (idx === i ? { ...row, start_time: e.target.value } : row)))} className="rounded-lg border border-[#e8d5c4] px-2 py-1.5 text-sm disabled:opacity-40" />
+              <input type="time" disabled={!day.is_available} value={day.end_time} onChange={(e) => setWeek((list) => list.map((row, idx) => (idx === i ? { ...row, end_time: e.target.value } : row)))} className="rounded-lg border border-[#e8d5c4] px-2 py-1.5 text-sm disabled:opacity-40" />
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function SitterDashboardClient({ sitter }) {
   const router = useRouter();
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [saving, setSaving] = useState(false);
+  const [openDefault, setOpenDefault] = useState(true);
+  const [openDropIn, setOpenDropIn] = useState(false);
+  const [openWalking, setOpenWalking] = useState(false);
   const [profile, setProfile] = useState({
     display_name: sitter.display_name || "", bio: sitter.bio || "", phone: sitter.phone || "",
     service_city: sitter.service_city || "", service_country: sitter.service_country || "Canada",
     location_id: sitter.location_id || "", timezone: sitter.timezone || "", lat: sitter.lat, lng: sitter.lng,
   });
+  const weeklyAll = sitter.sitter_weekly_availability || [];
 
   const [services, setServices] = useState(() => {
     const map = {};
@@ -39,22 +93,37 @@ export default function SitterDashboardClient({ sitter }) {
     });
   });
 
-  const [weekly, setWeekly] = useState(() => {
-    const map = {};
-    for (const w of sitter.sitter_weekly_availability || []) map[w.day_of_week] = w;
-    return DAYS.map((_, i) => {
-      const row = map[i];
-      return {
-        day_of_week: i,
-        is_available: row ? !!row.is_available : i >= 1 && i <= 5,
-        start_time: (row?.start_time || "09:00").slice(0, 5),
-        end_time: (row?.end_time || "17:00").slice(0, 5),
-      };
-    });
-  });
+  const [weekDefault, setWeekDefault] = useState(() => weekFromRows(weeklyAll, "default"));
+  const [weekDropIn, setWeekDropIn] = useState(() => weekFromRows(weeklyAll, "drop_in"));
+  const [weekWalking, setWeekWalking] = useState(() => weekFromRows(weeklyAll, "walking"));
+
+  const dropInEnabled = useMemo(() => services.some((s) => s.service_type === "drop_in" && s.enabled), [services]);
+  const walkingEnabled = useMemo(() => services.some((s) => s.service_type === "walking" && s.enabled), [services]);
 
   function updateSvc(i, patch) {
     setServices((list) => list.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  }
+
+  async function saveWeeklyScope(supabase, scope, week) {
+    for (const day of week) {
+      const row = {
+        sitter_id: sitter.id,
+        day_of_week: day.day_of_week,
+        service_scope: scope,
+        is_available: day.is_available,
+        start_time: day.start_time,
+        end_time: day.end_time,
+      };
+      const { error: dErr } = await supabase
+        .from("sitter_weekly_availability")
+        .delete()
+        .eq("sitter_id", sitter.id)
+        .eq("day_of_week", day.day_of_week)
+        .eq("service_scope", scope);
+      if (dErr) throw dErr;
+      const { error: iErr } = await supabase.from("sitter_weekly_availability").insert(row);
+      if (iErr) throw iErr;
+    }
   }
 
   async function saveAll() {
@@ -102,14 +171,11 @@ export default function SitterDashboardClient({ sitter }) {
         }
       }
 
-      for (const day of weekly) {
-        const { error: wErr } = await supabase.from("sitter_weekly_availability").upsert({
-          sitter_id: sitter.id, day_of_week: day.day_of_week, is_available: day.is_available,
-          start_time: day.start_time, end_time: day.end_time,
-        }, { onConflict: "sitter_id,day_of_week" });
-        if (wErr) throw wErr;
-      }
-      setOk("Saved profile, services, and weekly hours.");
+      await saveWeeklyScope(supabase, "default", weekDefault);
+      if (dropInEnabled) await saveWeeklyScope(supabase, "drop_in", weekDropIn);
+      if (walkingEnabled) await saveWeeklyScope(supabase, "walking", weekWalking);
+
+      setOk("Saved. Drop-in and walking weekly hours are stored separately when those services are enabled.");
       router.refresh();
     } catch (e) {
       setError(e.message || "Save failed");
@@ -140,7 +206,7 @@ export default function SitterDashboardClient({ sitter }) {
 
       <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
         <h2 className="text-lg font-semibold text-[#3b2a22]">Services, rates & area</h2>
-        <p className="mt-1 text-xs text-[#7a5c4e]">Walking and boarding: choose dog and/or cat.</p>
+        <p className="mt-1 text-xs text-[#7a5c4e]">Walking and boarding: choose dog and/or cat. Enable a service to unlock its weekly hours below.</p>
         <div className="mt-3 space-y-3">
           {services.map((svc, i) => (
             <div key={svc.service_type} className="rounded-xl border border-[#e8d5c4] bg-white p-3">
@@ -175,19 +241,43 @@ export default function SitterDashboardClient({ sitter }) {
       </section>
 
       <section className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
-        <h2 className="text-lg font-semibold text-[#3b2a22]">Weekly default hours</h2>
-        <p className="mt-1 text-xs text-[#7a5c4e]">Timezone: {profile.timezone || "not set"}</p>
-        <div className="mt-3 space-y-2">
-          {weekly.map((day, i) => (
-            <div key={day.day_of_week} className="grid grid-cols-2 gap-2 rounded-xl border border-[#e8d5c4] bg-white p-3 sm:grid-cols-4">
-              <label className="flex items-center gap-2 text-sm font-semibold">
-                <input type="checkbox" checked={day.is_available} onChange={(e) => setWeekly((list) => list.map((row, idx) => (idx === i ? { ...row, is_available: e.target.checked } : row)))} />
-                {DAYS[day.day_of_week]}
-              </label>
-              <input type="time" disabled={!day.is_available} value={day.start_time} onChange={(e) => setWeekly((list) => list.map((row, idx) => (idx === i ? { ...row, start_time: e.target.value } : row)))} className="rounded-lg border border-[#e8d5c4] px-2 py-1.5 text-sm disabled:opacity-40" />
-              <input type="time" disabled={!day.is_available} value={day.end_time} onChange={(e) => setWeekly((list) => list.map((row, idx) => (idx === i ? { ...row, end_time: e.target.value } : row)))} className="rounded-lg border border-[#e8d5c4] px-2 py-1.5 text-sm disabled:opacity-40" />
-            </div>
-          ))}
+        <h2 className="text-lg font-semibold text-[#3b2a22]">Weekly hours</h2>
+        <p className="mt-1 text-xs text-[#7a5c4e]">
+          Timezone: {profile.timezone || "not set"}. Default hours apply to house sit & boarding.
+          <strong> Expand</strong> Drop-in visit and Dog / cat walking to set different available times for each.
+        </p>
+        <div className="mt-4 space-y-3">
+          <WeeklyEditor title="Default weekly hours" hint="House sit, boarding, and fallback for other services" week={weekDefault} setWeek={setWeekDefault} open={openDefault} onToggle={() => setOpenDefault((v) => !v)} />
+
+          <div className={!dropInEnabled ? "opacity-60" : ""}>
+            <WeeklyEditor
+              title="▸ Drop-in visit hours"
+              hint={dropInEnabled ? "Expand to adjust times when drop-ins can be booked" : "Enable Drop-in visit in Services first"}
+              week={weekDropIn}
+              setWeek={setWeekDropIn}
+              open={openDropIn && dropInEnabled}
+              onToggle={() => {
+                if (!dropInEnabled) { setError("Enable Drop-in visit in Services first, then expand its weekly hours."); return; }
+                setError("");
+                setOpenDropIn((v) => !v);
+              }}
+            />
+          </div>
+
+          <div className={!walkingEnabled ? "opacity-60" : ""}>
+            <WeeklyEditor
+              title="▸ Dog / cat walking hours"
+              hint={walkingEnabled ? "Expand to adjust times when walks can be booked" : "Enable Dog / cat walking in Services first"}
+              week={weekWalking}
+              setWeek={setWeekWalking}
+              open={openWalking && walkingEnabled}
+              onToggle={() => {
+                if (!walkingEnabled) { setError("Enable Dog / cat walking in Services first, then expand its weekly hours."); return; }
+                setError("");
+                setOpenWalking((v) => !v);
+              }}
+            />
+          </div>
         </div>
       </section>
 
