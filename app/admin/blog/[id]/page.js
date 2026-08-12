@@ -4,11 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import BlogPostEditor from "@/components/blog/BlogPostEditor";
 export const metadata = { title: "Edit blog post | Paw Sitter" };
 export default async function AdminBlogEditPage({ params }) {
+  const { id } = await params;
   const profile = await getProfile();
-  if (!profile) redirect(`/login?next=/admin/blog/${params.id}`);
+  if (!profile) redirect(`/login?next=/admin/blog/${id}`);
   if (profile.role !== "admin") redirect("/account");
   const supabase = await createClient();
-  const { data: post } = await supabase.from("blog_posts").select("*").eq("id", params.id).maybeSingle();
+  const { data: post } = await supabase.from("blog_posts").select("*").eq("id", id).maybeSingle();
   if (!post) notFound();
   const [{ data: tags }, { data: products }, { data: posts }, { data: pt }, { data: pp }, { data: pr }] = await Promise.all([
     supabase.from("blog_tags").select("id, name, slug").order("name"),
