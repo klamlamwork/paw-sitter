@@ -69,10 +69,25 @@ export default function BlogIndexClient({ posts, tags }) {
             <Link
               key={p.id}
               href={`/blog/${p.slug}`}
-              className="rounded-2xl border border-[#e8d5c4] bg-white p-5 shadow-sm transition hover:border-[#c45c26]/50 hover:shadow-md"
+              className="overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white shadow-sm transition hover:border-[#c45c26]/50 hover:shadow-md"
             >
-              <h2 className="text-lg font-bold leading-snug text-[#3b2a22]">{p.headline}</h2>
-              <p className="mt-3 text-xs font-medium text-[#7a5c4e]">{formatBlogDate(p.published_at || p.created_at)}</p>
+              <div className="aspect-[16/9] w-full overflow-hidden bg-[#fff1e6]">
+                {p.cover_image_url ? (
+                  <img
+                    src={p.cover_image_url}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-xs font-medium text-[#c4a484]">
+                    Paw Sitter
+                  </div>
+                )}
+              </div>
+              <div className="p-5">
+                <h2 className="text-lg font-bold leading-snug text-[#3b2a22]">{p.headline}</h2>
+                <p className="mt-3 text-xs font-medium text-[#7a5c4e]">{formatBlogDate(p.published_at || p.created_at)}</p>
+              </div>
             </Link>
           ))}
         </div>

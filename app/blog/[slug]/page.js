@@ -29,6 +29,7 @@ export default async function BlogPostPage({ params }) {
   const products = (postProducts || []).map((r) => r.blog_products).filter((p) => p && p.is_active !== false);
   const related = (relatedRows || []).map((r) => r.related).filter((p) => p && p.published);
   const shareUrl = `${getSiteUrl()}/blog/${post.slug}`;
+  const cover = (post.cover_image_url || "").trim();
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 pb-36 lg:pb-10">
@@ -49,6 +50,15 @@ export default async function BlogPostPage({ params }) {
                     {t.name}
                   </Link>
                 ))}
+              </div>
+            ) : null}
+            {cover ? (
+              <div className="mt-6 overflow-hidden rounded-2xl border border-[#e8d5c4] bg-[#fff1e6]">
+                <img
+                  src={cover}
+                  alt=""
+                  className="aspect-[16/9] w-full object-cover"
+                />
               </div>
             ) : null}
           </header>

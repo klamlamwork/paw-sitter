@@ -13,6 +13,7 @@ export default function BlogPostEditor({
   const [headline, setHeadline] = useState(post?.headline || "");
   const [slug, setSlug] = useState(post?.slug || "");
   const [slugTouched, setSlugTouched] = useState(!!post?.slug);
+  const [coverImageUrl, setCoverImageUrl] = useState(post?.cover_image_url || "");
   const [contentHtml, setContentHtml] = useState(post?.content_html || "");
   const [published, setPublished] = useState(!!post?.published);
   const [tagIds, setTagIds] = useState(initialTagIds);
@@ -23,6 +24,7 @@ export default function BlogPostEditor({
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState(false);
   const otherPosts = useMemo(() => (allPosts || []).filter((p) => p.id !== post?.id), [allPosts, post?.id]);
+  const coverPreview = coverImageUrl.trim();
 
   function onHeadline(v) {
     setHeadline(v);
@@ -40,7 +42,11 @@ export default function BlogPostEditor({
     const supabase = createClient();
     try {
       const payload = {
-        headline: headline.trim(), slug: s, content_html: contentHtml, published,
+        headline: headline.trim(),
+        slug: s,
+        cover_image_url: coverPreview,
+        content_html: contentHtml,
+        published,
         published_at: published ? (post?.published_at || new Date().toISOString()) : null,
         updated_at: new Date().toISOString(),
         author_id: authorId || post?.author_id || null,
@@ -101,6 +107,22 @@ export default function BlogPostEditor({
         <input value={slug} onChange={(e) => { setSlugTouched(true); setSlug(e.target.value); }} className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 font-mono text-sm font-normal" />
         <span className="mt-1 block text-xs font-normal text-[#7a5c4e]">URL: /blog/{slugify(slug || headline)}</span>
       </label>
+      <label className="block text-sm font-semibold">Cover photo URL
+        <input
+          value={coverImageUrl}
+          onChange={(e) => setCoverImageUrl(e.target.value)}
+          placeholder="https://example.com/photo.jpg"
+          className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 font-normal text-sm"
+        />
+        <span className="mt-1 block text-xs font-normal text-[#7a5c4e]">
+          Optional. Shown above the title on /blog and under the headline on the post page. Grid crops to 16:9.
+        </span>
+      </label>
+      {coverPreview ? (
+        <div className="overflow-hidden rounded-xl border border-[#e8d5c4] bg-[#fff8f0]">
+          <img src={coverPreview} alt="" className="aspect-[16/9] w-full object-cover" />
+        </div>
+      ) : null}
       <label className="flex items-center gap-2 text-sm font-semibold">
         <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} /> Published
       </label>

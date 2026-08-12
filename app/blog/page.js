@@ -7,7 +7,11 @@ export const metadata = { title: "Blog | Paw Sitter" };
 export default async function BlogPage() {
   const supabase = await createClient();
   const [{ data: posts }, { data: tags }, { data: postTags }] = await Promise.all([
-    supabase.from("blog_posts").select("id, slug, headline, published_at, created_at").eq("published", true).order("published_at", { ascending: false }),
+    supabase
+      .from("blog_posts")
+      .select("id, slug, headline, cover_image_url, published_at, created_at")
+      .eq("published", true)
+      .order("published_at", { ascending: false }),
     supabase.from("blog_tags").select("id, name, slug").order("name"),
     supabase.from("blog_post_tags").select("post_id, tag_id"),
   ]);
