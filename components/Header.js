@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import AuthButtons from "@/components/AuthButtons";
 
 export default function Header() {
@@ -7,8 +6,8 @@ export default function Header() {
     <header className="sticky top-0 z-40 border-b border-[#e8d5c4]/80 bg-[#fff8f0]/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <Link href="/" className="flex min-w-0 items-center gap-2">
-          <Image
-            src="/logo.png"
+          <img
+            src="/logo.svg"
             alt="Paw Sitter"
             width={36}
             height={36}
