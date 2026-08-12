@@ -18,9 +18,9 @@ export default function BookingWizardBridge({
     <>
       {preferredSitterId && preferredSitterName ? (
         <div className="mt-4 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] px-4 py-3 text-sm text-[#5c4033]">
-          Booking for <strong>{preferredSitterName}</strong>. They will appear first on the Sitter step
-          when they match your location, service, and times — tap their card to confirm. You can still
-          choose someone else.
+          Booking <strong>{preferredSitterName}</strong> — the sitter step is skipped. Complete
+          location, service, and schedule, then confirm. If they are not available for your times,
+          you will be asked to pick another sitter.
         </div>
       ) : preferredSitterId ? (
         <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
