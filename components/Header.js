@@ -15,17 +15,14 @@ export default function Header() {
           />
           <span className="truncate text-base font-bold text-[#3b2a22] sm:text-lg">Paw Sitter</span>
         </Link>
-        <nav className="flex shrink-0 items-center gap-2 sm:gap-4">
-          <Link
-            href="/sitters"
-            className="text-sm font-medium text-[#5c4033] hover:text-[#c45c26]"
-          >
+        <nav className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <Link href="/shop" className="text-sm font-medium text-[#5c4033] hover:text-[#c45c26]">
+            Shop
+          </Link>
+          <Link href="/sitters" className="text-sm font-medium text-[#5c4033] hover:text-[#c45c26]">
             Sitters
           </Link>
-          <Link
-            href="/blog"
-            className="text-sm font-medium text-[#5c4033] hover:text-[#c45c26]"
-          >
+          <Link href="/blog" className="hidden text-sm font-medium text-[#5c4033] hover:text-[#c45c26] sm:inline">
             Blog
           </Link>
           <Link
