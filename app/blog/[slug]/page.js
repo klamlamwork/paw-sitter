@@ -7,14 +7,16 @@ import RelatedProducts from "@/components/blog/RelatedProducts";
 import RelatedPosts from "@/components/blog/RelatedPosts";
 
 export async function generateMetadata({ params }) {
+  const { slug } = await params;
   const supabase = await createClient();
-  const { data } = await supabase.from("blog_posts").select("headline").eq("slug", params.slug).eq("published", true).maybeSingle();
+  const { data } = await supabase.from("blog_posts").select("headline").eq("slug", slug).eq("published", true).maybeSingle();
   return { title: data ? `${data.headline} | Paw Sitter Blog` : "Blog | Paw Sitter" };
 }
 
 export default async function BlogPostPage({ params }) {
+  const { slug } = await params;
   const supabase = await createClient();
-  const { data: post } = await supabase.from("blog_posts").select("*").eq("slug", params.slug).eq("published", true).maybeSingle();
+  const { data: post } = await supabase.from("blog_posts").select("*").eq("slug", slug).eq("published", true).maybeSingle();
   if (!post) notFound();
 
   const [{ data: postTags }, { data: postProducts }, { data: relatedRows }] = await Promise.all([
