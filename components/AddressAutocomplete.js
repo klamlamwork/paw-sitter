@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
+const API_KEY = (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "").trim();
 
 let mapsLoadPromise = null;
 
@@ -10,24 +10,62 @@ function loadGoogleMaps(apiKey) {
   if (typeof window === "undefined") return Promise.reject(new Error("no window"));
   if (window.google?.maps?.places) return Promise.resolve(window.google.maps);
   if (mapsLoadPromise) return mapsLoadPromise;
+
   mapsLoadPromise = new Promise((resolve, reject) => {
+    const finish = async () => {
+      try {
+        if (!window.google?.maps) {
+          reject(new Error("google.maps missing after script load"));
+          return;
+        }
+        if (typeof window.google.maps.importLibrary === "function") {
+          await window.google.maps.importLibrary("places");
+        }
+        if (!window.google.maps.places) {
+          reject(
+            new Error(
+              "Places library missing. Enable Places API (legacy) on this key's project."
+            )
+          );
+          return;
+        }
+        resolve(window.google.maps);
+      } catch (e) {
+        reject(e);
+      }
+    };
+
     const existing = document.querySelector("script[data-gmaps-places]");
     if (existing) {
-      existing.addEventListener("load", () => resolve(window.google.maps));
-      existing.addEventListener("error", reject);
+      if (window.google?.maps) {
+        finish();
+      } else {
+        existing.addEventListener("load", () => finish());
+        existing.addEventListener("error", () =>
+          reject(new Error("Existing Maps script failed to load"))
+        );
+      }
       return;
     }
+
     const script = document.createElement("script");
     script.src =
       "https://maps.googleapis.com/maps/api/js?key=" +
       encodeURIComponent(apiKey) +
-      "&libraries=places&loading=async";
+      "&libraries=places&v=weekly";
     script.async = true;
+    script.defer = true;
     script.dataset.gmapsPlaces = "1";
-    script.onload = () => resolve(window.google.maps);
-    script.onerror = () => reject(new Error("Failed to load Google Maps"));
+    script.onload = () => finish();
+    script.onerror = () =>
+      reject(
+        new Error(
+          "Script blocked or invalid key. Check billing, API enablement, and HTTP referrer restrictions."
+        )
+      );
     document.head.appendChild(script);
   });
+
   return mapsLoadPromise;
 }
 
@@ -55,7 +93,8 @@ export default function AddressAutocomplete({
   const inputRef = useRef(null);
   const acRef = useRef(null);
   const [ready, setReady] = useState(false);
-  const [manual, setManual] = useState(false);
+  const [manual, setManual] = useState(!API_KEY);
+  const [loadError, setLoadError] = useState("");
   const [local, setLocal] = useState({
     address_line1: value.address_line1 || "",
     address_line2: value.address_line2 || "",
@@ -72,20 +111,34 @@ export default function AddressAutocomplete({
   }, [value.address_line1, value.address_line2, value.postal_code]);
 
   useEffect(() => {
-    if (!API_KEY || disabled || manual) return;
+    if (!API_KEY) {
+      setManual(true);
+      setLoadError(
+        "No NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in this deployment. Add it in Vercel → Settings → Environment Variables, then Redeploy."
+      );
+      return;
+    }
+    if (disabled || manual) return;
+
     let cancelled = false;
+    setLoadError("");
+
     loadGoogleMaps(API_KEY)
       .then((maps) => {
         if (cancelled || !inputRef.current) return;
         setReady(true);
         if (acRef.current) return;
+
         const opts = {
           fields: ["address_components", "geometry", "formatted_address"],
           types: ["address"],
         };
         if (countryCode) {
-          opts.componentRestrictions = { country: String(countryCode).toLowerCase() };
+          opts.componentRestrictions = {
+            country: String(countryCode).toLowerCase(),
+          };
         }
+
         const ac = new maps.places.Autocomplete(inputRef.current, opts);
         acRef.current = ac;
         ac.addListener("place_changed", () => {
@@ -114,10 +167,14 @@ export default function AddressAutocomplete({
           onChange?.(next);
         });
       })
-      .catch(() => {
-        setStatus("Google Maps unavailable. You can type the address manually.");
+      .catch((err) => {
+        console.error("[AddressAutocomplete]", err);
+        const msg = err?.message || String(err);
+        setLoadError(msg);
+        setStatus("");
         setManual(true);
       });
+
     return () => {
       cancelled = true;
     };
@@ -150,46 +207,37 @@ export default function AddressAutocomplete({
     });
   }
 
-  if (!API_KEY) {
-    return (
-      <div className="space-y-2">
-        <p className="text-sm font-semibold text-[#3b2a22]">{label}</p>
-        <p className="text-xs text-[#7a5c4e]">
-          Optional. Add NEXT_PUBLIC_GOOGLE_MAPS_API_KEY (Places API) for Google autocomplete; until then type manually (city pin used for km).
-        </p>
-        <label className="block text-xs text-[#7a5c4e]">
-          Street / road + number
-          <input type="text" disabled={disabled} value={local.address_line1} onChange={(e) => emitManual({ address_line1: e.target.value })} placeholder="e.g. 123 King St W" className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
-        </label>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="text-xs text-[#7a5c4e]">
-            Apt / unit (optional)
-            <input type="text" disabled={disabled} value={local.address_line2} onChange={(e) => emitManual({ address_line2: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
-          </label>
-          <label className="text-xs text-[#7a5c4e]">
-            Postal code
-            <input type="text" disabled={disabled} value={local.postal_code} onChange={(e) => emitManual({ postal_code: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
-          </label>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-2">
       <p className="text-sm font-semibold text-[#3b2a22]">{label}</p>
       <p className="text-xs text-[#7a5c4e]">
-        Optional. Start typing and pick a Google suggestion for precise coordinates. City/timezone still come from the city list.
+        Optional. City/timezone still come from the city list. Street pin improves km accuracy.
       </p>
+
+      {loadError ? (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+          <p className="font-semibold">Google Maps autocomplete unavailable</p>
+          <p className="mt-1">{loadError}</p>
+          <p className="mt-2">You can still type the address manually below.</p>
+        </div>
+      ) : null}
+
       <label className="block text-xs text-[#7a5c4e]">
         Street / road + number
         <input
           ref={inputRef}
           type="text"
           disabled={disabled}
-          defaultValue={local.address_line1}
-          key={local.address_line1}
-          placeholder={ready ? "Start typing address…" : "Loading Google…"}
+          value={manual ? local.address_line1 : undefined}
+          defaultValue={!manual ? local.address_line1 : undefined}
+          onChange={manual ? (e) => emitManual({ address_line1: e.target.value }) : undefined}
+          placeholder={
+            manual
+              ? "e.g. 123 King St W"
+              : ready
+                ? "Start typing address…"
+                : "Loading Google Maps…"
+          }
           className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
           autoComplete="off"
         />
@@ -197,17 +245,33 @@ export default function AddressAutocomplete({
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-[#7a5c4e]">
           Apt / unit (optional)
-          <input type="text" disabled={disabled} value={local.address_line2} onChange={(e) => emitManual({ address_line2: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
+          <input
+            type="text"
+            disabled={disabled}
+            value={local.address_line2}
+            onChange={(e) => emitManual({ address_line2: e.target.value })}
+            className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
+          />
         </label>
         <label className="text-xs text-[#7a5c4e]">
           Postal code
-          <input type="text" disabled={disabled} value={local.postal_code} onChange={(e) => emitManual({ postal_code: e.target.value })} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
+          <input
+            type="text"
+            disabled={disabled}
+            value={local.postal_code}
+            onChange={(e) => emitManual({ postal_code: e.target.value })}
+            className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
+          />
         </label>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         {status ? <p className="text-xs text-green-800">{status}</p> : null}
-        {(local.address_line1 || value.lat) ? (
-          <button type="button" onClick={clearAddress} className="text-xs font-semibold text-[#c45c26] hover:underline">
+        {local.address_line1 || value.lat ? (
+          <button
+            type="button"
+            onClick={clearAddress}
+            className="text-xs font-semibold text-[#c45c26] hover:underline"
+          >
             Clear street address
           </button>
         ) : null}
@@ -215,6 +279,20 @@ export default function AddressAutocomplete({
           <p className="text-xs text-[#7a5c4e]">
             Pin: {Number(value.lat).toFixed(5)}, {Number(value.lng).toFixed(5)}
           </p>
+        ) : null}
+        {API_KEY && manual ? (
+          <button
+            type="button"
+            className="text-xs font-semibold text-[#5c4033] underline"
+            onClick={() => {
+              setManual(false);
+              setLoadError("");
+              mapsLoadPromise = null;
+              acRef.current = null;
+            }}
+          >
+            Retry Google autocomplete
+          </button>
         ) : null}
       </div>
     </div>
