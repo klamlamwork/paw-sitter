@@ -7,6 +7,8 @@ import { LONGEVITY_ICONS, longevityIconEmoji, slugifyShop } from "@/lib/shop";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
 
+const emptyChipDraft = () => ({ icon_key: "heart", label: "", note: "" });
+
 export default function ShopPortalClient({
   shops,
   initialProducts,
@@ -32,6 +34,9 @@ export default function ShopPortalClient({
     hide_price: false,
     image_url: "",
   });
+  /** Chips staged while creating a new product */
+  const [createChips, setCreateChips] = useState([]);
+  const [createChipDraft, setCreateChipDraft] = useState(emptyChipDraft());
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
@@ -39,6 +44,29 @@ export default function ShopPortalClient({
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const selectedShop = activeShops.find((s) => s.id === form.shop_id);
+
+  function stageCreateChip() {
+    const label = createChipDraft.label.trim();
+    if (!label) {
+      setError("Longevity keywords required");
+      return;
+    }
+    setError("");
+    setCreateChips((list) => [
+      ...list,
+      {
+        tempId: `${Date.now()}-${list.length}`,
+        icon_key: createChipDraft.icon_key || "heart",
+        label,
+        note: (createChipDraft.note || "").trim(),
+      },
+    ]);
+    setCreateChipDraft(emptyChipDraft());
+  }
+
+  function removeStagedChip(tempId) {
+    setCreateChips((list) => list.filter((c) => c.tempId !== tempId));
+  }
 
   async function createProduct(e) {
     e.preventDefault();
@@ -127,8 +155,40 @@ export default function ShopPortalClient({
       { onConflict: "product_id,shop_id" }
     );
 
+    // Persist longevity chips staged at create time
+    let longevity_items = [];
+    if (createChips.length) {
+      const rows = createChips.map((c, i) => ({
+        product_id: product.id,
+        icon_key: c.icon_key || "heart",
+        label: c.label,
+        note: c.note || "",
+        sort_order: i,
+      }));
+      const { data: saved, error: chipErr } = await supabase
+        .from("shop_product_longevity_items")
+        .insert(rows)
+        .select("id, product_id, icon_key, label, note, sort_order");
+      if (chipErr) {
+        setBusy(false);
+        setError(
+          `Product created, but longevity chips failed: ${chipErr.message}. You can add them below.`
+        );
+        setProducts((list) => [{ ...product, longevity_items: [] }, ...list]);
+        setCreateChips([]);
+        setCreateChipDraft(emptyChipDraft());
+        router.refresh();
+        return;
+      }
+      longevity_items = saved || [];
+    }
+
     setBusy(false);
-    setOk("Submitted for admin approval. Add longevity chips below.");
+    setOk(
+      longevity_items.length
+        ? `Submitted with ${longevity_items.length} longevity chip(s). Pending admin approval.`
+        : "Submitted for admin approval. You can still add longevity chips below."
+    );
     setForm((f) => ({
       ...f,
       name: "",
@@ -141,7 +201,9 @@ export default function ShopPortalClient({
       hide_price: false,
       image_url: "",
     }));
-    setProducts((list) => [{ ...product, longevity_items: [] }, ...list]);
+    setCreateChips([]);
+    setCreateChipDraft(emptyChipDraft());
+    setProducts((list) => [{ ...product, longevity_items }, ...list]);
     router.refresh();
   }
 
@@ -239,7 +301,7 @@ export default function ShopPortalClient({
       >
         <h2 className="font-semibold text-[#3b2a22]">Add product</h2>
         <p className="text-xs text-[#7a5c4e]">
-          After submit, add longevity chips (circle icon + keywords) on each product below.
+          Add longevity chips here before submit, or manage them anytime on products below.
         </p>
 
         <label className="block text-sm font-medium">
@@ -358,6 +420,89 @@ export default function ShopPortalClient({
           />
           Hide price
         </label>
+
+        {/* Longevity chips at create time */}
+        <div className="rounded-xl border border-[#e8d5c4] bg-white p-3">
+          <p className="text-sm font-semibold text-[#3b2a22]">Longevity chips</p>
+          <p className="mt-0.5 text-xs text-[#7a5c4e]">
+            Circle icon + keywords. Shown in a grid on the product page.
+          </p>
+
+          {createChips.length ? (
+            <ul className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {createChips.map((c) => (
+                <li
+                  key={c.tempId}
+                  className="relative flex flex-col items-center rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-2 py-3 text-center"
+                >
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl shadow-sm ring-1 ring-[#e8d5c4]">
+                    {longevityIconEmoji(c.icon_key)}
+                  </span>
+                  <span className="mt-2 text-[11px] font-semibold leading-tight text-[#3b2a22]">
+                    {c.label}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeStagedChip(c.tempId)}
+                    className="absolute right-1 top-1 text-[10px] font-bold text-red-600"
+                    aria-label="Remove"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs text-[#7a5c4e]">No chips yet — optional.</p>
+          )}
+
+          <div className="mt-3 space-y-2 border-t border-dashed border-[#e8d5c4] pt-3">
+            <div className="flex flex-wrap gap-1.5">
+              {LONGEVITY_ICONS.map((ic) => (
+                <button
+                  key={ic.key}
+                  type="button"
+                  onClick={() =>
+                    setCreateChipDraft((d) => ({ ...d, icon_key: ic.key }))
+                  }
+                  title={ic.label}
+                  className={
+                    "flex h-9 w-9 items-center justify-center rounded-full text-base " +
+                    (createChipDraft.icon_key === ic.key
+                      ? "bg-[#c45c26] ring-2 ring-[#c45c26]/40"
+                      : "bg-[#fff8f0] ring-1 ring-[#e8d5c4]")
+                  }
+                >
+                  {ic.emoji}
+                </button>
+              ))}
+            </div>
+            <input
+              className={inp}
+              placeholder="Keywords (e.g. Joint support)"
+              value={createChipDraft.label}
+              onChange={(e) =>
+                setCreateChipDraft((d) => ({ ...d, label: e.target.value }))
+              }
+            />
+            <input
+              className={inp}
+              placeholder="Optional short note"
+              value={createChipDraft.note}
+              onChange={(e) =>
+                setCreateChipDraft((d) => ({ ...d, note: e.target.value }))
+              }
+            />
+            <button
+              type="button"
+              onClick={stageCreateChip}
+              className="rounded-full border border-[#e8d5c4] px-4 py-1.5 text-xs font-semibold text-[#3b2a22]"
+            >
+              Add chip to this product
+            </button>
+          </div>
+        </div>
+
         <button
           type="submit"
           disabled={busy}
