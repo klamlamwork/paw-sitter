@@ -25,8 +25,14 @@ function sortHomeList(rows, sortKey) {
 
 export default async function ShopHomePage() {
   const supabase = await createClient();
-  const [{ data: brandShopsRaw }, { data: shopsRaw }, { data: productsRaw }, { data: categories }] =
-    await Promise.all([
+
+  let brandShopsRaw = [];
+  let shopsRaw = [];
+  let productsRaw = [];
+  let categories = [];
+
+  try {
+    const [brandsRes, shopsRes, productsRes, catsRes] = await Promise.all([
       supabase
         .from("shop_shops")
         .select("id, name, slug, logo_url, is_product_brand, home_brand_sort")
@@ -51,6 +57,16 @@ export default async function ShopHomePage() {
         .order("sort_order")
         .order("name"),
     ]);
+    brandShopsRaw = brandsRes.data || [];
+    shopsRaw = shopsRes.data || [];
+    productsRaw = productsRes.data || [];
+    categories = catsRes.data || [];
+  } catch {
+    brandShopsRaw = [];
+    shopsRaw = [];
+    productsRaw = [];
+    categories = [];
+  }
 
   const brandShops = sortHomeList(brandShopsRaw, "home_brand_sort").slice(0, 10);
   const shops = sortHomeList(shopsRaw, "home_retailer_sort").slice(0, 10);
@@ -68,10 +84,22 @@ export default async function ShopHomePage() {
     href: shopPath(s),
   }));
 
-  const { products, coverByProduct, longevityLabels } = await enrichProducts(
-    supabase,
-    productsRaw || []
-  );
+  let products = [];
+  let coverByProduct = {};
+  let longevityLabels = [];
+  try {
+    const enriched = await enrichProducts(supabase, productsRaw || []);
+    products = enriched.products || [];
+    coverByProduct = enriched.coverByProduct || {};
+    longevityLabels = enriched.longevityLabels || [];
+  } catch {
+    products = (productsRaw || []).map((p) => ({
+      ...p,
+      category_ids: p.category_id ? [p.category_id] : [],
+      longevity_labels: [],
+    }));
+  }
+
   const { categoriesRow1, categoriesRow2 } = sortCategoriesForFilters(categories);
 
   return (
