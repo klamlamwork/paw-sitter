@@ -1,89 +1,111 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { brandPath, formatShopPrice, shopStorePath } from "@/lib/shop";
+import {
+  brandShopPath,
+  formatShopPrice,
+  shopPath,
+  shopProductPath,
+} from "@/lib/shop";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
   const supabase = await createClient();
   const { data } = await supabase
     .from("shop_products")
-    .select("name, seo_title, seo_description, short_description, status")
+    .select("name, seo_title, seo_description, short_description")
     .eq("slug", slug)
+    .eq("status", "approved")
     .maybeSingle();
-  if (!data || data.status !== "approved") return { title: "Product | Paw Sitter" };
+  if (!data) return { title: "Product | Paw Sitter Shop" };
   return {
-    title: data.seo_title || `${data.name} | Shop | Paw Sitter`,
-    description: data.seo_description || data.short_description || data.name,
+    title: data.seo_title || `${data.name} | Paw Sitter Shop`,
+    description: data.seo_description || data.short_description || undefined,
   };
 }
 
 export default async function ShopProductPage({ params }) {
   const { slug } = await params;
   const supabase = await createClient();
+
   const { data: product } = await supabase
     .from("shop_products")
-    .select(
-      `*,
-      shop_brands ( id, name, slug ),
-      shop_shops ( id, name, slug ),
-      shop_categories ( id, name, slug ),
-      shop_product_media ( id, url, alt_text, sort_order )
-    `
-    )
+    .select("*, shop_product_media(*)")
     .eq("slug", slug)
     .eq("status", "approved")
     .maybeSingle();
-
   if (!product) notFound();
 
-  const media = (product.shop_product_media || []).sort((a, b) => a.sort_order - b.sort_order);
-  const price = formatShopPrice(product.price_cents, product.currency, product.hide_price);
-  const brand = product.shop_brands;
-  const shop = product.shop_shops;
+  let brandShop = null;
+  if (product.brand_shop_id) {
+    const { data } = await supabase
+      .from("shop_shops")
+      .select("id, name, slug, logo_url, is_product_brand, status")
+      .eq("id", product.brand_shop_id)
+      .maybeSingle();
+    brandShop = data;
+  }
 
-  const { data: reviews } = await supabase
-    .from("shop_reviews")
-    .select("id, rating, title, body, created_at")
+  // Offers from other shops / brand DTC (after sql/21)
+  let offers = [];
+  const { data: offerRows, error: offerErr } = await supabase
+    .from("shop_product_offers")
+    .select(
+      "id, shop_id, price_cents, currency, hide_price, show_affiliate, show_add_to_cart, affiliate_url, is_default, shop:shop_shops(id, name, slug, logo_url, is_product_brand, status)"
+    )
     .eq("product_id", product.id)
-    .eq("status", "approved")
-    .order("created_at", { ascending: false })
-    .limit(20);
+    .eq("status", "approved");
 
-  const avg =
-    reviews?.length
-      ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
-      : null;
+  if (!offerErr && offerRows) {
+    offers = offerRows.filter((o) => o.shop && o.shop.status === "active");
+  }
+
+  const media = (product.shop_product_media || [])
+    .slice()
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+  const cover = media[0];
+
+  // Fallback display price from default offer or product columns
+  const defaultOffer =
+    offers.find((o) => o.is_default) || offers[0] || null;
+  const displayCents = defaultOffer?.price_cents ?? product.price_cents;
+  const displayCurrency = defaultOffer?.currency || product.currency || "CAD";
+  const displayHide = defaultOffer ? defaultOffer.hide_price : product.hide_price;
+  const priceLabel = formatShopPrice(displayCents, displayCurrency, displayHide);
+
+  const showAffiliate = defaultOffer
+    ? defaultOffer.show_affiliate && defaultOffer.affiliate_url
+    : product.show_affiliate && product.affiliate_url;
+  const affiliateUrl = defaultOffer?.affiliate_url || product.affiliate_url;
+  const showCart = defaultOffer
+    ? defaultOffer.show_add_to_cart
+    : product.show_add_to_cart;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <nav className="text-xs text-[#7a5c4e]" aria-label="Breadcrumb">
-        <Link href="/shop" className="font-semibold text-[#c45c26] hover:underline">Shop</Link>
-        {product.shop_categories ? (
-          <>
-            {" / "}
-            <Link href={`/shop/c/${product.shop_categories.slug}`} className="hover:underline">
-              {product.shop_categories.name}
-            </Link>
-          </>
-        ) : null}
-        {" / "}
-        <span className="text-[#3b2a22]">{product.name}</span>
-      </nav>
+    <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+      <Link href="/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">
+        &larr; Shop
+      </Link>
 
-      <div className="mt-6 grid gap-10 lg:grid-cols-2">
-        <div>
-          <div className="aspect-square overflow-hidden rounded-3xl border border-[#e8d5c4] bg-[#fff1e6]">
-            {media[0]?.url ? (
-              <img src={media[0].url} alt={media[0].alt_text || product.name} className="h-full w-full object-cover" />
-            ) : (
-              <div className="flex h-full items-center justify-center text-sm text-[#c4a484]">No image</div>
-            )}
-          </div>
+      <div className="mt-6 grid gap-8 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]">
+          {cover?.url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={cover.url}
+              alt={cover.alt_text || product.name}
+              className="aspect-square w-full object-cover"
+            />
+          ) : (
+            <div className="flex aspect-square items-center justify-center text-sm text-[#7a5c4e]">
+              No image
+            </div>
+          )}
           {media.length > 1 ? (
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {media.slice(1, 6).map((m) => (
-                <li key={m.id} className="h-16 w-16 overflow-hidden rounded-xl border border-[#e8d5c4]">
+            <ul className="flex gap-2 overflow-x-auto border-t border-[#e8d5c4] p-2">
+              {media.map((m) => (
+                <li key={m.id} className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[#e8d5c4]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={m.url} alt="" className="h-full w-full object-cover" />
                 </li>
               ))}
@@ -92,59 +114,102 @@ export default async function ShopProductPage({ params }) {
         </div>
 
         <div>
-          {brand ? (
-            <Link href={brandPath(brand.slug)} className="text-xs font-bold uppercase tracking-wide text-[#c45c26] hover:underline">
-              {brand.name}
+          {brandShop ? (
+            <Link
+              href={brandShopPath(brandShop)}
+              className="text-xs font-bold uppercase tracking-wide text-[#c45c26] hover:underline"
+            >
+              {brandShop.name}
             </Link>
           ) : null}
           <h1 className="mt-1 text-3xl font-bold text-[#3b2a22]">{product.name}</h1>
-          {avg ? (
-            <p className="mt-2 text-sm text-[#7a5c4e]">
-              {avg} ★ · {reviews.length} review{reviews.length === 1 ? "" : "s"}
-            </p>
-          ) : null}
-          {price ? <p className="mt-4 text-2xl font-bold text-[#c45c26]">{price}</p> : null}
           {product.short_description ? (
-            <p className="mt-4 text-sm leading-relaxed text-[#5c4033]">{product.short_description}</p>
+            <p className="mt-2 text-sm text-[#5c4033]">{product.short_description}</p>
           ) : null}
+          {priceLabel ? (
+            <p className="mt-4 text-2xl font-bold text-[#c45c26]">{priceLabel}</p>
+          ) : (
+            <p className="mt-4 text-sm text-[#7a5c4e]">Price on request / see seller</p>
+          )}
+
           {product.longevity_blurb ? (
-            <div className="mt-4 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] p-4 text-sm text-[#3b2a22]">
-              <p className="text-xs font-bold uppercase tracking-wide text-[#7a5c4e]">Why for longevity</p>
-              <p className="mt-1">{product.longevity_blurb}</p>
-            </div>
+            <p className="mt-4 rounded-xl bg-[#fff8f0] px-3 py-2 text-sm text-[#5c4033]">
+              {product.longevity_blurb}
+            </p>
           ) : null}
 
           <div className="mt-6 flex flex-wrap gap-3">
-            {product.show_affiliate && product.affiliate_url ? (
+            {showAffiliate ? (
               <a
-                href={product.affiliate_url}
+                href={affiliateUrl}
                 target="_blank"
                 rel="noopener noreferrer sponsored"
-                className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#9a4519]"
+                className="inline-flex rounded-full bg-[#c45c26] px-6 py-2.5 text-sm font-semibold text-white"
               >
-                View offer
+                Buy / view offer
               </a>
             ) : null}
-            {product.show_add_to_cart ? (
-              <button
-                type="button"
-                disabled
-                className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold text-[#7a5c4e] opacity-60"
-                title="Cart ships in Phase 2"
-              >
-                Add to cart (soon)
-              </button>
+            {showCart ? (
+              <span className="inline-flex rounded-full border border-[#e8d5c4] px-6 py-2.5 text-sm font-semibold text-[#7a5c4e]">
+                Add to cart (coming soon)
+              </span>
             ) : null}
           </div>
-          {product.show_affiliate ? (
-            <p className="mt-2 text-[11px] text-[#7a5c4e]">Affiliate disclosure: we may earn a commission at no extra cost to you.</p>
+
+          {/* Multi-seller logo strip */}
+          {offers.length > 0 ? (
+            <div className="mt-8">
+              <h2 className="text-sm font-semibold text-[#3b2a22]">Available from</h2>
+              <p className="mt-1 text-xs text-[#7a5c4e]">
+                Choose a shop — opens that retailer&apos;s offer for this product.
+              </p>
+              <ul className="mt-3 flex flex-wrap gap-3">
+                {offers.map((o) => {
+                  const s = o.shop;
+                  const href = shopProductPath(s, product);
+                  const label = formatShopPrice(o.price_cents, o.currency, o.hide_price);
+                  return (
+                    <li key={o.id}>
+                      <Link
+                        href={href}
+                        className="flex flex-col items-center gap-1 rounded-2xl border border-[#e8d5c4] bg-white px-3 py-2 text-center hover:border-[#c45c26]/50"
+                        title={s.name}
+                      >
+                        {s.logo_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={s.logo_url}
+                            alt={s.name}
+                            className="h-10 w-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff8f0] text-xs font-bold text-[#c45c26]">
+                            {s.name.slice(0, 1)}
+                          </span>
+                        )}
+                        <span className="max-w-[5.5rem] truncate text-[10px] font-semibold text-[#3b2a22]">
+                          {s.name}
+                        </span>
+                        {label ? (
+                          <span className="text-[10px] text-[#c45c26]">{label}</span>
+                        ) : null}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           ) : null}
 
-          {shop ? (
-            <p className="mt-6 text-sm text-[#7a5c4e]">
-              Sold via{" "}
-              <Link href={shopStorePath(shop.slug)} className="font-semibold text-[#c45c26] hover:underline">
-                {shop.name}
+          {brandShop ? (
+            <p className="mt-6 text-xs text-[#7a5c4e]">
+              Brand page:{" "}
+              <Link href={brandShopPath(brandShop)} className="font-semibold text-[#c45c26] hover:underline">
+                {brandShop.name}
+              </Link>
+              {" · "}
+              <Link href={shopPath(brandShop)} className="font-semibold text-[#c45c26] hover:underline">
+                Brand shop storefront
               </Link>
             </p>
           ) : null}
@@ -152,27 +217,13 @@ export default async function ShopProductPage({ params }) {
       </div>
 
       {product.description ? (
-        <section className="prose mt-12 max-w-3xl">
-          <h2 className="text-lg font-bold text-[#3b2a22]">Details</h2>
-          <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[#3b2a22]">{product.description}</div>
+        <section className="mt-10 max-w-3xl">
+          <h2 className="text-lg font-semibold text-[#3b2a22]">About</h2>
+          <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[#5c4033]">
+            {product.description}
+          </div>
         </section>
       ) : null}
-
-      <section className="mt-12 max-w-3xl">
-        <h2 className="text-lg font-bold text-[#3b2a22]">Reviews</h2>
-        {!reviews?.length ? (
-          <p className="mt-3 text-sm text-[#7a5c4e]">No reviews yet.</p>
-        ) : (
-          <ul className="mt-4 space-y-3">
-            {reviews.map((r) => (
-              <li key={r.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4 text-sm">
-                <p className="font-semibold text-[#3b2a22]">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)} {r.title}</p>
-                <p className="mt-1 text-[#5c4033]">{r.body}</p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
     </div>
   );
 }
