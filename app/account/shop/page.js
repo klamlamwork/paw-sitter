@@ -28,8 +28,7 @@ export default async function AccountShopPortalPage() {
         </Link>
         <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
         <p className="mt-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] px-4 py-3 text-sm text-[#5c4033]">
-          No shop is linked to <strong>{profile.email}</strong> yet. Ask an admin to set{" "}
-          <strong>Owner account</strong> on your shop.
+          No shop is linked to <strong>{profile.email}</strong> yet.
         </p>
       </div>
     );
@@ -54,9 +53,7 @@ export default async function AccountShopPortalPage() {
     .order("updated_at", { ascending: false });
 
   const map = new Map();
-  for (const p of [...(byPrimary || []), ...(byBrand || [])]) {
-    map.set(p.id, p);
-  }
+  for (const p of [...(byPrimary || []), ...(byBrand || [])]) map.set(p.id, p);
   const products = [...map.values()].sort(
     (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
   );
@@ -64,8 +61,9 @@ export default async function AccountShopPortalPage() {
   const productIds = products.map((p) => p.id);
   let mediaByProduct = {};
   let longevityByProduct = {};
+  let catsByProduct = {};
   if (productIds.length) {
-    const [{ data: media }, { data: items }] = await Promise.all([
+    const [{ data: media }, { data: items }, { data: catLinks }] = await Promise.all([
       supabase
         .from("shop_product_media")
         .select("id, product_id, url, alt_text, sort_order")
@@ -76,6 +74,10 @@ export default async function AccountShopPortalPage() {
         .select("id, product_id, icon_key, label, note, sort_order")
         .in("product_id", productIds)
         .order("sort_order"),
+      supabase
+        .from("shop_product_categories")
+        .select("product_id, category_id")
+        .in("product_id", productIds),
     ]);
     for (const m of media || []) {
       if (!mediaByProduct[m.product_id]) mediaByProduct[m.product_id] = [];
@@ -85,12 +87,17 @@ export default async function AccountShopPortalPage() {
       if (!longevityByProduct[it.product_id]) longevityByProduct[it.product_id] = [];
       longevityByProduct[it.product_id].push(it);
     }
+    for (const link of catLinks || []) {
+      if (!catsByProduct[link.product_id]) catsByProduct[link.product_id] = [];
+      catsByProduct[link.product_id].push(link.category_id);
+    }
   }
 
   const productsFull = products.map((p) => {
     const liveMedia = mediaByProduct[p.id] || [];
     const liveLon = longevityByProduct[p.id] || [];
-    // Shop edits work on pending snapshot if present, else live
+    const liveCats =
+      catsByProduct[p.id] || (p.category_id ? [p.category_id] : []);
     const snap = p.has_pending_edit && p.pending_snapshot ? p.pending_snapshot : null;
     return {
       ...p,
@@ -100,7 +107,7 @@ export default async function AccountShopPortalPage() {
       edit_description: snap?.description ?? p.description,
       edit_price_cents: snap?.price_cents ?? p.price_cents,
       edit_hide_price: snap?.hide_price ?? p.hide_price,
-      edit_category_id: snap?.category_id ?? p.category_id,
+      edit_category_ids: snap?.category_ids || liveCats,
       media: snap?.media
         ? snap.media.map((m, i) => ({ ...m, id: m.id || `p-${i}`, product_id: p.id }))
         : liveMedia,
@@ -115,7 +122,11 @@ export default async function AccountShopPortalPage() {
   });
 
   const [{ data: categories }, { data: productBrandShops }] = await Promise.all([
-    supabase.from("shop_categories").select("id, name").order("sort_order").order("name"),
+    supabase
+      .from("shop_categories")
+      .select("id, name, parent_id, sort_order")
+      .order("sort_order")
+      .order("name"),
     supabase
       .from("shop_shops")
       .select("id, name, slug")
@@ -131,16 +142,13 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Signed in as {profile.email}. Changes to live products stay private until admin approves —
-        the public site keeps the last approved version.
+        Signed in as {profile.email}. Edits to live products need admin approval before they go
+        public.
       </p>
 
       <ul className="mt-6 space-y-2">
         {myShops.map((s) => (
-          <li
-            key={s.id}
-            className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm"
-          >
+          <li key={s.id} className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm">
             <p className="font-semibold text-[#3b2a22]">
               {s.name}{" "}
               <span className="text-[10px] font-bold uppercase text-[#c45c26]">
