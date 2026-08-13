@@ -105,11 +105,14 @@ export default async function ShopProductPage({ params }) {
     shop: shopsById[o.shop_id] || null,
   }));
 
+  // Every attached shop except the product's own brand identity
+  const seenShops = new Set();
   const eligibleRetailers = offers.filter((o) => {
-    const s = o.shop;
-    if (!s || s.status !== "active") return false;
+    if (!o.shop_id || seenShops.has(o.shop_id)) return false;
     if (product.brand_shop_id && o.shop_id === product.brand_shop_id) return false;
-    if (o.status && o.status !== "approved") return false;
+    const s = o.shop;
+    if (s && s.status === "suspended") return false;
+    seenShops.add(o.shop_id);
     return true;
   });
 
@@ -240,11 +243,11 @@ export default async function ShopProductPage({ params }) {
           {eligibleRetailers.length ? (
             <section className="mt-6">
               <h2 className="text-sm font-semibold text-[#3b2a22]">Eligible retailers</h2>
-              <ul className="mt-3 flex flex-wrap gap-3">
+              <ul className="mt-3 flex flex-wrap gap-4">
                 {eligibleRetailers.map((o) => {
-                  const s = o.shop;
+                  const s = o.shop || { name: "Retailer", slug: "", logo_url: "" };
                   const custom = (o.product_page_url || "").trim();
-                  const href = custom || shopPath(s) || shopProductPath(s, product);
+                  const href = custom || (s.slug ? shopPath(s) : "") || shopProductPath(s, product) || "/shop";
                   const external = /^https?:\/\//i.test(href);
                   const inner = (
                     <>
@@ -257,16 +260,16 @@ export default async function ShopProductPage({ params }) {
                         />
                       ) : (
                         <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#fff8f0] text-sm font-bold text-[#c45c26] ring-1 ring-[#e8d5c4]">
-                          {s.name.slice(0, 1)}
+                          {(s.name || "?").slice(0, 1)}
                         </span>
                       )}
-                      <span className="max-w-[4.5rem] truncate text-center text-[10px] font-semibold text-[#3b2a22]">
-                        {s.name}
+                      <span className="max-w-[5rem] truncate text-center text-[10px] font-semibold text-[#3b2a22]">
+                        {s.name || "Retailer"}
                       </span>
                     </>
                   );
                   return (
-                    <li key={o.id || o.shop_id}>
+                    <li key={String(o.id || o.shop_id)}>
                       {external ? (
                         <a href={href} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1.5" title={s.name}>
                           {inner}
