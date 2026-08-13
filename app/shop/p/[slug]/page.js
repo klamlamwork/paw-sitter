@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import {
   brandShopPath,
-  formatShopPrice,
   longevityIconEmoji,
   shopPath,
   shopProductPath,
@@ -11,7 +10,7 @@ import {
 import { isBatchExpiryMode } from "@/lib/shopInventory";
 import { sellableQtyWithPolicy } from "@/lib/shopExpiryPolicy";
 import ProductGallery from "@/components/shop/ProductGallery";
-import ProductVariantPicker from "@/components/shop/ProductVariantPicker";
+import PdpBuyBox from "@/app/shop/PdpBuyBox";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
@@ -106,8 +105,6 @@ export default async function ShopProductPage({ params }) {
     shop: shopsById[o.shop_id] || null,
   }));
 
-  // All shops admin attached, except the product's own brand hub and inactive shops.
-  // Do not require product_page_url — fall back to the retailer storefront.
   const eligibleRetailers = offers.filter((o) => {
     const s = o.shop;
     if (!s || s.status !== "active") return false;
@@ -153,8 +150,6 @@ export default async function ShopProductPage({ params }) {
   const displayCents = defaultOffer?.price_cents ?? product.price_cents;
   const displayCurrency = defaultOffer?.currency || product.currency || "CAD";
   const displayHide = defaultOffer ? defaultOffer.hide_price : product.hide_price;
-  const priceLabel = formatShopPrice(displayCents, displayCurrency, displayHide);
-  const hasVariants = variants.length > 0;
 
   const showAffiliate = defaultOffer
     ? defaultOffer.show_affiliate && defaultOffer.affiliate_url
@@ -165,12 +160,18 @@ export default async function ShopProductPage({ params }) {
     : product.show_add_to_cart;
 
   const chips = longevityItems || [];
+  const cartShopId = product.primary_shop_id || product.brand_shop_id;
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <Link href="/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">
-        &larr; Shop
-      </Link>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link href="/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">
+          &larr; Shop
+        </Link>
+        <Link href="/shop/cart" className="text-sm font-semibold text-[#3b2a22] hover:underline">
+          Cart
+        </Link>
+      </div>
 
       <div className="mt-6 grid gap-8 lg:grid-cols-2">
         <ProductGallery images={media} productName={product.name} />
@@ -189,21 +190,23 @@ export default async function ShopProductPage({ params }) {
             <p className="mt-2 text-sm text-[#5c4033]">{product.short_description}</p>
           ) : null}
 
-          {hasVariants ? (
-            <ProductVariantPicker
-              variants={variants}
-              basePriceCents={displayCents}
-              currency={displayCurrency}
-              hidePrice={displayHide}
-              showFefo={batchMode}
-              discountDays={discountDays}
-              discountPct={discountPct}
-            />
-          ) : priceLabel ? (
-            <p className="mt-4 text-2xl font-bold text-[#c45c26]">{priceLabel}</p>
-          ) : (
-            <p className="mt-4 text-sm text-[#7a5c4e]">Price on request / see seller</p>
-          )}
+          <PdpBuyBox
+            variants={variants}
+            displayCents={displayCents}
+            displayCurrency={displayCurrency}
+            displayHide={displayHide}
+            batchMode={batchMode}
+            discountDays={discountDays}
+            discountPct={discountPct}
+            showCart={!!showCart}
+            cartLineBase={{
+              product_id: product.id,
+              shop_id: cartShopId,
+              name: product.name,
+              slug: product.slug,
+              shop_name: brandShop?.name || "Shop",
+            }}
+          />
 
           {chips.length ? (
             <section className="mt-6">
@@ -279,15 +282,10 @@ export default async function ShopProductPage({ params }) {
                 href={affiliateUrl}
                 target="_blank"
                 rel="noopener noreferrer sponsored"
-                className="inline-flex rounded-full bg-[#c45c26] px-6 py-2.5 text-sm font-semibold text-white"
+                className="inline-flex rounded-full border border-[#c45c26] px-6 py-2.5 text-sm font-semibold text-[#c45c26]"
               >
                 Buy / view offer
               </a>
-            ) : null}
-            {showCart ? (
-              <span className="inline-flex rounded-full border border-[#e8d5c4] px-6 py-2.5 text-sm font-semibold text-[#7a5c4e]">
-                Add to cart (coming soon)
-              </span>
             ) : null}
           </div>
         </div>
