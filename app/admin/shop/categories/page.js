@@ -11,11 +11,18 @@ export default async function AdminShopCategoriesPage() {
   if (!profile) redirect("/login?next=/admin/shop/categories");
   if (profile.role !== "admin") redirect("/account");
   const supabase = await createClient();
-  const { data: categories } = await supabase.from("shop_categories").select("*").order("sort_order");
+  const { data: categories } = await supabase
+    .from("shop_categories")
+    .select("*")
+    .order("sort_order")
+    .order("name");
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <Link href="/admin/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">&larr; Shop admin</Link>
+      <Link href="/admin/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">
+        &larr; Shop admin
+      </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Categories</h1>
+      <p className="mt-1 text-sm text-[#7a5c4e]">Catalog groups for the public shop.</p>
       <CategoriesAdminClient initialCategories={categories || []} />
     </div>
   );

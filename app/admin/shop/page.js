@@ -41,19 +41,28 @@ export default async function AdminShopPage() {
     {
       href: "/admin/shop/shops?filter=product_brand",
       label: "Product brands",
-      desc: "Filter: shops marked as product brand (no separate signup)",
+      desc: "Filter: shops marked as product brand",
       ready: true,
     },
-    { href: "/admin/shop/categories", label: "Categories", desc: "Next", ready: false },
-    { href: "/admin/shop/products", label: "Products", desc: "Next · offers + CTAs", ready: false },
+    {
+      href: "/admin/shop/categories",
+      label: "Categories",
+      desc: "Ready · catalog tree",
+      ready: true,
+    },
+    {
+      href: "/admin/shop/products",
+      label: "Products",
+      desc: "Next · brand shop + offers",
+      ready: false,
+    },
   ];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Shop admin</h1>
       <p className="mt-2 text-sm text-[#7a5c4e]">
-        Phase 1B-2b: one Shops entity. Product brand = checkbox on a shop. Selling =
-        offers (affiliate / cart) later.
+        Phase 1B-3: Shops + Categories. Products next.
       </p>
 
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -95,12 +104,7 @@ export default async function AdminShopPage() {
         )}
       </ul>
 
-      <p className="mt-6 text-sm text-[#7a5c4e]">
-        Run <code className="rounded bg-[#fff8f0] px-1">sql/21-shop-unified-shops.sql</code> in
-        Supabase if you have not already.
-      </p>
-
-      <p className="mt-4 text-sm">
+      <p className="mt-6 text-sm">
         <Link href="/shop" className="font-semibold text-[#c45c26] hover:underline">
           View public shop →
         </Link>
