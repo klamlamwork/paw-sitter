@@ -7,6 +7,7 @@ import {
   addUserCartItem,
   mergeLine,
   readGuestCart,
+  resolvePosterShop,
   writeGuestCart,
 } from "@/lib/shopCart";
 
@@ -16,20 +17,22 @@ export default function AddToCartButton({ line, disabled, label = "Add to cart" 
   const [error, setError] = useState("");
 
   async function add() {
-    if (disabled || !line?.product_id || !line?.shop_id) return;
+    if (disabled || !line?.product_id) return;
     setBusy(true);
     setError("");
     setOk(false);
-    const qty = Math.min(99, Math.max(1, line.qty || 1));
     try {
       const supabase = createClient();
+      const seller = await resolvePosterShop(supabase, line.product_id, line.shop_id);
+      const nextLine = { ...line, ...seller, qty: line.qty || 1 };
+      if (!nextLine.shop_id) throw new Error("Missing seller for this product");
       const { data } = await supabase.auth.getUser();
       const userId = data?.user?.id;
       if (userId) {
-        await addUserCartItem(supabase, userId, { ...line, qty });
+        await addUserCartItem(supabase, userId, nextLine);
       } else {
         const cart = readGuestCart();
-        writeGuestCart({ items: mergeLine(cart.items, { ...line, qty, id: lineKey(line) }) });
+        writeGuestCart({ items: mergeLine(cart.items, { ...nextLine, id: lineKey(nextLine) }) });
       }
       setOk(true);
     } catch (e) {

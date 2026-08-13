@@ -53,8 +53,15 @@ export default function ShopCartClient() {
   const groups = useMemo(() => {
     const map = new Map();
     for (const i of items) {
-      const key = i.shop_id || "shop";
-      if (!map.has(key)) map.set(key, { shop_id: key, shop_name: i.shop_name || "Shop", items: [] });
+      const key = i.shop_id || i.shop_slug || i.shop_name || "shop";
+      if (!map.has(key)) {
+        map.set(key, {
+          shop_id: key,
+          shop_name: i.shop_name || "Shop",
+          shop_slug: i.shop_slug || "",
+          items: [],
+        });
+      }
       map.get(key).items.push(i);
     }
     return [...map.values()];
@@ -112,11 +119,16 @@ export default function ShopCartClient() {
 
       {groups.map((g) => (
         <section key={g.shop_id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
-          <h2 className="text-sm font-semibold text-[#3b2a22]">{g.shop_name}</h2>
+          <h2 className="text-sm font-semibold text-[#3b2a22]">
+            <SellerName name={g.shop_name} slug={g.shop_slug} />
+          </h2>
           <ul className="mt-3 divide-y divide-[#f0e4d8]">
             {g.items.map((i) => (
               <li key={i.id || lineKey(i)} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <div className="min-w-0">
+                  <p className="text-xs">
+                    <SellerName name={i.shop_name || g.shop_name} slug={i.shop_slug || g.shop_slug} />
+                  </p>
                   <Link href={i.slug ? `/shop/p/${i.slug}` : "/shop"} className="font-semibold text-[#3b2a22] hover:text-[#c45c26]">
                     {i.name}
                   </Link>
@@ -124,7 +136,7 @@ export default function ShopCartClient() {
                     <p className="text-xs text-[#7a5c4e]">{i.variant_name}</p>
                   ) : null}
                   <p className="text-xs font-semibold text-[#c45c26]">
-                    {formatShopPrice(i.price_cents, i.currency) || "—"}
+                    {formatShopPrice(i.price_cents, i.currency) || "\u2014"}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -167,6 +179,16 @@ export default function ShopCartClient() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function SellerName({ name, slug }) {
+  const label = name || "Shop";
+  if (!slug) return <span className="text-[#c45c26]">{label}</span>;
+  return (
+    <Link href={`/shop/shops/${slug}`} className="font-semibold text-[#c45c26] hover:underline">
+      {label}
+    </Link>
   );
 }
 
