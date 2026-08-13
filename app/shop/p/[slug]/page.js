@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   brandShopPath,
   formatShopPrice,
+  longevityIconEmoji,
   shopPath,
   shopProductPath,
 } from "@/lib/shop";
@@ -46,28 +47,29 @@ export default async function ShopProductPage({ params }) {
     brandShop = data;
   }
 
-  // Offers from other shops / brand DTC (after sql/21)
-  let offers = [];
-  const { data: offerRows, error: offerErr } = await supabase
-    .from("shop_product_offers")
-    .select(
-      "id, shop_id, price_cents, currency, hide_price, show_affiliate, show_add_to_cart, affiliate_url, is_default, shop:shop_shops(id, name, slug, logo_url, is_product_brand, status)"
-    )
-    .eq("product_id", product.id)
-    .eq("status", "approved");
+  const [{ data: offerRows }, { data: longevityItems }] = await Promise.all([
+    supabase
+      .from("shop_product_offers")
+      .select(
+        "id, shop_id, price_cents, currency, hide_price, show_affiliate, show_add_to_cart, affiliate_url, is_default, shop:shop_shops(id, name, slug, logo_url, is_product_brand, status)"
+      )
+      .eq("product_id", product.id)
+      .eq("status", "approved"),
+    supabase
+      .from("shop_product_longevity_items")
+      .select("id, icon_key, label, note, sort_order")
+      .eq("product_id", product.id)
+      .order("sort_order"),
+  ]);
 
-  if (!offerErr && offerRows) {
-    offers = offerRows.filter((o) => o.shop && o.shop.status === "active");
-  }
+  const offers = (offerRows || []).filter((o) => o.shop && o.shop.status === "active");
 
   const media = (product.shop_product_media || [])
     .slice()
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
   const cover = media[0];
 
-  // Fallback display price from default offer or product columns
-  const defaultOffer =
-    offers.find((o) => o.is_default) || offers[0] || null;
+  const defaultOffer = offers.find((o) => o.is_default) || offers[0] || null;
   const displayCents = defaultOffer?.price_cents ?? product.price_cents;
   const displayCurrency = defaultOffer?.currency || product.currency || "CAD";
   const displayHide = defaultOffer ? defaultOffer.hide_price : product.hide_price;
@@ -80,6 +82,8 @@ export default async function ShopProductPage({ params }) {
   const showCart = defaultOffer
     ? defaultOffer.show_add_to_cart
     : product.show_add_to_cart;
+
+  const chips = longevityItems || [];
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -101,16 +105,6 @@ export default async function ShopProductPage({ params }) {
               No image
             </div>
           )}
-          {media.length > 1 ? (
-            <ul className="flex gap-2 overflow-x-auto border-t border-[#e8d5c4] p-2">
-              {media.map((m) => (
-                <li key={m.id} className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[#e8d5c4]">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.url} alt="" className="h-full w-full object-cover" />
-                </li>
-              ))}
-            </ul>
-          ) : null}
         </div>
 
         <div>
@@ -132,10 +126,34 @@ export default async function ShopProductPage({ params }) {
             <p className="mt-4 text-sm text-[#7a5c4e]">Price on request / see seller</p>
           )}
 
-          {product.longevity_blurb ? (
-            <p className="mt-4 rounded-xl bg-[#fff8f0] px-3 py-2 text-sm text-[#5c4033]">
-              {product.longevity_blurb}
-            </p>
+          {chips.length ? (
+            <section className="mt-6">
+              <h2 className="text-sm font-semibold text-[#3b2a22]">Longevity highlights</h2>
+              <ul className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
+                {chips.map((it) => (
+                  <li
+                    key={it.id}
+                    className="flex flex-col items-center rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/80 px-2 py-3 text-center"
+                    title={it.note || it.label}
+                  >
+                    <span
+                      className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-2xl shadow-sm ring-1 ring-[#e8d5c4]"
+                      aria-hidden
+                    >
+                      {longevityIconEmoji(it.icon_key)}
+                    </span>
+                    <span className="mt-2 text-xs font-semibold leading-snug text-[#3b2a22]">
+                      {it.label}
+                    </span>
+                    {it.note ? (
+                      <span className="mt-0.5 line-clamp-2 text-[10px] text-[#7a5c4e]">
+                        {it.note}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
           ) : null}
 
           <div className="mt-6 flex flex-wrap gap-3">
@@ -156,13 +174,9 @@ export default async function ShopProductPage({ params }) {
             ) : null}
           </div>
 
-          {/* Multi-seller logo strip */}
           {offers.length > 0 ? (
             <div className="mt-8">
               <h2 className="text-sm font-semibold text-[#3b2a22]">Available from</h2>
-              <p className="mt-1 text-xs text-[#7a5c4e]">
-                Choose a shop — opens that retailer&apos;s offer for this product.
-              </p>
               <ul className="mt-3 flex flex-wrap gap-3">
                 {offers.map((o) => {
                   const s = o.shop;
@@ -204,11 +218,17 @@ export default async function ShopProductPage({ params }) {
           {brandShop ? (
             <p className="mt-6 text-xs text-[#7a5c4e]">
               Brand page:{" "}
-              <Link href={brandShopPath(brandShop)} className="font-semibold text-[#c45c26] hover:underline">
+              <Link
+                href={brandShopPath(brandShop)}
+                className="font-semibold text-[#c45c26] hover:underline"
+              >
                 {brandShop.name}
               </Link>
               {" · "}
-              <Link href={shopPath(brandShop)} className="font-semibold text-[#c45c26] hover:underline">
+              <Link
+                href={shopPath(brandShop)}
+                className="font-semibold text-[#c45c26] hover:underline"
+              >
                 Brand shop storefront
               </Link>
             </p>

@@ -38,7 +38,6 @@ export default async function AccountShopPortalPage() {
 
   const shopIds = myShops.map((s) => s.id);
 
-  // Products this owner created via primary shop or brand shop
   const { data: byPrimary } = await supabase
     .from("shop_products")
     .select("id, name, slug, status, brand_shop_id, primary_shop_id, short_description, updated_at")
@@ -59,6 +58,25 @@ export default async function AccountShopPortalPage() {
     (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
   );
 
+  const productIds = products.map((p) => p.id);
+  let longevityByProduct = {};
+  if (productIds.length) {
+    const { data: items } = await supabase
+      .from("shop_product_longevity_items")
+      .select("id, product_id, icon_key, label, note, sort_order")
+      .in("product_id", productIds)
+      .order("sort_order");
+    for (const it of items || []) {
+      if (!longevityByProduct[it.product_id]) longevityByProduct[it.product_id] = [];
+      longevityByProduct[it.product_id].push(it);
+    }
+  }
+
+  const productsWithLongevity = products.map((p) => ({
+    ...p,
+    longevity_items: longevityByProduct[p.id] || [],
+  }));
+
   const [{ data: categories }, { data: productBrandShops }] = await Promise.all([
     supabase.from("shop_categories").select("id, name").order("sort_order").order("name"),
     supabase
@@ -76,8 +94,7 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Signed in as {profile.email}. Any of your shops (retailer or product brand) can create
-        products. Submissions go to admin for approval.
+        Signed in as {profile.email}. Create products and longevity chips (circle icon + keywords).
       </p>
 
       <ul className="mt-6 space-y-2">
@@ -112,7 +129,7 @@ export default async function AccountShopPortalPage() {
 
       <ShopPortalClient
         shops={myShops}
-        initialProducts={products}
+        initialProducts={productsWithLongevity}
         categories={categories || []}
         productBrandShops={productBrandShops || []}
         profileId={profile.id}
