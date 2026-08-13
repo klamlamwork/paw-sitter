@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { daysUntil } from "@/lib/shopInventory";
 
 function bucketLabel(days) {
