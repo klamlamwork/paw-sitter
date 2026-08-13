@@ -69,6 +69,16 @@ export default function ShopPortalClient({
     setCreateChipDraft(emptyChipDraft());
   }
 
+  function setCoverAt(listSetter, index) {
+    listSetter((list) => {
+      if (index <= 0 || index >= list.length) return list;
+      const next = [...list];
+      const [item] = next.splice(index, 1);
+      next.unshift(item);
+      return next.map((m, i) => ({ ...m, sort_order: i }));
+    });
+  }
+
   function openEdit(p) {
     setEditId(p.id);
     setError("");
@@ -122,11 +132,10 @@ export default function ShopPortalClient({
         primary_shop_id: p.primary_shop_id,
         brand_shop_id: p.brand_shop_id,
       },
-      editMedia,
-      editLongevity
+      editMedia.map((m, i) => ({ ...m, sort_order: i })),
+      editLongevity.map((it, i) => ({ ...it, sort_order: i }))
     );
 
-    // Never-approved: write live + stay pending
     if (p.status !== "approved") {
       const { error: err } = await supabase
         .from("shop_products")
@@ -141,6 +150,8 @@ export default function ShopPortalClient({
           status: "pending",
           has_pending_edit: false,
           pending_snapshot: null,
+          pending_submitted_at: null,
+          pending_submitted_by: null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", p.id);
@@ -179,7 +190,6 @@ export default function ShopPortalClient({
       return;
     }
 
-    // Already live: store pending snapshot only (public unchanged)
     const { error: err } = await supabase
       .from("shop_products")
       .update({
@@ -430,10 +440,6 @@ export default function ShopPortalClient({
           />
         </label>
         <label className="block text-sm font-medium">
-          Slug
-          <input className={inp + " font-mono"} value={form.slug} onChange={(e) => set("slug", e.target.value)} />
-        </label>
-        <label className="block text-sm font-medium">
           Category
           <select className={inp} value={form.category_id} onChange={(e) => set("category_id", e.target.value)}>
             <option value="">—</option>
@@ -452,51 +458,60 @@ export default function ShopPortalClient({
           Description
           <textarea className={inp} rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} />
         </label>
-        <label className="block text-sm font-medium">
-          Cover / gallery image URL
-          <input className={inp} value={form.image_url} onChange={(e) => set("image_url", e.target.value)} />
-        </label>
-        <div className="flex gap-2">
-          <input
-            className={inp + " flex-1"}
-            placeholder="Add another gallery image URL"
-            id="create-gal"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                const v = e.currentTarget.value.trim();
-                if (!v) return;
-                setCreateGallery((g) => [...g, { url: v, alt_text: "", sort_order: g.length }]);
-                e.currentTarget.value = "";
-              }
-            }}
-          />
+
+        <div className="rounded-xl border border-[#e8d5c4] bg-white p-3">
+          <p className="text-sm font-semibold">Gallery</p>
+          <p className="mt-0.5 text-xs text-[#7a5c4e]">
+            First image is the <strong>cover</strong> (shop lists + main PDP photo). Add more, then
+            use <strong>Set cover</strong> on any thumb.
+          </p>
+          <label className="mt-2 block text-sm font-medium">
+            Image URL
+            <input className={inp} value={form.image_url} onChange={(e) => set("image_url", e.target.value)} placeholder="https://…" />
+          </label>
           <button
             type="button"
-            className="rounded-full border border-[#e8d5c4] px-3 text-xs font-semibold"
+            className="mt-2 rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold"
             onClick={() => {
-              const el = document.getElementById("create-gal");
-              const v = el?.value?.trim();
+              const v = form.image_url.trim();
               if (!v) return;
               setCreateGallery((g) => [...g, { url: v, alt_text: "", sort_order: g.length }]);
-              if (el) el.value = "";
+              set("image_url", "");
             }}
           >
-            Add image
+            Add to gallery
           </button>
+          {createGallery.length ? (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {createGallery.map((m, i) => (
+                <li key={i} className="relative w-20">
+                  <div className="relative h-16 w-20 overflow-hidden rounded-lg border border-[#e8d5c4]">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={m.url} alt="" className="h-full w-full object-cover" />
+                    {i === 0 ? (
+                      <span className="absolute bottom-0 left-0 right-0 bg-[#c45c26] text-center text-[9px] font-bold text-white">
+                        COVER
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 flex flex-col gap-0.5">
+                    {i > 0 ? (
+                      <button type="button" className="text-[10px] font-semibold text-[#c45c26]" onClick={() => setCoverAt(setCreateGallery, i)}>
+                        Set cover
+                      </button>
+                    ) : null}
+                    <button type="button" className="text-[10px] font-semibold text-red-600" onClick={() => setCreateGallery((g) => g.filter((_, j) => j !== i))}>
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-2 text-xs text-[#7a5c4e]">No gallery images yet.</p>
+          )}
         </div>
-        {createGallery.length ? (
-          <ul className="flex flex-wrap gap-2 text-xs text-[#7a5c4e]">
-            {createGallery.map((m, i) => (
-              <li key={i} className="rounded-full border border-[#e8d5c4] px-2 py-0.5">
-                img {i + 1}{" "}
-                <button type="button" className="text-red-600" onClick={() => setCreateGallery((g) => g.filter((_, j) => j !== i))}>
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+
         <label className="block text-sm font-medium">
           Price CAD (optional)
           <input type="number" step="0.01" min="0" className={inp} value={form.price} onChange={(e) => set("price", e.target.value)} />
@@ -512,9 +527,7 @@ export default function ShopPortalClient({
             <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
               {createChips.map((c) => (
                 <li key={c.tempId} className="relative flex flex-col items-center rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-2 py-3 text-center">
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl ring-1 ring-[#e8d5c4]">
-                    {longevityIconEmoji(c.icon_key)}
-                  </span>
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl ring-1 ring-[#e8d5c4]">{longevityIconEmoji(c.icon_key)}</span>
                   <span className="mt-2 text-[11px] font-semibold">{c.label}</span>
                   <button type="button" className="absolute right-1 top-1 text-red-600" onClick={() => setCreateChips((list) => list.filter((x) => x.tempId !== c.tempId))}>×</button>
                 </li>
@@ -523,23 +536,13 @@ export default function ShopPortalClient({
           ) : null}
           <div className="mt-3 flex flex-wrap gap-1.5">
             {LONGEVITY_ICONS.map((ic) => (
-              <button
-                key={ic.key}
-                type="button"
-                onClick={() => setCreateChipDraft((d) => ({ ...d, icon_key: ic.key }))}
-                className={
-                  "flex h-9 w-9 items-center justify-center rounded-full text-base " +
-                  (createChipDraft.icon_key === ic.key ? "bg-[#c45c26]" : "bg-[#fff8f0] ring-1 ring-[#e8d5c4]")
-                }
-              >
+              <button key={ic.key} type="button" onClick={() => setCreateChipDraft((d) => ({ ...d, icon_key: ic.key }))} className={"flex h-9 w-9 items-center justify-center rounded-full text-base " + (createChipDraft.icon_key === ic.key ? "bg-[#c45c26]" : "bg-[#fff8f0] ring-1 ring-[#e8d5c4]")}>
                 {ic.emoji}
               </button>
             ))}
           </div>
           <input className={inp} placeholder="Keywords" value={createChipDraft.label} onChange={(e) => setCreateChipDraft((d) => ({ ...d, label: e.target.value }))} />
-          <button type="button" onClick={stageCreateChip} className="mt-2 rounded-full border border-[#e8d5c4] px-4 py-1.5 text-xs font-semibold">
-            Add chip
-          </button>
+          <button type="button" onClick={stageCreateChip} className="mt-2 rounded-full border border-[#e8d5c4] px-4 py-1.5 text-xs font-semibold">Add chip</button>
         </div>
 
         <button type="submit" disabled={busy} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
@@ -562,19 +565,12 @@ export default function ShopPortalClient({
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full border border-[#e8d5c4] px-2 py-0.5 text-[10px] font-bold uppercase text-[#7a5c4e]">
-                    {p.status}
-                    {p.has_pending_edit ? " + update" : ""}
+                    {p.status}{p.has_pending_edit ? " + update" : ""}
                   </span>
                   {p.status === "approved" ? (
-                    <Link href={`/shop/p/${p.slug}`} className="text-xs font-semibold text-[#c45c26]">
-                      View live
-                    </Link>
+                    <Link href={`/shop/p/${p.slug}`} className="text-xs font-semibold text-[#c45c26]">View live</Link>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={() => (editId === p.id ? setEditId("") : openEdit(p))}
-                    className="rounded-full bg-[#c45c26] px-3 py-1 text-xs font-semibold text-white"
-                  >
+                  <button type="button" onClick={() => (editId === p.id ? setEditId("") : openEdit(p))} className="rounded-full bg-[#c45c26] px-3 py-1 text-xs font-semibold text-white">
                     {editId === p.id ? "Close" : "Edit"}
                   </button>
                 </div>
@@ -584,57 +580,42 @@ export default function ShopPortalClient({
                 <div className="mt-4 space-y-3 border-t border-[#e8d5c4] pt-4">
                   <p className="text-xs text-[#7a5c4e]">
                     {p.status === "approved"
-                      ? "Saving submits a pending update. Public keeps the current approved content until admin approves."
+                      ? "Saving submits a pending update. Public keeps approved content until admin approves."
                       : "Not live yet — saves stay in pending review."}
                   </p>
-                  <label className="block text-sm font-medium">
-                    Name
-                    <input className={inp} value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Slug
-                    <input className={inp + " font-mono"} value={editForm.slug} onChange={(e) => setEditForm((f) => ({ ...f, slug: e.target.value }))} />
-                  </label>
+                  <label className="block text-sm font-medium">Name<input className={inp} value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} /></label>
+                  <label className="block text-sm font-medium">Slug<input className={inp + " font-mono"} value={editForm.slug} onChange={(e) => setEditForm((f) => ({ ...f, slug: e.target.value }))} /></label>
                   <label className="block text-sm font-medium">
                     Category
                     <select className={inp} value={editForm.category_id || ""} onChange={(e) => setEditForm((f) => ({ ...f, category_id: e.target.value }))}>
                       <option value="">—</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
+                      {categories.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
                     </select>
                   </label>
-                  <label className="block text-sm font-medium">
-                    Short description
-                    <input className={inp} value={editForm.short_description} onChange={(e) => setEditForm((f) => ({ ...f, short_description: e.target.value }))} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Description
-                    <textarea className={inp} rows={3} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
-                  </label>
-                  <label className="block text-sm font-medium">
-                    Price CAD
-                    <input type="number" step="0.01" className={inp} value={editForm.price} onChange={(e) => setEditForm((f) => ({ ...f, price: e.target.value }))} />
-                  </label>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={editForm.hide_price} onChange={(e) => setEditForm((f) => ({ ...f, hide_price: e.target.checked }))} />
-                    Hide price
-                  </label>
+                  <label className="block text-sm font-medium">Short description<input className={inp} value={editForm.short_description} onChange={(e) => setEditForm((f) => ({ ...f, short_description: e.target.value }))} /></label>
+                  <label className="block text-sm font-medium">Description<textarea className={inp} rows={3} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} /></label>
+                  <label className="block text-sm font-medium">Price CAD<input type="number" step="0.01" className={inp} value={editForm.price} onChange={(e) => setEditForm((f) => ({ ...f, price: e.target.value }))} /></label>
+                  <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editForm.hide_price} onChange={(e) => setEditForm((f) => ({ ...f, hide_price: e.target.checked }))} /> Hide price</label>
 
                   <div>
                     <p className="text-xs font-semibold uppercase text-[#7a5c4e]">Gallery</p>
+                    <p className="mt-0.5 text-[11px] text-[#7a5c4e]">First image = cover. Tap <strong>Set cover</strong> to promote another.</p>
                     <ul className="mt-2 flex flex-wrap gap-2">
                       {editMedia.map((m, i) => (
-                        <li key={i} className="relative h-16 w-16 overflow-hidden rounded-lg border border-[#e8d5c4]">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={m.url} alt="" className="h-full w-full object-cover" />
-                          <button
-                            type="button"
-                            className="absolute right-0 top-0 bg-black/50 px-1 text-[10px] text-white"
-                            onClick={() => setEditMedia((list) => list.filter((_, j) => j !== i))}
-                          >
-                            ×
-                          </button>
+                        <li key={i} className="w-20">
+                          <div className="relative h-16 w-20 overflow-hidden rounded-lg border border-[#e8d5c4]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={m.url} alt="" className="h-full w-full object-cover" />
+                            {i === 0 ? (
+                              <span className="absolute bottom-0 left-0 right-0 bg-[#c45c26] text-center text-[9px] font-bold text-white">COVER</span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 flex flex-col gap-0.5">
+                            {i > 0 ? (
+                              <button type="button" className="text-[10px] font-semibold text-[#c45c26]" onClick={() => setCoverAt(setEditMedia, i)}>Set cover</button>
+                            ) : null}
+                            <button type="button" className="text-[10px] font-semibold text-red-600" onClick={() => setEditMedia((list) => list.filter((_, j) => j !== i))}>Remove</button>
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -660,9 +641,7 @@ export default function ShopPortalClient({
                     <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
                       {editLongevity.map((it, i) => (
                         <li key={i} className="relative flex flex-col items-center rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-2 py-3 text-center">
-                          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl ring-1 ring-[#e8d5c4]">
-                            {longevityIconEmoji(it.icon_key)}
-                          </span>
+                          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl ring-1 ring-[#e8d5c4]">{longevityIconEmoji(it.icon_key)}</span>
                           <span className="mt-2 text-[11px] font-semibold">{it.label}</span>
                           <button type="button" className="absolute right-1 top-1 text-red-600" onClick={() => setEditLongevity((list) => list.filter((_, j) => j !== i))}>×</button>
                         </li>
@@ -670,15 +649,7 @@ export default function ShopPortalClient({
                     </ul>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {LONGEVITY_ICONS.map((ic) => (
-                        <button
-                          key={ic.key}
-                          type="button"
-                          onClick={() => setEditChipDraft((d) => ({ ...d, icon_key: ic.key }))}
-                          className={
-                            "flex h-9 w-9 items-center justify-center rounded-full text-base " +
-                            (editChipDraft.icon_key === ic.key ? "bg-[#c45c26]" : "bg-[#fff8f0] ring-1 ring-[#e8d5c4]")
-                          }
-                        >
+                        <button key={ic.key} type="button" onClick={() => setEditChipDraft((d) => ({ ...d, icon_key: ic.key }))} className={"flex h-9 w-9 items-center justify-center rounded-full text-base " + (editChipDraft.icon_key === ic.key ? "bg-[#c45c26]" : "bg-[#fff8f0] ring-1 ring-[#e8d5c4]")}>
                           {ic.emoji}
                         </button>
                       ))}
@@ -690,10 +661,7 @@ export default function ShopPortalClient({
                       onClick={() => {
                         const label = editChipDraft.label.trim();
                         if (!label) return;
-                        setEditLongevity((list) => [
-                          ...list,
-                          { icon_key: editChipDraft.icon_key, label, note: editChipDraft.note || "", sort_order: list.length },
-                        ]);
+                        setEditLongevity((list) => [...list, { icon_key: editChipDraft.icon_key, label, note: "", sort_order: list.length }]);
                         setEditChipDraft(emptyChipDraft());
                       }}
                     >
@@ -701,17 +669,8 @@ export default function ShopPortalClient({
                     </button>
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => submitEdit(p)}
-                    className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                  >
-                    {busy
-                      ? "Saving…"
-                      : p.status === "approved"
-                        ? "Submit update for approval"
-                        : "Save pending product"}
+                  <button type="button" disabled={busy} onClick={() => submitEdit(p)} className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                    {busy ? "Saving…" : p.status === "approved" ? "Submit update for approval" : "Save pending product"}
                   </button>
                 </div>
               ) : null}
