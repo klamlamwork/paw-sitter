@@ -78,7 +78,7 @@ export default async function ShopProductPage({ params }) {
     const variantIds = variants.map((v) => v.id);
     const { data: batches } = await supabase
       .from("shop_product_batches")
-      .select("id, variant_id, qty_on_hand, expiry_date, status")
+      .select("id, variant_id, qty_on_hand, qty_reserved, expiry_date, status")
       .in("variant_id", variantIds);
 
     const byVariant = {};
@@ -155,6 +155,7 @@ export default async function ShopProductPage({ params }) {
               basePriceCents={displayCents}
               currency={displayCurrency}
               hidePrice={displayHide}
+              showFefo={batchMode}
             />
           ) : priceLabel ? (
             <p className="mt-4 text-2xl font-bold text-[#c45c26]">{priceLabel}</p>
