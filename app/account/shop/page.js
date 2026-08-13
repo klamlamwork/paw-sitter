@@ -37,7 +37,7 @@ export default async function AccountShopPortalPage() {
   const shopIds = myShops.map((s) => s.id);
 
   const productSelect =
-    "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, has_pending_edit, pending_snapshot, updated_at";
+    "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, show_affiliate, show_add_to_cart, affiliate_url, has_pending_edit, pending_snapshot, updated_at";
 
   const [{ data: byPrimary }, { data: byBrand }] = await Promise.all([
     supabase.from("shop_products").select(productSelect).in("primary_shop_id", shopIds).order("updated_at", { ascending: false }),
@@ -74,15 +74,17 @@ export default async function AccountShopPortalPage() {
   let longevityByProduct = {};
   let catsByProduct = {};
   let variantsByProduct = {};
+  let offersByProduct = {};
   let expiringRows = [];
 
   if (productIds.length) {
-    const [{ data: media }, { data: items }, { data: catLinks }, { data: variants }] =
+    const [{ data: media }, { data: items }, { data: catLinks }, { data: variants }, { data: offers }] =
       await Promise.all([
         supabase.from("shop_product_media").select("id, product_id, url, alt_text, sort_order").in("product_id", productIds).order("sort_order"),
         supabase.from("shop_product_longevity_items").select("id, product_id, icon_key, label, note, sort_order").in("product_id", productIds).order("sort_order"),
         supabase.from("shop_product_categories").select("product_id, category_id").in("product_id", productIds),
         supabase.from("shop_product_variants").select("*").in("product_id", productIds).order("sort_order"),
+        supabase.from("shop_product_offers").select("id, product_id, shop_id, show_affiliate, show_add_to_cart, affiliate_url").in("product_id", productIds),
       ]);
     for (const m of media || []) {
       if (!mediaByProduct[m.product_id]) mediaByProduct[m.product_id] = [];
@@ -99,6 +101,10 @@ export default async function AccountShopPortalPage() {
     for (const v of variants || []) {
       if (!variantsByProduct[v.product_id]) variantsByProduct[v.product_id] = [];
       variantsByProduct[v.product_id].push(v);
+    }
+    for (const o of offers || []) {
+      if (!offersByProduct[o.product_id]) offersByProduct[o.product_id] = [];
+      offersByProduct[o.product_id].push(o);
     }
 
     const variantIds = (variants || []).map((v) => v.id);
@@ -118,10 +124,16 @@ export default async function AccountShopPortalPage() {
 
   const productsFull = products.map((p) => {
     const snap = p.has_pending_edit && p.pending_snapshot ? p.pending_snapshot : null;
+    const shopOffer = (offersByProduct[p.id] || []).find(
+      (o) => o.shop_id === p.primary_shop_id
+    );
     return {
       ...p,
       inventory_mode: p.inventory_mode || "simple",
       product_type: p.product_type || "other",
+      show_affiliate: shopOffer?.show_affiliate ?? p.show_affiliate ?? false,
+      show_add_to_cart: shopOffer?.show_add_to_cart ?? p.show_add_to_cart ?? false,
+      affiliate_url: shopOffer?.affiliate_url ?? p.affiliate_url ?? "",
       edit_name: snap?.name ?? p.name,
       edit_slug: snap?.slug ?? p.slug,
       edit_short_description: snap?.short_description ?? p.short_description,
@@ -149,7 +161,7 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Product type controls stock mode. Variety / batch / expiry rules need no admin approval.
+        Set affiliate and/or add to cart on each product. Variety / batch / buy buttons need no admin approval.
       </p>
 
       <ul className="mt-6 space-y-3">
