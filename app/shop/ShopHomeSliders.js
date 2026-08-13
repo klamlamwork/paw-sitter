@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 function ShopChip({ href, name, logoUrl }) {
@@ -32,105 +31,35 @@ function ShopChip({ href, name, logoUrl }) {
 
 /**
  * Desktop: 4 columns.
- * Mobile: horizontal snap slider, ~2 cards in view.
+ * Mobile: horizontal scroll with next card peek (no arrows / dots).
  */
 export default function ShopEntitySlider({ items, emptyLabel }) {
-  const scrollerRef = useRef(null);
-  const [canPrev, setCanPrev] = useState(false);
-  const [canNext, setCanNext] = useState(false);
-  const [page, setPage] = useState(0);
-  const [pages, setPages] = useState(1);
-
-  const updateChrome = useCallback(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    const { scrollLeft, scrollWidth, clientWidth } = el;
-    setCanPrev(scrollLeft > 4);
-    setCanNext(scrollLeft + clientWidth < scrollWidth - 4);
-    const p = Math.max(1, Math.ceil(scrollWidth / Math.max(clientWidth, 1)));
-    setPages(p);
-    setPage(Math.min(p - 1, Math.round(scrollLeft / Math.max(clientWidth, 1))));
-  }, []);
-
-  useEffect(() => {
-    const el = scrollerRef.current;
-    if (!el) return;
-    updateChrome();
-    el.addEventListener("scroll", updateChrome, { passive: true });
-    window.addEventListener("resize", updateChrome);
-    return () => {
-      el.removeEventListener("scroll", updateChrome);
-      window.removeEventListener("resize", updateChrome);
-    };
-  }, [updateChrome, items]);
-
-  function scrollByDir(dir) {
-    const el = scrollerRef.current;
-    if (!el) return;
-    el.scrollBy({ left: dir * el.clientWidth * 0.85, behavior: "smooth" });
-  }
-
   if (!items?.length) {
     return <p className="mt-3 text-sm text-[#7a5c4e]">{emptyLabel}</p>;
   }
 
   return (
     <div className="relative mt-3">
-      {/* Mobile slider */}
-      <div className="sm:hidden">
-        <div className="relative">
-          <div
-            ref={scrollerRef}
-            className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          >
-            {items.map((it) => (
-              <div
-                key={it.id}
-                className="w-[calc(50%-0.3125rem)] shrink-0 snap-start"
-              >
-                <ShopChip href={it.href} name={it.name} logoUrl={it.logoUrl} />
-              </div>
-            ))}
-          </div>
-
-          {canPrev ? (
-            <button
-              type="button"
-              aria-label="Previous"
-              onClick={() => scrollByDir(-1)}
-              className="absolute left-0 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-[#e8d5c4] bg-white/95 text-[#3b2a22] shadow-md backdrop-blur"
+      {/* Mobile: peek slider — ~1.65 cards so right card is cut off */}
+      <div className="-mx-4 sm:hidden">
+        <div
+          className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          style={{ WebkitOverflowScrolling: "touch" }}
+        >
+          {items.map((it) => (
+            <div
+              key={it.id}
+              className="w-[calc((100%-0.625rem)/1.65)] shrink-0 snap-start"
             >
-              ‹
-            </button>
-          ) : null}
-          {canNext ? (
-            <button
-              type="button"
-              aria-label="Next"
-              onClick={() => scrollByDir(1)}
-              className="absolute right-0 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-[#e8d5c4] bg-white/95 text-[#3b2a22] shadow-md backdrop-blur"
-            >
-              ›
-            </button>
-          ) : null}
+              <ShopChip href={it.href} name={it.name} logoUrl={it.logoUrl} />
+            </div>
+          ))}
+          {/* end spacer so last card can scroll fully into view */}
+          <div className="w-2 shrink-0" aria-hidden />
         </div>
-
-        {pages > 1 ? (
-          <div className="mt-2 flex justify-center gap-1.5">
-            {Array.from({ length: pages }).map((_, i) => (
-              <span
-                key={i}
-                className={
-                  "h-1.5 rounded-full transition-all " +
-                  (i === page ? "w-4 bg-[#c45c26]" : "w-1.5 bg-[#e8d5c4]")
-                }
-              />
-            ))}
-          </div>
-        ) : null}
       </div>
 
-      {/* Desktop: 4 per row */}
+      {/* Desktop / tablet grid */}
       <ul className="hidden gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-4">
         {items.map((it) => (
           <li key={it.id} className="min-w-0">

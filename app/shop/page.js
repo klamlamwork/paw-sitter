@@ -1,50 +1,14 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { brandShopPath, formatShopPrice, productPath, shopPath } from "@/lib/shop";
+import { brandShopPath, shopPath } from "@/lib/shop";
 import ShopEntitySlider from "./ShopHomeSliders";
+import ShopProductsPanel from "./ShopProductsPanel";
 
 export const metadata = {
   title: "Shop | Paw Sitter",
   description: "Longevity-minded products for pets — brands and retailers on Paw Sitter.",
 };
-
-function ProductTile({ product, coverUrl }) {
-  const price = formatShopPrice(product.price_cents, product.currency, product.hide_price);
-  return (
-    <Link
-      href={productPath(product)}
-      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white transition hover:border-[#c45c26]/50"
-    >
-      <div className="relative aspect-square w-full bg-[#fff8f0]">
-        {coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={coverUrl}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-sm text-[#7a5c4e]">
-            No image
-          </div>
-        )}
-      </div>
-      <div className="flex flex-1 flex-col px-3 py-3">
-        <span className="line-clamp-2 text-sm font-semibold leading-snug text-[#3b2a22] group-hover:text-[#c45c26]">
-          {product.name}
-        </span>
-        {product.short_description ? (
-          <span className="mt-1 line-clamp-2 text-xs text-[#7a5c4e]">
-            {product.short_description}
-          </span>
-        ) : null}
-        {price ? (
-          <span className="mt-2 text-sm font-semibold text-[#c45c26]">{price}</span>
-        ) : null}
-      </div>
-    </Link>
-  );
-}
 
 function sortHomeList(rows, sortKey) {
   return [...(rows || [])].sort((a, b) => {
@@ -61,28 +25,36 @@ function sortHomeList(rows, sortKey) {
 
 export default async function ShopHomePage() {
   const supabase = await createClient();
-  const [{ data: brandShopsRaw }, { data: shopsRaw }, { data: products }, { data: categories }] =
-    await Promise.all([
-      supabase
-        .from("shop_shops")
-        .select("id, name, slug, logo_url, is_product_brand, home_brand_sort")
-        .eq("is_product_brand", true)
-        .eq("status", "active"),
-      supabase
-        .from("shop_shops")
-        .select("id, name, slug, logo_url, is_product_brand, home_retailer_sort")
-        .eq("status", "active")
-        .eq("is_product_brand", false),
-      supabase
-        .from("shop_products")
-        .select(
-          "id, name, slug, short_description, price_cents, currency, hide_price, brand_shop_id"
-        )
-        .eq("status", "approved")
-        .order("updated_at", { ascending: false })
-        .limit(24),
-      supabase.from("shop_categories").select("id, name, slug").order("sort_order").limit(12),
-    ]);
+  const [
+    { data: brandShopsRaw },
+    { data: shopsRaw },
+    { data: products },
+    { data: categories },
+  ] = await Promise.all([
+    supabase
+      .from("shop_shops")
+      .select("id, name, slug, logo_url, is_product_brand, home_brand_sort")
+      .eq("is_product_brand", true)
+      .eq("status", "active"),
+    supabase
+      .from("shop_shops")
+      .select("id, name, slug, logo_url, is_product_brand, home_retailer_sort")
+      .eq("status", "active")
+      .eq("is_product_brand", false),
+    supabase
+      .from("shop_products")
+      .select(
+        "id, name, slug, short_description, price_cents, currency, hide_price, brand_shop_id, category_id, updated_at"
+      )
+      .eq("status", "approved")
+      .order("updated_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("shop_categories")
+      .select("id, name, slug, sort_order, filter_row")
+      .order("sort_order")
+      .order("name"),
+  ]);
 
   const brandShops = sortHomeList(brandShopsRaw, "home_brand_sort").slice(0, 10);
   const shops = sortHomeList(shopsRaw, "home_retailer_sort").slice(0, 10);
@@ -102,16 +74,46 @@ export default async function ShopHomePage() {
 
   const productIds = (products || []).map((p) => p.id);
   const coverByProduct = {};
+  const longevityByProduct = {};
+  const longevitySet = new Set();
+
   if (productIds.length) {
-    const { data: media } = await supabase
-      .from("shop_product_media")
-      .select("product_id, url, sort_order")
-      .in("product_id", productIds)
-      .order("sort_order", { ascending: true });
+    const [{ data: media }, { data: lonItems }] = await Promise.all([
+      supabase
+        .from("shop_product_media")
+        .select("product_id, url, sort_order")
+        .in("product_id", productIds)
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("shop_product_longevity_items")
+        .select("product_id, label")
+        .in("product_id", productIds),
+    ]);
     for (const m of media || []) {
       if (!coverByProduct[m.product_id]) coverByProduct[m.product_id] = m.url;
     }
+    for (const it of lonItems || []) {
+      if (!it.label) continue;
+      if (!longevityByProduct[it.product_id]) longevityByProduct[it.product_id] = [];
+      longevityByProduct[it.product_id].push(it.label);
+      longevitySet.add(it.label);
+    }
   }
+
+  const productsEnriched = (products || []).map((p) => ({
+    ...p,
+    longevity_labels: longevityByProduct[p.id] || [],
+  }));
+
+  const cats = categories || [];
+  const categoriesRow1 = cats
+    .filter((c) => (c.filter_row == null || c.filter_row === 1))
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
+  const categoriesRow2 = cats
+    .filter((c) => c.filter_row === 2)
+    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
+
+  const longevityLabels = [...longevitySet].sort((a, b) => a.localeCompare(b));
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -141,37 +143,17 @@ export default async function ShopHomePage() {
         <ShopEntitySlider items={retailerItems} emptyLabel="No retailer shops yet." />
       </section>
 
-      {(categories || []).length ? (
-        <section className="mt-10">
-          <h2 className="text-lg font-semibold text-[#3b2a22]">Categories</h2>
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {categories.map((c) => (
-              <li key={c.id}>
-                <Link
-                  href={`/shop/c/${c.slug}`}
-                  className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold text-[#5c4033] hover:border-[#c45c26]/50"
-                >
-                  {c.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
       <section className="mt-10">
         <h2 className="text-lg font-semibold text-[#3b2a22]">Products</h2>
-        {(products || []).length ? (
-          <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {products.map((p) => (
-              <li key={p.id} className="min-w-0">
-                <ProductTile product={p} coverUrl={coverByProduct[p.id] || null} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-[#7a5c4e]">No products yet.</p>
-        )}
+        <Suspense fallback={<p className="mt-3 text-sm text-[#7a5c4e]">Loading products…</p>}>
+          <ShopProductsPanel
+            products={productsEnriched}
+            coverByProduct={coverByProduct}
+            categoriesRow1={categoriesRow1}
+            categoriesRow2={categoriesRow2}
+            longevityLabels={longevityLabels}
+          />
+        </Suspense>
       </section>
     </div>
   );

@@ -13,9 +13,19 @@ export default function CategoriesAdminClient({ initialCategories }) {
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
+  const [filterRow, setFilterRow] = useState("1");
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
+
+  function sortCats(list) {
+    return [...list].sort(
+      (a, b) =>
+        (a.filter_row || 1) - (b.filter_row || 1) ||
+        (a.sort_order || 0) - (b.sort_order || 0) ||
+        a.name.localeCompare(b.name)
+    );
+  }
 
   async function addCat(e) {
     e.preventDefault();
@@ -36,6 +46,7 @@ export default function CategoriesAdminClient({ initialCategories }) {
         slug: slugifyShop(slug || n),
         description: description.trim(),
         sort_order: Number(sortOrder) || 0,
+        filter_row: Number(filterRow) === 2 ? 2 : 1,
       })
       .select("*")
       .single();
@@ -44,16 +55,25 @@ export default function CategoriesAdminClient({ initialCategories }) {
       setError(err.message);
       return;
     }
-    setCats((list) =>
-      [...list, data].sort(
-        (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)
-      )
-    );
+    setCats((list) => sortCats([...list, data]));
     setName("");
     setSlug("");
     setDescription("");
     setSortOrder("0");
+    setFilterRow("1");
     setOk("Category created.");
+    router.refresh();
+  }
+
+  async function patchCat(c, fields) {
+    const supabase = createClient();
+    const { error: err } = await supabase.from("shop_categories").update(fields).eq("id", c.id);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setCats((list) => sortCats(list.map((x) => (x.id === c.id ? { ...x, ...fields } : x))));
+    setOk("Saved.");
     router.refresh();
   }
 
@@ -104,15 +124,24 @@ export default function CategoriesAdminClient({ initialCategories }) {
             onChange={(e) => setDescription(e.target.value)}
           />
         </label>
-        <label className="block text-sm font-medium">
-          Sort order
-          <input
-            type="number"
-            className={inp}
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value)}
-          />
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm font-medium">
+            Filter line on /shop/
+            <select className={inp} value={filterRow} onChange={(e) => setFilterRow(e.target.value)}>
+              <option value="1">Line 1 (first row)</option>
+              <option value="2">Line 2 (second row)</option>
+            </select>
+          </label>
+          <label className="block text-sm font-medium">
+            Sequence within line
+            <input
+              type="number"
+              className={inp}
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+            />
+          </label>
+        </div>
         <button
           type="submit"
           disabled={busy}
@@ -126,21 +155,45 @@ export default function CategoriesAdminClient({ initialCategories }) {
         {cats.map((c) => (
           <li
             key={c.id}
-            className="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm"
+            className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm"
           >
-            <div>
-              <p className="font-semibold text-[#3b2a22]">{c.name}</p>
-              <p className="text-xs text-[#7a5c4e]">
-                /shop/c/{c.slug} · sort {c.sort_order}
-              </p>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="font-semibold text-[#3b2a22]">{c.name}</p>
+                <p className="text-xs text-[#7a5c4e]">/shop/c/{c.slug}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => remove(c)}
+                className="text-xs font-semibold text-red-600"
+              >
+                Delete
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => remove(c)}
-              className="text-xs font-semibold text-red-600"
-            >
-              Delete
-            </button>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-medium text-[#7a5c4e]">
+                Filter line
+                <select
+                  className={inp + " text-sm"}
+                  value={String(c.filter_row || 1)}
+                  onChange={(e) =>
+                    patchCat(c, { filter_row: Number(e.target.value) === 2 ? 2 : 1 })
+                  }
+                >
+                  <option value="1">Line 1</option>
+                  <option value="2">Line 2</option>
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-[#7a5c4e]">
+                Sequence
+                <input
+                  type="number"
+                  className={inp + " text-sm"}
+                  value={c.sort_order ?? 0}
+                  onChange={(e) => patchCat(c, { sort_order: Number(e.target.value) || 0 })}
+                />
+              </label>
+            </div>
           </li>
         ))}
       </ul>

@@ -14,6 +14,7 @@ export default async function AdminShopCategoriesPage() {
   const { data: categories } = await supabase
     .from("shop_categories")
     .select("*")
+    .order("filter_row")
     .order("sort_order")
     .order("name");
   return (
@@ -22,7 +23,10 @@ export default async function AdminShopCategoriesPage() {
         &larr; Shop admin
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Categories</h1>
-      <p className="mt-1 text-sm text-[#7a5c4e]">Catalog groups for the public shop.</p>
+      <p className="mt-1 text-sm text-[#7a5c4e]">
+        Catalog groups. On /shop/ Products, filters use <strong>two lines</strong> — set filter
+        line + sequence for each category.
+      </p>
       <CategoriesAdminClient initialCategories={categories || []} />
     </div>
   );
