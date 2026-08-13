@@ -29,29 +29,45 @@ export default async function AccountShopPortalPage() {
         <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
         <p className="mt-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] px-4 py-3 text-sm text-[#5c4033]">
           No shop is linked to <strong>{profile.email}</strong> yet. Ask an admin to open{" "}
-          <span className="font-semibold">Admin → Shop → Shops</span>, create or edit your shop,
-          and set <strong>Owner account</strong> to this email. Shop must be <strong>active</strong>.
+          <span className="font-semibold">Admin → Shop → Shops</span>, set{" "}
+          <strong>Owner account</strong> to this email, and keep the shop <strong>active</strong>.
         </p>
       </div>
     );
   }
 
-  const brandShopIds = myShops.filter((s) => s.is_product_brand).map((s) => s.id);
-  let products = [];
-  if (brandShopIds.length) {
-    const { data } = await supabase
-      .from("shop_products")
-      .select("id, name, slug, status, brand_shop_id, short_description, updated_at")
-      .in("brand_shop_id", brandShopIds)
-      .order("updated_at", { ascending: false });
-    products = data || [];
-  }
+  const shopIds = myShops.map((s) => s.id);
 
-  const { data: categories } = await supabase
-    .from("shop_categories")
-    .select("id, name")
-    .order("sort_order")
-    .order("name");
+  // Products this owner created via primary shop or brand shop
+  const { data: byPrimary } = await supabase
+    .from("shop_products")
+    .select("id, name, slug, status, brand_shop_id, primary_shop_id, short_description, updated_at")
+    .in("primary_shop_id", shopIds)
+    .order("updated_at", { ascending: false });
+
+  const { data: byBrand } = await supabase
+    .from("shop_products")
+    .select("id, name, slug, status, brand_shop_id, primary_shop_id, short_description, updated_at")
+    .in("brand_shop_id", shopIds)
+    .order("updated_at", { ascending: false });
+
+  const map = new Map();
+  for (const p of [...(byPrimary || []), ...(byBrand || [])]) {
+    map.set(p.id, p);
+  }
+  const products = [...map.values()].sort(
+    (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
+  );
+
+  const [{ data: categories }, { data: productBrandShops }] = await Promise.all([
+    supabase.from("shop_categories").select("id, name").order("sort_order").order("name"),
+    supabase
+      .from("shop_shops")
+      .select("id, name, slug")
+      .eq("is_product_brand", true)
+      .eq("status", "active")
+      .order("name"),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
@@ -60,8 +76,8 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Signed in as {profile.email}. Create products as a product-brand shop; they go to admin for
-        approval. Affiliate / cart CTAs expand in the next batch.
+        Signed in as {profile.email}. Any of your shops (retailer or product brand) can create
+        products. Submissions go to admin for approval.
       </p>
 
       <ul className="mt-6 space-y-2">
@@ -98,6 +114,7 @@ export default async function AccountShopPortalPage() {
         shops={myShops}
         initialProducts={products}
         categories={categories || []}
+        productBrandShops={productBrandShops || []}
         profileId={profile.id}
       />
     </div>
