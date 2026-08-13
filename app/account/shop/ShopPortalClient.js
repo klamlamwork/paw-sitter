@@ -3,11 +3,12 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { LONGEVITY_ICONS, longevityIconEmoji, slugifyShop } from "@/lib/shop";
+import { slugifyShop } from "@/lib/shop";
 import { defaultInventoryMode } from "@/lib/shopInventory";
 import { snapshotFromForm, syncProductCategories } from "@/lib/shopProductPending";
 import CategoryMultiSelect from "@/components/shop/CategoryMultiSelect";
 import ProductTypeSelect from "@/components/shop/ProductTypeSelect";
+import ProductGalleryEditor from "@/components/shop/ProductGalleryEditor";
 import ShopPortalVariantsHook from "./ShopPortalVariantsHook";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
@@ -39,7 +40,6 @@ export default function ShopPortalClient({
   const [createChips, setCreateChips] = useState([]);
   const [createChipDraft, setCreateChipDraft] = useState(emptyChipDraft());
   const [createGallery, setCreateGallery] = useState([]);
-  const [createImageUrl, setCreateImageUrl] = useState("");
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
@@ -48,20 +48,9 @@ export default function ShopPortalClient({
   const [editMedia, setEditMedia] = useState([]);
   const [editLongevity, setEditLongevity] = useState([]);
   const [editChipDraft, setEditChipDraft] = useState(emptyChipDraft());
-  const [editImageUrl, setEditImageUrl] = useState("");
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const selectedShop = activeShops.find((s) => s.id === form.shop_id);
-
-  function setCoverAt(listSetter, index) {
-    listSetter((list) => {
-      if (index <= 0 || index >= list.length) return list;
-      const next = [...list];
-      const [item] = next.splice(index, 1);
-      next.unshift(item);
-      return next.map((m, i) => ({ ...m, sort_order: i }));
-    });
-  }
 
   function openEdit(p) {
     setEditId(p.id);
@@ -83,7 +72,11 @@ export default function ShopPortalClient({
       shop_id: p.primary_shop_id || "",
       brand_shop_id: p.brand_shop_id || "",
     });
-    setEditMedia((p.media || []).map((m, i) => ({ url: m.url, alt_text: m.alt_text || "", sort_order: i })));
+    setEditMedia(
+      (p.media || [])
+        .filter((m) => m?.url)
+        .map((m, i) => ({ url: m.url, alt_text: m.alt_text || "", sort_order: i }))
+    );
     setEditLongevity(
       (p.longevity_items || []).map((it, i) => ({
         icon_key: it.icon_key || "heart",
@@ -93,7 +86,6 @@ export default function ShopPortalClient({
       }))
     );
     setEditChipDraft(emptyChipDraft());
-    setEditImageUrl("");
   }
 
   async function submitEdit(p) {
@@ -106,7 +98,6 @@ export default function ShopPortalClient({
     setOk("");
     const supabase = createClient();
 
-    // product_type / inventory_mode always apply live (no approval)
     await supabase
       .from("shop_products")
       .update({
@@ -181,13 +172,6 @@ export default function ShopPortalClient({
       setBusy(false);
       setOk("Saved — still pending first approval.");
       setEditId("");
-      setProducts((list) =>
-        list.map((x) =>
-          x.id === p.id
-            ? { ...x, inventory_mode: snap.inventory_mode, product_type: snap.product_type }
-            : x
-        )
-      );
       router.refresh();
       return;
     }
@@ -209,19 +193,7 @@ export default function ShopPortalClient({
       setError(err.message);
       return;
     }
-    setProducts((list) =>
-      list.map((x) =>
-        x.id === p.id
-          ? {
-              ...x,
-              has_pending_edit: true,
-              inventory_mode: snap.inventory_mode,
-              product_type: snap.product_type,
-            }
-          : x
-      )
-    );
-    setOk("Content update submitted for approval. Product type / stock mode applied live.");
+    setOk("Content update submitted for approval. Gallery is included in the pending update.");
     setEditId("");
     router.refresh();
   }
@@ -253,7 +225,7 @@ export default function ShopPortalClient({
     const productType = form.product_type || "other";
     const inventoryMode = form.inventory_mode || defaultInventoryMode(productType);
     const supabase = createClient();
-    const gallery = [...createGallery];
+    const gallery = (createGallery || []).filter((m) => m?.url);
 
     const { data: product, error: err } = await supabase
       .from("shop_products")
@@ -291,7 +263,7 @@ export default function ShopPortalClient({
     }
 
     if (gallery.length) {
-      await supabase.from("shop_product_media").insert(
+      const { error: mediaErr } = await supabase.from("shop_product_media").insert(
         gallery.map((m, i) => ({
           product_id: product.id,
           url: m.url,
@@ -299,6 +271,12 @@ export default function ShopPortalClient({
           sort_order: i,
         }))
       );
+      if (mediaErr) {
+        setBusy(false);
+        setError(`Product created, but gallery failed: ${mediaErr.message}`);
+        router.refresh();
+        return;
+      }
     }
 
     await syncProductCategories(supabase, product.id, form.category_ids || []);
@@ -317,24 +295,8 @@ export default function ShopPortalClient({
       { onConflict: "product_id,shop_id" }
     );
 
-    let longevity_items = [];
-    if (createChips.length) {
-      const rows = createChips.map((c, i) => ({
-        product_id: product.id,
-        icon_key: c.icon_key || "heart",
-        label: c.label,
-        note: c.note || "",
-        sort_order: i,
-      }));
-      const { data: saved } = await supabase
-        .from("shop_product_longevity_items")
-        .insert(rows)
-        .select("id, product_id, icon_key, label, note, sort_order");
-      longevity_items = saved || [];
-    }
-
     setBusy(false);
-    setOk("Submitted. Add varieties" + (inventoryMode === "batch_expiry" ? " and batches" : "") + " below (no approval)." );
+    setOk("Submitted. Gallery saved. Add varieties below (no approval).");
     setForm((f) => ({
       ...f,
       name: "",
@@ -350,7 +312,6 @@ export default function ShopPortalClient({
     }));
     setCreateChips([]);
     setCreateGallery([]);
-    setCreateImageUrl("");
     setProducts((list) => [
       {
         ...product,
@@ -359,7 +320,7 @@ export default function ShopPortalClient({
         edit_name: product.name,
         edit_category_ids: form.category_ids || [],
         media: gallery,
-        longevity_items,
+        longevity_items: [],
         variants: [],
       },
       ...list,
@@ -368,9 +329,7 @@ export default function ShopPortalClient({
   }
 
   if (!activeShops.length) {
-    return (
-      <p className="mt-8 text-sm text-amber-900">None of your shops are active.</p>
-    );
+    return <p className="mt-8 text-sm text-amber-900">None of your shops are active.</p>;
   }
 
   return (
@@ -388,6 +347,15 @@ export default function ShopPortalClient({
             ))}
           </select>
         </label>
+        {selectedShop && !selectedShop.is_product_brand ? (
+          <label className="block text-sm font-medium">
+            Link to product brand (optional)
+            <select className={inp} value={form.brand_shop_id} onChange={(e) => set("brand_shop_id", e.target.value)}>
+              <option value="">— none —</option>
+              {productBrandShops.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          </label>
+        ) : null}
         <ProductTypeSelect
           productType={form.product_type}
           inventoryMode={form.inventory_mode}
@@ -405,19 +373,15 @@ export default function ShopPortalClient({
         </div>
         <label className="block text-sm font-medium">Short description<input className={inp} value={form.short_description} onChange={(e) => set("short_description", e.target.value)} /></label>
         <label className="block text-sm font-medium">Description<textarea className={inp} rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} /></label>
-        <div className="rounded-xl border border-[#e8d5c4] bg-white p-3">
-          <p className="text-sm font-semibold">Gallery</p>
-          <div className="mt-2 flex gap-2">
-            <input className={inp + " flex-1"} placeholder="Image URL" value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} />
-            <button type="button" className="rounded-full border border-[#e8d5c4] px-3 text-xs font-semibold" onClick={() => {
-              const v = createImageUrl.trim();
-              if (!v) return;
-              setCreateGallery((g) => [...g, { url: v, alt_text: "", sort_order: g.length }]);
-              setCreateImageUrl("");
-            }}>Add</button>
-          </div>
-        </div>
+
+        <ProductGalleryEditor
+          inputId="create-gallery-url"
+          images={createGallery}
+          onChange={setCreateGallery}
+        />
+
         <label className="block text-sm font-medium">Price CAD<input type="number" step="0.01" className={inp} value={form.price} onChange={(e) => set("price", e.target.value)} /></label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.hide_price} onChange={(e) => set("hide_price", e.target.checked)} /> Hide price</label>
         <button type="submit" disabled={busy} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy ? "Submitting…" : "Submit product for approval"}</button>
       </form>
 
@@ -457,6 +421,13 @@ export default function ShopPortalClient({
                   </div>
                   <label className="block text-sm font-medium">Short description<input className={inp} value={editForm.short_description} onChange={(e) => setEditForm((f) => ({ ...f, short_description: e.target.value }))} /></label>
                   <label className="block text-sm font-medium">Description<textarea className={inp} rows={3} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} /></label>
+
+                  <ProductGalleryEditor
+                    inputId={"edit-gallery-url-" + p.id}
+                    images={editMedia}
+                    onChange={setEditMedia}
+                  />
+
                   <label className="block text-sm font-medium">Price<input type="number" step="0.01" className={inp} value={editForm.price} onChange={(e) => setEditForm((f) => ({ ...f, price: e.target.value }))} /></label>
                   <button type="button" disabled={busy} onClick={() => submitEdit(p)} className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
                     {busy ? "Saving…" : p.status === "approved" ? "Submit content for approval" : "Save"}
