@@ -6,15 +6,19 @@ import { slugifyShop } from "@/lib/shop";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
 
-export default function ShopsAdminClient({ initialShops, brands, profiles }) {
+export default function ShopsAdminClient({
+  initialShops,
+  profiles,
+  defaultProductBrand = false,
+}) {
   const router = useRouter();
   const [shops, setShops] = useState(initialShops || []);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
-  const [shopType, setShopType] = useState("vendor");
-  const [brandId, setBrandId] = useState("");
+  const [isProductBrand, setIsProductBrand] = useState(!!defaultProductBrand);
   const [ownerId, setOwnerId] = useState("");
   const [description, setDescription] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
   const [status, setStatus] = useState("active");
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
@@ -32,19 +36,22 @@ export default function ShopsAdminClient({ initialShops, brands, profiles }) {
       return;
     }
     const supabase = createClient();
+    const payload = {
+      name: n,
+      slug: slugifyShop(slug || n),
+      shop_type: isProductBrand ? "brand" : "vendor",
+      is_product_brand: !!isProductBrand,
+      brand_id: null,
+      owner_profile_id: ownerId || null,
+      description: description.trim(),
+      logo_url: logoUrl.trim(),
+      status,
+      updated_at: new Date().toISOString(),
+    };
     const { data, error: err } = await supabase
       .from("shop_shops")
-      .insert({
-        name: n,
-        slug: slugifyShop(slug || n),
-        shop_type: shopType,
-        brand_id: brandId || null,
-        owner_profile_id: ownerId || null,
-        description: description.trim(),
-        status,
-        updated_at: new Date().toISOString(),
-      })
-      .select("*, shop_brands(name)")
+      .insert(payload)
+      .select("*")
       .single();
     setBusy(false);
     if (err) {
@@ -55,8 +62,9 @@ export default function ShopsAdminClient({ initialShops, brands, profiles }) {
     setName("");
     setSlug("");
     setDescription("");
-    setBrandId("");
+    setLogoUrl("");
     setOwnerId("");
+    setIsProductBrand(!!defaultProductBrand);
     setOk("Shop created.");
     router.refresh();
   }
@@ -74,13 +82,37 @@ export default function ShopsAdminClient({ initialShops, brands, profiles }) {
     setShops((list) => list.map((x) => (x.id === s.id ? { ...x, status: next } : x)));
   }
 
+  async function toggleProductBrand(s) {
+    const next = !s.is_product_brand;
+    const supabase = createClient();
+    const { error: err } = await supabase
+      .from("shop_shops")
+      .update({
+        is_product_brand: next,
+        shop_type: next ? "brand" : "vendor",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", s.id);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setShops((list) =>
+      list.map((x) =>
+        x.id === s.id
+          ? { ...x, is_product_brand: next, shop_type: next ? "brand" : "vendor" }
+          : x
+      )
+    );
+  }
+
   return (
     <div className="mt-8 space-y-8">
       {error ? <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
       {ok ? <p className="rounded-xl bg-green-50 px-3 py-2 text-sm text-green-800">{ok}</p> : null}
 
       <form onSubmit={addShop} className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
-        <h2 className="font-semibold">Add shop (admin-created account link)</h2>
+        <h2 className="font-semibold">Add shop</h2>
         <label className="block text-sm font-medium">
           Name
           <input
@@ -97,23 +129,24 @@ export default function ShopsAdminClient({ initialShops, brands, profiles }) {
           Slug
           <input className={inp + " font-mono"} value={slug} onChange={(e) => setSlug(e.target.value)} />
         </label>
-        <label className="block text-sm font-medium">
-          Type
-          <select className={inp} value={shopType} onChange={(e) => setShopType(e.target.value)}>
-            <option value="vendor">Vendor</option>
-            <option value="brand">Brand (Product Brand shop)</option>
-          </select>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={isProductBrand}
+            onChange={(e) => setIsProductBrand(e.target.checked)}
+          />
+          <span>
+            <span className="font-semibold">This is a product brand</span>
+            <span className="block text-xs text-[#7a5c4e]">
+              Brand product pages other retailers can link to. Does not force selling — add
+              offers (affiliate / cart) anytime later.
+            </span>
+          </span>
         </label>
         <label className="block text-sm font-medium">
-          Linked brand (optional)
-          <select className={inp} value={brandId} onChange={(e) => setBrandId(e.target.value)}>
-            <option value="">—</option>
-            {brands.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
+          Logo URL
+          <input className={inp} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
         </label>
         <label className="block text-sm font-medium">
           Owner profile (optional)
@@ -160,21 +193,46 @@ export default function ShopsAdminClient({ initialShops, brands, profiles }) {
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <p className="font-semibold text-[#3b2a22]">{s.name}</p>
+                <p className="font-semibold text-[#3b2a22]">
+                  {s.name}
+                  {s.is_product_brand ? (
+                    <span className="ml-2 rounded-full bg-[#c45c26]/15 px-2 py-0.5 text-[10px] font-bold uppercase text-[#c45c26]">
+                      Product brand
+                    </span>
+                  ) : (
+                    <span className="ml-2 rounded-full border border-[#e8d5c4] px-2 py-0.5 text-[10px] font-bold uppercase text-[#7a5c4e]">
+                      Retailer
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-[#7a5c4e]">
-                  /shop/shops/{s.slug} · {s.shop_type}
-                  {s.shop_brands?.name ? ` · brand: ${s.shop_brands.name}` : ""}
+                  /shop/shops/{s.slug}
+                  {s.is_product_brand ? ` · brand hub /shop/brands/${s.slug}` : ""}
                 </p>
               </div>
-              <select
-                value={s.status}
-                onChange={(e) => setShopStatus(s, e.target.value)}
-                className="rounded-full border border-[#e8d5c4] px-2 py-1 text-xs"
-              >
-                <option value="active">active</option>
-                <option value="pending">pending</option>
-                <option value="suspended">suspended</option>
-              </select>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => toggleProductBrand(s)}
+                  className={
+                    "rounded-full px-3 py-1 text-xs font-semibold " +
+                    (s.is_product_brand
+                      ? "bg-[#c45c26] text-white"
+                      : "border border-[#e8d5c4]")
+                  }
+                >
+                  {s.is_product_brand ? "Product brand" : "Mark as product brand"}
+                </button>
+                <select
+                  value={s.status}
+                  onChange={(e) => setShopStatus(s, e.target.value)}
+                  className="rounded-full border border-[#e8d5c4] px-2 py-1 text-xs"
+                >
+                  <option value="active">active</option>
+                  <option value="pending">pending</option>
+                  <option value="suspended">suspended</option>
+                </select>
+              </div>
             </div>
           </li>
         ))}

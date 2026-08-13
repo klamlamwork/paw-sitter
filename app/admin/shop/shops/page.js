@@ -6,24 +6,58 @@ import ShopsAdminClient from "./ShopsAdminClient";
 
 export const metadata = { title: "Admin Shops | Paw Sitter" };
 
-export default async function AdminShopShopsPage() {
+export default async function AdminShopShopsPage({ searchParams }) {
   const profile = await getProfile();
   if (!profile) redirect("/login?next=/admin/shop/shops");
   if (profile.role !== "admin") redirect("/account");
+
+  const sp = await searchParams;
+  const filter = sp?.filter === "product_brand" ? "product_brand" : "all";
+
   const supabase = await createClient();
-  const [{ data: shops }, { data: brands }, { data: profiles }] = await Promise.all([
-    supabase.from("shop_shops").select("*, shop_brands(name)").order("name"),
-    supabase.from("shop_brands").select("id, name").order("name"),
+  let shopsQuery = supabase.from("shop_shops").select("*").order("name");
+  if (filter === "product_brand") {
+    shopsQuery = shopsQuery.eq("is_product_brand", true);
+  }
+  const [{ data: shops }, { data: profiles }] = await Promise.all([
+    shopsQuery,
     supabase.from("profiles").select("id, email, full_name").order("email").limit(200),
   ]);
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <Link href="/admin/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">
         &larr; Shop admin
       </Link>
-      <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shops</h1>
-      <p className="mt-1 text-sm text-[#7a5c4e]">Vendors and brand shops · public URL /shop/shops/[slug]</p>
-      <ShopsAdminClient initialShops={shops || []} brands={brands || []} profiles={profiles || []} />
+      <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">
+        {filter === "product_brand" ? "Product brand shops" : "Shops"}
+      </h1>
+      <p className="mt-1 text-sm text-[#7a5c4e]">
+        One registration. Tick <strong>This is a product brand</strong> so other retailers can
+        link products to this brand&apos;s product pages. Selling (affiliate / cart) is per
+        offer later — not required at create.
+      </p>
+      <p className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
+        <Link
+          href="/admin/shop/shops"
+          className={filter === "all" ? "text-[#c45c26]" : "text-[#7a5c4e] hover:underline"}
+        >
+          All shops
+        </Link>
+        <Link
+          href="/admin/shop/shops?filter=product_brand"
+          className={
+            filter === "product_brand" ? "text-[#c45c26]" : "text-[#7a5c4e] hover:underline"
+          }
+        >
+          Product brands only
+        </Link>
+      </p>
+      <ShopsAdminClient
+        initialShops={shops || []}
+        profiles={profiles || []}
+        defaultProductBrand={filter === "product_brand"}
+      />
     </div>
   );
 }

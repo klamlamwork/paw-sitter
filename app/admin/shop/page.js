@@ -11,31 +11,55 @@ export default async function AdminShopPage() {
   if (profile.role !== "admin") redirect("/account");
 
   const supabase = await createClient();
-  const [{ count: brands }, { count: shops }, { count: cats }, { count: products }, { count: pending }] =
-    await Promise.all([
-      supabase.from("shop_brands").select("id", { count: "exact", head: true }),
-      supabase.from("shop_shops").select("id", { count: "exact", head: true }),
-      supabase.from("shop_categories").select("id", { count: "exact", head: true }),
-      supabase.from("shop_products").select("id", { count: "exact", head: true }),
-      supabase.from("shop_products").select("id", { count: "exact", head: true }).eq("status", "pending"),
-    ]);
+  const [
+    { count: shops },
+    { count: brandShops },
+    { count: cats },
+    { count: products },
+    { count: pending },
+  ] = await Promise.all([
+    supabase.from("shop_shops").select("id", { count: "exact", head: true }),
+    supabase
+      .from("shop_shops")
+      .select("id", { count: "exact", head: true })
+      .eq("is_product_brand", true),
+    supabase.from("shop_categories").select("id", { count: "exact", head: true }),
+    supabase.from("shop_products").select("id", { count: "exact", head: true }),
+    supabase
+      .from("shop_products")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending"),
+  ]);
 
   const links = [
-    { href: "/admin/shop/brands", label: "Brands", desc: "Ready · Shop by brand", ready: true },
-    { href: "/admin/shop/shops", label: "Shops", desc: "Ready · /shop/shops/…", ready: true },
+    {
+      href: "/admin/shop/shops",
+      label: "Shops",
+      desc: "All shops · tick “This is a product brand” when needed",
+      ready: true,
+    },
+    {
+      href: "/admin/shop/shops?filter=product_brand",
+      label: "Product brands",
+      desc: "Filter: shops marked as product brand (no separate signup)",
+      ready: true,
+    },
     { href: "/admin/shop/categories", label: "Categories", desc: "Next", ready: false },
-    { href: "/admin/shop/products", label: "Products", desc: "Next · approve & CTAs", ready: false },
+    { href: "/admin/shop/products", label: "Products", desc: "Next · offers + CTAs", ready: false },
   ];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Shop admin</h1>
-      <p className="mt-2 text-sm text-[#7a5c4e]">Phase 1B-2: Brands + Shops.</p>
+      <p className="mt-2 text-sm text-[#7a5c4e]">
+        Phase 1B-2b: one Shops entity. Product brand = checkbox on a shop. Selling =
+        offers (affiliate / cart) later.
+      </p>
 
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
-          ["Brands", brands ?? 0],
           ["Shops", shops ?? 0],
+          ["Product brands", brandShops ?? 0],
           ["Categories", cats ?? 0],
           ["Products", products ?? 0],
           ["Pending", pending ?? 0],
@@ -50,7 +74,7 @@ export default async function AdminShopPage() {
       <ul className="mt-8 space-y-2">
         {links.map((l) =>
           l.ready ? (
-            <li key={l.href}>
+            <li key={l.href + l.label}>
               <Link
                 href={l.href}
                 className="flex flex-col rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 hover:border-[#c45c26]/50 sm:flex-row sm:items-center sm:justify-between"
@@ -71,7 +95,12 @@ export default async function AdminShopPage() {
         )}
       </ul>
 
-      <p className="mt-6 text-sm">
+      <p className="mt-6 text-sm text-[#7a5c4e]">
+        Run <code className="rounded bg-[#fff8f0] px-1">sql/21-shop-unified-shops.sql</code> in
+        Supabase if you have not already.
+      </p>
+
+      <p className="mt-4 text-sm">
         <Link href="/shop" className="font-semibold text-[#c45c26] hover:underline">
           View public shop →
         </Link>
