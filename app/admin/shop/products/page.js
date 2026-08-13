@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import ProductsAdminClient from "./ProductsAdminClient";
+import ProductsModerateClient from "./ProductsModerateClient";
 
 export const metadata = { title: "Admin Shop Products | Paw Sitter" };
 
@@ -12,32 +12,41 @@ export default async function AdminShopProductsPage() {
   if (profile.role !== "admin") redirect("/account");
 
   const supabase = await createClient();
-  const [{ data: products }, { data: brandShops }, { data: categories }] = await Promise.all([
-    supabase
-      .from("shop_products")
-      .select(
-        "id, name, slug, status, price_cents, currency, hide_price, brand_shop_id, category_id, updated_at, brand_shop:shop_shops!shop_products_brand_shop_id_fkey(id, name, slug), category:shop_categories(id, name)"
-      )
-      .order("updated_at", { ascending: false }),
-    supabase
-      .from("shop_shops")
-      .select("id, name, slug")
-      .eq("is_product_brand", true)
-      .order("name"),
-    supabase.from("shop_categories").select("id, name").order("sort_order").order("name"),
+  const { data: products } = await supabase
+    .from("shop_products")
+    .select(
+      "id, name, slug, status, price_cents, currency, hide_price, brand_shop_id, category_id, created_by, updated_at, created_at"
+    )
+    .order("updated_at", { ascending: false });
+
+  const brandIds = [...new Set((products || []).map((p) => p.brand_shop_id).filter(Boolean))];
+  const catIds = [...new Set((products || []).map((p) => p.category_id).filter(Boolean))];
+  const creatorIds = [...new Set((products || []).map((p) => p.created_by).filter(Boolean))];
+
+  const [{ data: shops }, { data: cats }, { data: creators }] = await Promise.all([
+    brandIds.length
+      ? supabase.from("shop_shops").select("id, name, slug, is_product_brand").in("id", brandIds)
+      : Promise.resolve({ data: [] }),
+    catIds.length
+      ? supabase.from("shop_categories").select("id, name").in("id", catIds)
+      : Promise.resolve({ data: [] }),
+    creatorIds.length
+      ? supabase.from("profiles").select("id, email, full_name").in("id", creatorIds)
+      : Promise.resolve({ data: [] }),
   ]);
 
-  // Fallback if FK name differs — re-fetch simpler if needed
-  let list = products;
-  if (products === null) {
-    const { data: simple } = await supabase
-      .from("shop_products")
-      .select(
-        "id, name, slug, status, price_cents, currency, hide_price, brand_shop_id, category_id, updated_at"
-      )
-      .order("updated_at", { ascending: false });
-    list = simple;
-  }
+  const shopMap = Object.fromEntries((shops || []).map((s) => [s.id, s]));
+  const catMap = Object.fromEntries((cats || []).map((c) => [c.id, c]));
+  const creatorMap = Object.fromEntries((creators || []).map((c) => [c.id, c]));
+
+  const rows = (products || []).map((p) => ({
+    ...p,
+    brand_shop: p.brand_shop_id ? shopMap[p.brand_shop_id] || null : null,
+    category: p.category_id ? catMap[p.category_id] || null : null,
+    creator: p.created_by ? creatorMap[p.created_by] || null : null,
+  }));
+
+  const pendingCount = rows.filter((p) => p.status === "pending").length;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
@@ -46,15 +55,15 @@ export default async function AdminShopProductsPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Products</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Canonical product under a <strong>product brand</strong> shop. Retailer offers &
-        affiliate/cart in the next batch (1B-4b).
+        Moderation only. Shops create listings from their portal (next). You approve, edit, or
+        set inactive.
       </p>
-      <ProductsAdminClient
-        initialProducts={list || []}
-        brandShops={brandShops || []}
-        categories={categories || []}
-        adminId={profile.id}
-      />
+      {pendingCount > 0 ? (
+        <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
+          {pendingCount} pending approval
+        </p>
+      ) : null}
+      <ProductsModerateClient initialProducts={rows} adminId={profile.id} />
     </div>
   );
 }

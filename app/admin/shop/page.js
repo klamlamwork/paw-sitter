@@ -35,7 +35,7 @@ export default async function AdminShopPage() {
     {
       href: "/admin/shop/shops",
       label: "Shops",
-      desc: "All shops · product brand flag",
+      desc: "Create shop · assign owner account · product brand flag",
       ready: true,
     },
     {
@@ -47,13 +47,13 @@ export default async function AdminShopPage() {
     {
       href: "/admin/shop/categories",
       label: "Categories",
-      desc: "Catalog tree",
+      desc: "Catalog tree (admin)",
       ready: true,
     },
     {
       href: "/admin/shop/products",
       label: "Products",
-      desc: "Ready · create & list (offers in 1B-4b)",
+      desc: "Moderate · approve / edit / inactive (shops create listings)",
       ready: true,
     },
   ];
@@ -62,7 +62,7 @@ export default async function AdminShopPage() {
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Shop admin</h1>
       <p className="mt-2 text-sm text-[#7a5c4e]">
-        Phase 1B-4a: Products create/list. Offers (retailers + CTAs) next.
+        Admin sets up shops and owners. Shops create products. You approve or deactivate.
       </p>
 
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -94,7 +94,11 @@ export default async function AdminShopPage() {
         ))}
       </ul>
 
-      <p className="mt-6 text-sm">
+      <p className="mt-6 text-sm text-[#7a5c4e]">
+        Shop owner portal (create products + affiliate/cart) lands in the next batches.
+      </p>
+
+      <p className="mt-4 text-sm">
         <Link href="/shop" className="font-semibold text-[#c45c26] hover:underline">
           View public shop →
         </Link>
