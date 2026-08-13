@@ -131,12 +131,12 @@ export default function ShopsAdminClient({
     });
   }
 
-  async function setHomeBrandSort(s, v) {
+  async function updateHomeBrandSort(s, v) {
     await patchShop(s, { home_brand_sort: sortVal(v) });
     setOk("Shop by brand sequence updated.");
   }
 
-  async function setHomeRetailerSort(s, v) {
+  async function updateHomeRetailerSort(s, v) {
     await patchShop(s, { home_retailer_sort: sortVal(v) });
     setOk("Retailers sequence updated.");
   }
@@ -309,7 +309,7 @@ export default function ShopsAdminClient({
                   className={inp + " text-sm"}
                   value={s.home_retailer_sort ?? ""}
                   disabled={!!s.is_product_brand}
-                  onChange={(e) => setHomeRetailerSort(s, e.target.value)}
+                  onChange={(e) => updateHomeRetailerSort(s, e.target.value)}
                 >
                   <option value="">—</option>
                   {SEQ.map((n) => (
@@ -328,7 +328,7 @@ export default function ShopsAdminClient({
                   className={inp + " text-sm"}
                   value={s.home_brand_sort ?? ""}
                   disabled={!s.is_product_brand}
-                  onChange={(e) => setHomeBrandSort(s, e.target.value)}
+                  onChange={(e) => updateHomeBrandSort(s, e.target.value)}
                 >
                   <option value="">—</option>
                   {SEQ.map((n) => (
