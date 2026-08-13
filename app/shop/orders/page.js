@@ -10,6 +10,16 @@ export const metadata = {
   title: "Your shop orders | Paw Sitter",
 };
 
+function payLabel(order) {
+  const method = {
+    etransfer: "E-Transfer",
+    pickup: "Pay at pickup",
+    later: "Pay later",
+  }[order.payment_method] || order.payment_method || "Payment";
+  const status = order.payment_status || "unpaid";
+  return `${method} · ${status}`;
+}
+
 export default async function ShopOrdersPage({ searchParams }) {
   const profile = await getProfile();
   if (!profile) redirect("/login?next=/shop/orders");
@@ -21,7 +31,7 @@ export default async function ShopOrdersPage({ searchParams }) {
   const { data: orders } = await supabase
     .from("shop_orders")
     .select(
-      "id, status, created_at, shipping_city, seller_shop_id, shop:shop_shops!seller_shop_id(id, name, slug), items:shop_order_items(id, qty, price_cents, currency, product:shop_products(name, slug))"
+      "id, status, created_at, shipping_city, payment_method, payment_status, seller_shop_id, shop:shop_shops!seller_shop_id(id, name, slug), items:shop_order_items(id, qty, price_cents, currency, product:shop_products(name, slug))"
     )
     .eq("user_id", profile.id)
     .order("created_at", { ascending: false });
@@ -72,6 +82,7 @@ export default async function ShopOrdersPage({ searchParams }) {
                     <p className="mt-0.5 text-xs text-[#7a5c4e]">
                       {new Date(order.created_at).toLocaleString()} · {order.shipping_city || ""}
                     </p>
+                    <p className="mt-0.5 text-xs text-[#7a5c4e]">{payLabel(order)}</p>
                   </div>
                   <span className="rounded-full bg-[#f3e0d0] px-2 py-0.5 text-xs font-semibold uppercase text-[#c45c26]">
                     {order.status}

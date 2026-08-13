@@ -18,6 +18,7 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
     postal_code: defaultAddress?.postal_code || "",
     country: defaultAddress?.country || "Canada",
     label: defaultAddress?.label || "",
+    payment_method: "etransfer",
   });
   const [saveAddress, setSaveAddress] = useState(!hasSavedAddress);
   const [submitting, setSubmitting] = useState(false);
@@ -36,9 +37,19 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
       const supabase = createClient();
 
       if (saveAddress && userId) {
+        const { name, email, phone, line1, line2, city, state, postal_code, country, label } = form;
         const { error: addrErr } = await supabase.from("user_addresses").insert({
           user_id: userId,
-          ...form,
+          name,
+          email,
+          phone,
+          line1,
+          line2,
+          city,
+          state,
+          postal_code,
+          country,
+          label,
           is_default: !hasSavedAddress,
         });
         if (addrErr) throw addrErr;
@@ -63,6 +74,8 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
       }
       if (!bySeller.size) throw new Error("No valid seller found for items in cart.");
 
+      const paymentStatus = form.payment_method === "pickup" ? "unpaid" : "pending";
+
       for (const [sellerShopId, items] of bySeller.entries()) {
         const { data: order, error: orderErr } = await supabase
           .from("shop_orders")
@@ -70,6 +83,8 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
             user_id: userId,
             seller_shop_id: sellerShopId,
             status: "pending",
+            payment_method: form.payment_method,
+            payment_status: paymentStatus,
             shipping_name: form.name,
             shipping_email: form.email,
             shipping_phone: form.phone,
@@ -157,6 +172,21 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
         Address label (optional)
         <input className={fieldClass} value={form.label} onChange={(e) => setField("label", e.target.value)} placeholder="Home" />
       </label>
+      <fieldset className="rounded-2xl border border-[#e8d5c4] p-3">
+        <legend className="px-1 text-sm font-medium">How will you pay?</legend>
+        <label className="mt-2 flex items-start gap-2 text-sm">
+          <input type="radio" name="payment_method" checked={form.payment_method === "etransfer"} onChange={() => setField("payment_method", "etransfer")} />
+          <span>Interac e-Transfer (seller confirms when received)</span>
+        </label>
+        <label className="mt-2 flex items-start gap-2 text-sm">
+          <input type="radio" name="payment_method" checked={form.payment_method === "pickup"} onChange={() => setField("payment_method", "pickup")} />
+          <span>Pay at pickup</span>
+        </label>
+        <label className="mt-2 flex items-start gap-2 text-sm">
+          <input type="radio" name="payment_method" checked={form.payment_method === "later"} onChange={() => setField("payment_method", "later")} />
+          <span>Pay later (card checkout comes next)</span>
+        </label>
+      </fieldset>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} />
         Save this address for future use

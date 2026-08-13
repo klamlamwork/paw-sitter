@@ -13,25 +13,31 @@ const NEXT = {
   accepted: [{ status: "shipped", label: "Mark shipped" }],
 };
 
+const METHOD = {
+  etransfer: "E-Transfer",
+  pickup: "Pay at pickup",
+  later: "Pay later",
+};
+
 export default function SellerOrdersClient({ initialOrders }) {
   const [orders, setOrders] = useState(initialOrders || []);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
 
-  async function setStatus(id, status) {
+  async function patch(id, fields) {
     setBusyId(id);
     setError("");
     const supabase = createClient();
     const { error: err } = await supabase
       .from("shop_orders")
-      .update({ status, updated_at: new Date().toISOString() })
+      .update({ ...fields, updated_at: new Date().toISOString() })
       .eq("id", id);
     setBusyId("");
     if (err) {
       setError(err.message);
       return;
     }
-    setOrders((list) => list.map((o) => (o.id === id ? { ...o, status } : o)));
+    setOrders((list) => list.map((o) => (o.id === id ? { ...o, ...fields } : o)));
   }
 
   if (!orders.length) {
@@ -54,6 +60,9 @@ export default function SellerOrdersClient({ initialOrders }) {
               <div>
                 <p className="font-semibold text-[#3b2a22]">{order.shop?.name || "Your shop"}</p>
                 <p className="text-xs text-[#7a5c4e]">{new Date(order.created_at).toLocaleString()}</p>
+                <p className="text-xs text-[#7a5c4e]">
+                  {METHOD[order.payment_method] || order.payment_method || "Payment"} · {order.payment_status || "unpaid"}
+                </p>
               </div>
               <span className="rounded-full bg-[#f3e0d0] px-2 py-0.5 text-xs font-semibold uppercase text-[#c45c26]">
                 {order.status}
@@ -90,21 +99,29 @@ export default function SellerOrdersClient({ initialOrders }) {
               ))}
             </ul>
             <p className="mt-2 font-bold text-[#3b2a22]">Total {formatShopPrice(total, currency)}</p>
-            {actions.length ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {actions.map((a) => (
-                  <button
-                    key={a.status}
-                    type="button"
-                    disabled={busyId === order.id}
-                    onClick={() => setStatus(order.id, a.status)}
-                    className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
-                  >
-                    {busyId === order.id ? "Saving…" : a.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {actions.map((a) => (
+                <button
+                  key={a.status}
+                  type="button"
+                  disabled={busyId === order.id}
+                  onClick={() => patch(order.id, { status: a.status })}
+                  className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                >
+                  {busyId === order.id ? "Saving…" : a.label}
+                </button>
+              ))}
+              {order.payment_status !== "paid" ? (
+                <button
+                  type="button"
+                  disabled={busyId === order.id}
+                  onClick={() => patch(order.id, { payment_status: "paid", paid_at: new Date().toISOString() })}
+                  className="rounded-full border border-[#c45c26] px-4 py-1.5 text-xs font-semibold text-[#c45c26] disabled:opacity-60"
+                >
+                  Mark paid
+                </button>
+              ) : null}
+            </div>
           </article>
         );
       })}
