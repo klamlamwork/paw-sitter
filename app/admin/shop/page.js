@@ -35,26 +35,26 @@ export default async function AdminShopPage() {
     {
       href: "/admin/shop/shops",
       label: "Shops",
-      desc: "All shops · tick “This is a product brand” when needed",
+      desc: "All shops · product brand flag",
       ready: true,
     },
     {
       href: "/admin/shop/shops?filter=product_brand",
       label: "Product brands",
-      desc: "Filter: shops marked as product brand",
+      desc: "Shops marked as product brand",
       ready: true,
     },
     {
       href: "/admin/shop/categories",
       label: "Categories",
-      desc: "Ready · catalog tree",
+      desc: "Catalog tree",
       ready: true,
     },
     {
       href: "/admin/shop/products",
       label: "Products",
-      desc: "Next · brand shop + offers",
-      ready: false,
+      desc: "Ready · create & list (offers in 1B-4b)",
+      ready: true,
     },
   ];
 
@@ -62,7 +62,7 @@ export default async function AdminShopPage() {
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Shop admin</h1>
       <p className="mt-2 text-sm text-[#7a5c4e]">
-        Phase 1B-3: Shops + Categories. Products next.
+        Phase 1B-4a: Products create/list. Offers (retailers + CTAs) next.
       </p>
 
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
@@ -81,27 +81,17 @@ export default async function AdminShopPage() {
       </dl>
 
       <ul className="mt-8 space-y-2">
-        {links.map((l) =>
-          l.ready ? (
-            <li key={l.href + l.label}>
-              <Link
-                href={l.href}
-                className="flex flex-col rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 hover:border-[#c45c26]/50 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <span className="font-semibold text-[#3b2a22]">{l.label}</span>
-                <span className="text-xs text-[#7a5c4e]">{l.desc}</span>
-              </Link>
-            </li>
-          ) : (
-            <li
-              key={l.href}
-              className="flex flex-col rounded-2xl border border-dashed border-[#e8d5c4] px-4 py-3 text-[#7a5c4e] sm:flex-row sm:items-center sm:justify-between"
+        {links.map((l) => (
+          <li key={l.href + l.label}>
+            <Link
+              href={l.href}
+              className="flex flex-col rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 hover:border-[#c45c26]/50 sm:flex-row sm:items-center sm:justify-between"
             >
-              <span className="font-semibold">{l.label}</span>
-              <span className="text-xs">{l.desc}</span>
-            </li>
-          )
-        )}
+              <span className="font-semibold text-[#3b2a22]">{l.label}</span>
+              <span className="text-xs text-[#7a5c4e]">{l.desc}</span>
+            </Link>
+          </li>
+        ))}
       </ul>
 
       <p className="mt-6 text-sm">
