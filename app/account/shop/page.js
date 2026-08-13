@@ -19,7 +19,6 @@ export default async function AccountShopPortalPage() {
     .order("name");
 
   const myShops = shops || [];
-
   if (!myShops.length) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
@@ -27,19 +26,16 @@ export default async function AccountShopPortalPage() {
           &larr; Account
         </Link>
         <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
-        <p className="mt-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] px-4 py-3 text-sm text-[#5c4033]">
-          No shop is linked to <strong>{profile.email}</strong> yet.
-        </p>
+        <p className="mt-3 text-sm text-[#5c4033]">No shop linked to {profile.email}.</p>
       </div>
     );
   }
 
   const shopIds = myShops.map((s) => s.id);
-
   const { data: byPrimary } = await supabase
     .from("shop_products")
     .select(
-      "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, has_pending_edit, pending_snapshot, updated_at"
+      "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, product_type, inventory_mode, has_pending_edit, pending_snapshot, updated_at"
     )
     .in("primary_shop_id", shopIds)
     .order("updated_at", { ascending: false });
@@ -47,7 +43,7 @@ export default async function AccountShopPortalPage() {
   const { data: byBrand } = await supabase
     .from("shop_products")
     .select(
-      "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, has_pending_edit, pending_snapshot, updated_at"
+      "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, product_type, inventory_mode, has_pending_edit, pending_snapshot, updated_at"
     )
     .in("brand_shop_id", shopIds)
     .order("updated_at", { ascending: false });
@@ -66,25 +62,10 @@ export default async function AccountShopPortalPage() {
   if (productIds.length) {
     const [{ data: media }, { data: items }, { data: catLinks }, { data: variants }] =
       await Promise.all([
-        supabase
-          .from("shop_product_media")
-          .select("id, product_id, url, alt_text, sort_order")
-          .in("product_id", productIds)
-          .order("sort_order"),
-        supabase
-          .from("shop_product_longevity_items")
-          .select("id, product_id, icon_key, label, note, sort_order")
-          .in("product_id", productIds)
-          .order("sort_order"),
-        supabase
-          .from("shop_product_categories")
-          .select("product_id, category_id")
-          .in("product_id", productIds),
-        supabase
-          .from("shop_product_variants")
-          .select("*")
-          .in("product_id", productIds)
-          .order("sort_order"),
+        supabase.from("shop_product_media").select("id, product_id, url, alt_text, sort_order").in("product_id", productIds).order("sort_order"),
+        supabase.from("shop_product_longevity_items").select("id, product_id, icon_key, label, note, sort_order").in("product_id", productIds).order("sort_order"),
+        supabase.from("shop_product_categories").select("product_id, category_id").in("product_id", productIds),
+        supabase.from("shop_product_variants").select("*").in("product_id", productIds).order("sort_order"),
       ]);
     for (const m of media || []) {
       if (!mediaByProduct[m.product_id]) mediaByProduct[m.product_id] = [];
@@ -105,45 +86,29 @@ export default async function AccountShopPortalPage() {
   }
 
   const productsFull = products.map((p) => {
-    const liveMedia = mediaByProduct[p.id] || [];
-    const liveLon = longevityByProduct[p.id] || [];
-    const liveCats = catsByProduct[p.id] || (p.category_id ? [p.category_id] : []);
     const snap = p.has_pending_edit && p.pending_snapshot ? p.pending_snapshot : null;
     return {
       ...p,
+      inventory_mode: p.inventory_mode || "simple",
+      product_type: p.product_type || "other",
       edit_name: snap?.name ?? p.name,
       edit_slug: snap?.slug ?? p.slug,
       edit_short_description: snap?.short_description ?? p.short_description,
       edit_description: snap?.description ?? p.description,
       edit_price_cents: snap?.price_cents ?? p.price_cents,
       edit_hide_price: snap?.hide_price ?? p.hide_price,
-      edit_category_ids: snap?.category_ids || liveCats,
-      media: snap?.media
-        ? snap.media.map((m, i) => ({ ...m, id: m.id || `p-${i}`, product_id: p.id }))
-        : liveMedia,
-      longevity_items: snap?.longevity_items
-        ? snap.longevity_items.map((it, i) => ({
-            ...it,
-            id: it.id || `l-${i}`,
-            product_id: p.id,
-          }))
-        : liveLon,
+      edit_category_ids: snap?.category_ids || catsByProduct[p.id] || (p.category_id ? [p.category_id] : []),
+      edit_product_type: snap?.product_type ?? p.product_type ?? "other",
+      edit_inventory_mode: snap?.inventory_mode ?? p.inventory_mode ?? "simple",
+      media: snap?.media || mediaByProduct[p.id] || [],
+      longevity_items: snap?.longevity_items || longevityByProduct[p.id] || [],
       variants: variantsByProduct[p.id] || [],
     };
   });
 
   const [{ data: categories }, { data: productBrandShops }] = await Promise.all([
-    supabase
-      .from("shop_categories")
-      .select("id, name, parent_id, sort_order")
-      .order("sort_order")
-      .order("name"),
-    supabase
-      .from("shop_shops")
-      .select("id, name, slug")
-      .eq("is_product_brand", true)
-      .eq("status", "active")
-      .order("name"),
+    supabase.from("shop_categories").select("id, name, parent_id, sort_order").order("sort_order").order("name"),
+    supabase.from("shop_shops").select("id, name, slug").eq("is_product_brand", true).eq("status", "active").order("name"),
   ]);
 
   return (
@@ -153,30 +118,19 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Signed in as {profile.email}. Product content edits need approval;{" "}
-        <strong>varieties & stock</strong> update live without approval.
+        Product type controls stock mode: Food/Treats/Supplements/Litter use{" "}
+        <strong>batches + expiry</strong>; hard goods use simple stock. Variety/batch changes need{" "}
+        <strong>no admin approval</strong>.
       </p>
 
       <ul className="mt-6 space-y-2">
         {myShops.map((s) => (
           <li key={s.id} className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm">
-            <p className="font-semibold text-[#3b2a22]">
-              {s.name}{" "}
-              <span className="text-[10px] font-bold uppercase text-[#c45c26]">
-                {s.is_product_brand ? "Product brand" : "Retailer"}
-              </span>
-            </p>
+            <p className="font-semibold text-[#3b2a22]">{s.name}</p>
             <p className="text-xs text-[#7a5c4e]">
-              <Link href={shopPath(s)} className="text-[#c45c26] hover:underline">
-                Storefront
-              </Link>
+              <Link href={shopPath(s)} className="text-[#c45c26] hover:underline">Storefront</Link>
               {s.is_product_brand ? (
-                <>
-                  {" · "}
-                  <Link href={brandShopPath(s)} className="text-[#c45c26] hover:underline">
-                    Brand hub
-                  </Link>
-                </>
+                <> · <Link href={brandShopPath(s)} className="text-[#c45c26] hover:underline">Brand hub</Link></>
               ) : null}
             </p>
           </li>
