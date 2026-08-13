@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { daysUntil } from "@/lib/shopInventory";
 
 function bucketLabel(days) {
   if (days == null) return "No date";
@@ -16,6 +17,29 @@ function bucketClass(days) {
   if (days <= 7) return "bg-red-50 text-red-700";
   if (days <= 14) return "bg-amber-50 text-amber-800";
   return "bg-[#fff8f0] text-[#7a5c4e]";
+}
+
+export function buildExpiringRows(batches, variantMap, productMap) {
+  const rows = [];
+  for (const b of batches || []) {
+    const days = daysUntil(b.expiry_date);
+    if (days == null) continue;
+    if (days > 14) continue;
+    const v = variantMap[b.variant_id];
+    const p = v ? productMap[v.product_id] : null;
+    rows.push({
+      id: b.id,
+      days,
+      expiryDate: b.expiry_date,
+      qty: b.qty_on_hand ?? 0,
+      lotCode: b.lot_code || "",
+      status: b.status,
+      variantName: v?.name || "Variety",
+      productName: p?.name || "Product",
+    });
+  }
+  rows.sort((a, b) => a.days - b.days || a.productName.localeCompare(b.productName));
+  return rows;
 }
 
 export default function ExpiringSoonPanel({ rows = [] }) {
