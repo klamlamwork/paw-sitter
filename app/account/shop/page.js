@@ -4,6 +4,7 @@ import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { brandShopPath, shopPath } from "@/lib/shop";
 import ShopPortalClient from "./ShopPortalClient";
+import ExpiringSoonPanel, { buildExpiringRows } from "./ExpiringSoonPanel";
 
 export const metadata = { title: "My shop | Paw Sitter" };
 
@@ -59,6 +60,8 @@ export default async function AccountShopPortalPage() {
   let longevityByProduct = {};
   let catsByProduct = {};
   let variantsByProduct = {};
+  let expiringRows = [];
+
   if (productIds.length) {
     const [{ data: media }, { data: items }, { data: catLinks }, { data: variants }] =
       await Promise.all([
@@ -82,6 +85,18 @@ export default async function AccountShopPortalPage() {
     for (const v of variants || []) {
       if (!variantsByProduct[v.product_id]) variantsByProduct[v.product_id] = [];
       variantsByProduct[v.product_id].push(v);
+    }
+
+    const variantIds = (variants || []).map((v) => v.id);
+    if (variantIds.length) {
+      const { data: batches } = await supabase
+        .from("shop_product_batches")
+        .select("id, variant_id, lot_code, qty_on_hand, expiry_date, status")
+        .in("variant_id", variantIds)
+        .not("expiry_date", "is", null);
+      const variantMap = Object.fromEntries((variants || []).map((v) => [v.id, v]));
+      const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
+      expiringRows = buildExpiringRows(batches || [], variantMap, productMap);
     }
   }
 
@@ -118,9 +133,7 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Product type controls stock mode: Food/Treats/Supplements/Litter use{" "}
-        <strong>batches + expiry</strong>; hard goods use simple stock. Variety/batch changes need{" "}
-        <strong>no admin approval</strong>.
+        Product type controls stock mode. Variety / batch changes need no admin approval.
       </p>
 
       <ul className="mt-6 space-y-2">
@@ -136,6 +149,8 @@ export default async function AccountShopPortalPage() {
           </li>
         ))}
       </ul>
+
+      <ExpiringSoonPanel rows={expiringRows} />
 
       <ShopPortalClient
         shops={myShops}
