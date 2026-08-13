@@ -62,23 +62,30 @@ export default async function AccountShopPortalPage() {
   let mediaByProduct = {};
   let longevityByProduct = {};
   let catsByProduct = {};
+  let variantsByProduct = {};
   if (productIds.length) {
-    const [{ data: media }, { data: items }, { data: catLinks }] = await Promise.all([
-      supabase
-        .from("shop_product_media")
-        .select("id, product_id, url, alt_text, sort_order")
-        .in("product_id", productIds)
-        .order("sort_order"),
-      supabase
-        .from("shop_product_longevity_items")
-        .select("id, product_id, icon_key, label, note, sort_order")
-        .in("product_id", productIds)
-        .order("sort_order"),
-      supabase
-        .from("shop_product_categories")
-        .select("product_id, category_id")
-        .in("product_id", productIds),
-    ]);
+    const [{ data: media }, { data: items }, { data: catLinks }, { data: variants }] =
+      await Promise.all([
+        supabase
+          .from("shop_product_media")
+          .select("id, product_id, url, alt_text, sort_order")
+          .in("product_id", productIds)
+          .order("sort_order"),
+        supabase
+          .from("shop_product_longevity_items")
+          .select("id, product_id, icon_key, label, note, sort_order")
+          .in("product_id", productIds)
+          .order("sort_order"),
+        supabase
+          .from("shop_product_categories")
+          .select("product_id, category_id")
+          .in("product_id", productIds),
+        supabase
+          .from("shop_product_variants")
+          .select("*")
+          .in("product_id", productIds)
+          .order("sort_order"),
+      ]);
     for (const m of media || []) {
       if (!mediaByProduct[m.product_id]) mediaByProduct[m.product_id] = [];
       mediaByProduct[m.product_id].push(m);
@@ -91,13 +98,16 @@ export default async function AccountShopPortalPage() {
       if (!catsByProduct[link.product_id]) catsByProduct[link.product_id] = [];
       catsByProduct[link.product_id].push(link.category_id);
     }
+    for (const v of variants || []) {
+      if (!variantsByProduct[v.product_id]) variantsByProduct[v.product_id] = [];
+      variantsByProduct[v.product_id].push(v);
+    }
   }
 
   const productsFull = products.map((p) => {
     const liveMedia = mediaByProduct[p.id] || [];
     const liveLon = longevityByProduct[p.id] || [];
-    const liveCats =
-      catsByProduct[p.id] || (p.category_id ? [p.category_id] : []);
+    const liveCats = catsByProduct[p.id] || (p.category_id ? [p.category_id] : []);
     const snap = p.has_pending_edit && p.pending_snapshot ? p.pending_snapshot : null;
     return {
       ...p,
@@ -118,6 +128,7 @@ export default async function AccountShopPortalPage() {
             product_id: p.id,
           }))
         : liveLon,
+      variants: variantsByProduct[p.id] || [],
     };
   });
 
@@ -142,8 +153,8 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Signed in as {profile.email}. Edits to live products need admin approval before they go
-        public.
+        Signed in as {profile.email}. Product content edits need approval;{" "}
+        <strong>varieties & stock</strong> update live without approval.
       </p>
 
       <ul className="mt-6 space-y-2">

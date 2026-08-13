@@ -8,6 +8,7 @@ import {
   shopProductPath,
 } from "@/lib/shop";
 import ProductGallery from "@/components/shop/ProductGallery";
+import ProductVariantPicker from "@/components/shop/ProductVariantPicker";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
@@ -47,29 +48,31 @@ export default async function ShopProductPage({ params }) {
     brandShop = data;
   }
 
-  const [{ data: offerRows }, { data: longevityItems }] = await Promise.all([
-    supabase
-      .from("shop_product_offers")
-      .select(
-        "id, shop_id, price_cents, currency, hide_price, show_affiliate, show_add_to_cart, affiliate_url, product_page_url, is_default, shop:shop_shops(id, name, slug, logo_url, is_product_brand, status)"
-      )
-      .eq("product_id", product.id)
-      .eq("status", "approved"),
-    supabase
-      .from("shop_product_longevity_items")
-      .select("id, icon_key, label, note, sort_order")
-      .eq("product_id", product.id)
-      .order("sort_order"),
-  ]);
+  const [{ data: offerRows }, { data: longevityItems }, { data: variants }] =
+    await Promise.all([
+      supabase
+        .from("shop_product_offers")
+        .select(
+          "id, shop_id, price_cents, currency, hide_price, show_affiliate, show_add_to_cart, affiliate_url, product_page_url, is_default, shop:shop_shops(id, name, slug, logo_url, is_product_brand, status)"
+        )
+        .eq("product_id", product.id)
+        .eq("status", "approved"),
+      supabase
+        .from("shop_product_longevity_items")
+        .select("id, icon_key, label, note, sort_order")
+        .eq("product_id", product.id)
+        .order("sort_order"),
+      supabase
+        .from("shop_product_variants")
+        .select("*")
+        .eq("product_id", product.id)
+        .eq("is_active", true)
+        .order("sort_order"),
+    ]);
 
   const offers = (offerRows || []).filter((o) => o.shop && o.shop.status === "active");
-
-  // Eligible retailers: non-brand shops with a product page URL (or any non-brand offer)
   const eligibleRetailers = offers.filter(
-    (o) =>
-      o.shop &&
-      !o.shop.is_product_brand &&
-      (o.product_page_url || "").trim()
+    (o) => o.shop && !o.shop.is_product_brand && (o.product_page_url || "").trim()
   );
 
   const media = (product.shop_product_media || [])
@@ -81,6 +84,7 @@ export default async function ShopProductPage({ params }) {
   const displayCurrency = defaultOffer?.currency || product.currency || "CAD";
   const displayHide = defaultOffer ? defaultOffer.hide_price : product.hide_price;
   const priceLabel = formatShopPrice(displayCents, displayCurrency, displayHide);
+  const hasVariants = (variants || []).length > 0;
 
   const showAffiliate = defaultOffer
     ? defaultOffer.show_affiliate && defaultOffer.affiliate_url
@@ -114,7 +118,15 @@ export default async function ShopProductPage({ params }) {
           {product.short_description ? (
             <p className="mt-2 text-sm text-[#5c4033]">{product.short_description}</p>
           ) : null}
-          {priceLabel ? (
+
+          {hasVariants ? (
+            <ProductVariantPicker
+              variants={variants || []}
+              basePriceCents={displayCents}
+              currency={displayCurrency}
+              hidePrice={displayHide}
+            />
+          ) : priceLabel ? (
             <p className="mt-4 text-2xl font-bold text-[#c45c26]">{priceLabel}</p>
           ) : (
             <p className="mt-4 text-sm text-[#7a5c4e]">Price on request / see seller</p>
@@ -130,20 +142,12 @@ export default async function ShopProductPage({ params }) {
                     className="flex flex-col items-center rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/80 px-2 py-3 text-center"
                     title={it.note || it.label}
                   >
-                    <span
-                      className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-2xl shadow-sm ring-1 ring-[#e8d5c4]"
-                      aria-hidden
-                    >
+                    <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white text-2xl shadow-sm ring-1 ring-[#e8d5c4]">
                       {longevityIconEmoji(it.icon_key)}
                     </span>
                     <span className="mt-2 text-xs font-semibold leading-snug text-[#3b2a22]">
                       {it.label}
                     </span>
-                    {it.note ? (
-                      <span className="mt-0.5 line-clamp-2 text-[10px] text-[#7a5c4e]">
-                        {it.note}
-                      </span>
-                    ) : null}
                   </li>
                 ))}
               </ul>
@@ -165,7 +169,7 @@ export default async function ShopProductPage({ params }) {
                         <img
                           src={s.logo_url}
                           alt={s.name}
-                          className="h-12 w-12 rounded-full object-cover ring-1 ring-[#e8d5c4] transition group-hover:ring-[#c45c26]"
+                          className="h-12 w-12 rounded-full object-cover ring-1 ring-[#e8d5c4]"
                         />
                       ) : (
                         <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#fff8f0] text-sm font-bold text-[#c45c26] ring-1 ring-[#e8d5c4]">
@@ -180,21 +184,11 @@ export default async function ShopProductPage({ params }) {
                   return (
                     <li key={o.id}>
                       {external ? (
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="group flex flex-col items-center gap-1.5"
-                          title={s.name}
-                        >
+                        <a href={href} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1.5" title={s.name}>
                           {inner}
                         </a>
                       ) : (
-                        <Link
-                          href={href}
-                          className="group flex flex-col items-center gap-1.5"
-                          title={s.name}
-                        >
+                        <Link href={href} className="flex flex-col items-center gap-1.5" title={s.name}>
                           {inner}
                         </Link>
                       )}
