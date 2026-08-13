@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { brandShopPath, shopPath } from "@/lib/shop";
+import { buildExpiringRows } from "@/lib/shopExpiring";
 import ShopPortalClient from "./ShopPortalClient";
-import ExpiringSoonPanel, { buildExpiringRows } from "./ExpiringSoonPanel";
+import ExpiringSoonPanel from "./ExpiringSoonPanel";
 
 export const metadata = { title: "My shop | Paw Sitter" };
 
@@ -33,24 +34,34 @@ export default async function AccountShopPortalPage() {
   }
 
   const shopIds = myShops.map((s) => s.id);
-  const { data: byPrimary } = await supabase
-    .from("shop_products")
-    .select(
-      "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, product_type, inventory_mode, has_pending_edit, pending_snapshot, updated_at"
-    )
-    .in("primary_shop_id", shopIds)
-    .order("updated_at", { ascending: false });
 
-  const { data: byBrand } = await supabase
+  const productSelect =
+    "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, has_pending_edit, pending_snapshot, updated_at";
+
+  const [{ data: byPrimary }, { data: byBrand }] = await Promise.all([
+    supabase.from("shop_products").select(productSelect).in("primary_shop_id", shopIds).order("updated_at", { ascending: false }),
+    supabase.from("shop_products").select(productSelect).in("brand_shop_id", shopIds).order("updated_at", { ascending: false }),
+  ]);
+
+  // Optional columns from later SQL — fetch separately so missing columns don't crash the page
+  let typeById = {};
+  const { data: typeRows } = await supabase
     .from("shop_products")
-    .select(
-      "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, product_type, inventory_mode, has_pending_edit, pending_snapshot, updated_at"
-    )
-    .in("brand_shop_id", shopIds)
-    .order("updated_at", { ascending: false });
+    .select("id, product_type, inventory_mode")
+    .in("id", [...new Set([...(byPrimary || []), ...(byBrand || [])].map((p) => p.id))]);
+  if (typeRows) {
+    typeById = Object.fromEntries(typeRows.map((r) => [r.id, r]));
+  }
 
   const map = new Map();
-  for (const p of [...(byPrimary || []), ...(byBrand || [])]) map.set(p.id, p);
+  for (const p of [...(byPrimary || []), ...(byBrand || [])]) {
+    const extra = typeById[p.id] || {};
+    map.set(p.id, {
+      ...p,
+      product_type: extra.product_type || "other",
+      inventory_mode: extra.inventory_mode || "simple",
+    });
+  }
   const products = [...map.values()].sort(
     (a, b) => new Date(b.updated_at) - new Date(a.updated_at)
   );
@@ -94,9 +105,11 @@ export default async function AccountShopPortalPage() {
         .select("id, variant_id, lot_code, qty_on_hand, expiry_date, status")
         .in("variant_id", variantIds)
         .not("expiry_date", "is", null);
-      const variantMap = Object.fromEntries((variants || []).map((v) => [v.id, v]));
-      const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
-      expiringRows = buildExpiringRows(batches || [], variantMap, productMap);
+      if (batches) {
+        const variantMap = Object.fromEntries((variants || []).map((v) => [v.id, v]));
+        const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
+        expiringRows = buildExpiringRows(batches, variantMap, productMap);
+      }
     }
   }
 
