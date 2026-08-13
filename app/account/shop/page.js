@@ -105,6 +105,11 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">Signed in as {profile.email}</p>
+      <p className="mt-2 text-sm">
+        <Link href="/account/shop/orders" className="font-semibold text-[#c45c26] hover:underline">
+          Incoming orders
+        </Link>
+      </p>
       {loadNote ? (
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">{loadNote}</p>
       ) : null}
