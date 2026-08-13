@@ -3,7 +3,6 @@ import ShopCartClient from "./CartClient";
 
 export const metadata = {
   title: "Cart | Paw Sitter Shop",
-  description: "Your Paw Sitter shop cart.",
 };
 
 export default function ShopCartPage() {
