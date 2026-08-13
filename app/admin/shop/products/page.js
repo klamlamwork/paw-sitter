@@ -15,7 +15,7 @@ export default async function AdminShopProductsPage() {
   const { data: products } = await supabase
     .from("shop_products")
     .select(
-      "id, name, slug, status, price_cents, currency, hide_price, brand_shop_id, category_id, created_by, updated_at, created_at"
+      "id, name, slug, status, price_cents, currency, hide_price, brand_shop_id, category_id, created_by, has_pending_edit, pending_snapshot, pending_submitted_at, updated_at, created_at"
     )
     .order("updated_at", { ascending: false });
 
@@ -46,7 +46,9 @@ export default async function AdminShopProductsPage() {
     creator: p.created_by ? creatorMap[p.created_by] || null : null,
   }));
 
-  const pendingCount = rows.filter((p) => p.status === "pending").length;
+  const pendingCount = rows.filter(
+    (p) => p.status === "pending" || p.has_pending_edit
+  ).length;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
@@ -55,12 +57,12 @@ export default async function AdminShopProductsPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Products</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Moderation only. Shops create listings from their portal (next). You approve, edit, or
-        set inactive.
+        Approve new listings or <strong>pending updates</strong>. Public keeps the last approved
+        version until you approve an update.
       </p>
       {pendingCount > 0 ? (
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
-          {pendingCount} pending approval
+          {pendingCount} need attention (new or update)
         </p>
       ) : null}
       <ProductsModerateClient initialProducts={rows} adminId={profile.id} />

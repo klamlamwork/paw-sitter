@@ -28,9 +28,8 @@ export default async function AccountShopPortalPage() {
         </Link>
         <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
         <p className="mt-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] px-4 py-3 text-sm text-[#5c4033]">
-          No shop is linked to <strong>{profile.email}</strong> yet. Ask an admin to open{" "}
-          <span className="font-semibold">Admin → Shop → Shops</span>, set{" "}
-          <strong>Owner account</strong> to this email, and keep the shop <strong>active</strong>.
+          No shop is linked to <strong>{profile.email}</strong> yet. Ask an admin to set{" "}
+          <strong>Owner account</strong> on your shop.
         </p>
       </div>
     );
@@ -40,13 +39,17 @@ export default async function AccountShopPortalPage() {
 
   const { data: byPrimary } = await supabase
     .from("shop_products")
-    .select("id, name, slug, status, brand_shop_id, primary_shop_id, short_description, updated_at")
+    .select(
+      "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, has_pending_edit, pending_snapshot, updated_at"
+    )
     .in("primary_shop_id", shopIds)
     .order("updated_at", { ascending: false });
 
   const { data: byBrand } = await supabase
     .from("shop_products")
-    .select("id, name, slug, status, brand_shop_id, primary_shop_id, short_description, updated_at")
+    .select(
+      "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, has_pending_edit, pending_snapshot, updated_at"
+    )
     .in("brand_shop_id", shopIds)
     .order("updated_at", { ascending: false });
 
@@ -59,23 +62,57 @@ export default async function AccountShopPortalPage() {
   );
 
   const productIds = products.map((p) => p.id);
+  let mediaByProduct = {};
   let longevityByProduct = {};
   if (productIds.length) {
-    const { data: items } = await supabase
-      .from("shop_product_longevity_items")
-      .select("id, product_id, icon_key, label, note, sort_order")
-      .in("product_id", productIds)
-      .order("sort_order");
+    const [{ data: media }, { data: items }] = await Promise.all([
+      supabase
+        .from("shop_product_media")
+        .select("id, product_id, url, alt_text, sort_order")
+        .in("product_id", productIds)
+        .order("sort_order"),
+      supabase
+        .from("shop_product_longevity_items")
+        .select("id, product_id, icon_key, label, note, sort_order")
+        .in("product_id", productIds)
+        .order("sort_order"),
+    ]);
+    for (const m of media || []) {
+      if (!mediaByProduct[m.product_id]) mediaByProduct[m.product_id] = [];
+      mediaByProduct[m.product_id].push(m);
+    }
     for (const it of items || []) {
       if (!longevityByProduct[it.product_id]) longevityByProduct[it.product_id] = [];
       longevityByProduct[it.product_id].push(it);
     }
   }
 
-  const productsWithLongevity = products.map((p) => ({
-    ...p,
-    longevity_items: longevityByProduct[p.id] || [],
-  }));
+  const productsFull = products.map((p) => {
+    const liveMedia = mediaByProduct[p.id] || [];
+    const liveLon = longevityByProduct[p.id] || [];
+    // Shop edits work on pending snapshot if present, else live
+    const snap = p.has_pending_edit && p.pending_snapshot ? p.pending_snapshot : null;
+    return {
+      ...p,
+      edit_name: snap?.name ?? p.name,
+      edit_slug: snap?.slug ?? p.slug,
+      edit_short_description: snap?.short_description ?? p.short_description,
+      edit_description: snap?.description ?? p.description,
+      edit_price_cents: snap?.price_cents ?? p.price_cents,
+      edit_hide_price: snap?.hide_price ?? p.hide_price,
+      edit_category_id: snap?.category_id ?? p.category_id,
+      media: snap?.media
+        ? snap.media.map((m, i) => ({ ...m, id: m.id || `p-${i}`, product_id: p.id }))
+        : liveMedia,
+      longevity_items: snap?.longevity_items
+        ? snap.longevity_items.map((it, i) => ({
+            ...it,
+            id: it.id || `l-${i}`,
+            product_id: p.id,
+          }))
+        : liveLon,
+    };
+  });
 
   const [{ data: categories }, { data: productBrandShops }] = await Promise.all([
     supabase.from("shop_categories").select("id, name").order("sort_order").order("name"),
@@ -94,7 +131,8 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Signed in as {profile.email}. Create products and longevity chips (circle icon + keywords).
+        Signed in as {profile.email}. Changes to live products stay private until admin approves —
+        the public site keeps the last approved version.
       </p>
 
       <ul className="mt-6 space-y-2">
@@ -107,12 +145,11 @@ export default async function AccountShopPortalPage() {
               {s.name}{" "}
               <span className="text-[10px] font-bold uppercase text-[#c45c26]">
                 {s.is_product_brand ? "Product brand" : "Retailer"}
-              </span>{" "}
-              <span className="text-[10px] uppercase text-[#7a5c4e]">{s.status}</span>
+              </span>
             </p>
             <p className="text-xs text-[#7a5c4e]">
               <Link href={shopPath(s)} className="text-[#c45c26] hover:underline">
-                Public storefront
+                Storefront
               </Link>
               {s.is_product_brand ? (
                 <>
@@ -129,7 +166,7 @@ export default async function AccountShopPortalPage() {
 
       <ShopPortalClient
         shops={myShops}
-        initialProducts={productsWithLongevity}
+        initialProducts={productsFull}
         categories={categories || []}
         productBrandShops={productBrandShops || []}
         profileId={profile.id}
