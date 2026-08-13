@@ -1,39 +1,12 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { brandShopPath, formatShopPrice, productPath, shopPath } from "@/lib/shop";
+import ShopEntitySlider from "./ShopHomeSliders";
 
 export const metadata = {
   title: "Shop | Paw Sitter",
   description: "Longevity-minded products for pets — brands and retailers on Paw Sitter.",
 };
-
-/** Compact row: logo left, name right — ~3/5 of previous square tile height */
-function ShopRowTile({ href, name, logoUrl }) {
-  return (
-    <Link
-      href={href}
-      className="group flex h-14 items-center gap-3 overflow-hidden rounded-xl border border-[#e8d5c4] bg-white px-2.5 transition hover:border-[#c45c26]/50 sm:h-16"
-    >
-      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[#fff8f0] ring-1 ring-[#e8d5c4] sm:h-11 sm:w-11">
-        {logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={logoUrl}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-[#c45c26]/80">
-            {(name || "?").slice(0, 1).toUpperCase()}
-          </div>
-        )}
-      </div>
-      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#3b2a22] group-hover:text-[#c45c26]">
-        {name}
-      </span>
-    </Link>
-  );
-}
 
 function ProductTile({ product, coverUrl }) {
   const price = formatShopPrice(product.price_cents, product.currency, product.hide_price);
@@ -114,6 +87,19 @@ export default async function ShopHomePage() {
   const brandShops = sortHomeList(brandShopsRaw, "home_brand_sort").slice(0, 10);
   const shops = sortHomeList(shopsRaw, "home_retailer_sort").slice(0, 10);
 
+  const brandItems = brandShops.map((b) => ({
+    id: b.id,
+    name: b.name,
+    logoUrl: b.logo_url,
+    href: brandShopPath(b),
+  }));
+  const retailerItems = shops.map((s) => ({
+    id: s.id,
+    name: s.name,
+    logoUrl: s.logo_url,
+    href: shopPath(s),
+  }));
+
   const productIds = (products || []).map((p) => p.id);
   const coverByProduct = {};
   if (productIds.length) {
@@ -142,17 +128,7 @@ export default async function ShopHomePage() {
             All brands →
           </Link>
         </div>
-        {brandShops.length ? (
-          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {brandShops.map((b) => (
-              <li key={b.id} className="min-w-0">
-                <ShopRowTile href={brandShopPath(b)} name={b.name} logoUrl={b.logo_url} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-[#7a5c4e]">No product brands yet.</p>
-        )}
+        <ShopEntitySlider items={brandItems} emptyLabel="No product brands yet." />
       </section>
 
       <section className="mt-8">
@@ -162,17 +138,7 @@ export default async function ShopHomePage() {
             All shops →
           </Link>
         </div>
-        {shops.length ? (
-          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {shops.map((s) => (
-              <li key={s.id} className="min-w-0">
-                <ShopRowTile href={shopPath(s)} name={s.name} logoUrl={s.logo_url} />
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="mt-3 text-sm text-[#7a5c4e]">No retailer shops yet.</p>
-        )}
+        <ShopEntitySlider items={retailerItems} emptyLabel="No retailer shops yet." />
       </section>
 
       {(categories || []).length ? (
