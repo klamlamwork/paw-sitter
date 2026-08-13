@@ -8,6 +8,7 @@ import {
   shopPath,
   shopProductPath,
 } from "@/lib/shop";
+import ProductGallery from "@/components/shop/ProductGallery";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
@@ -29,6 +30,7 @@ export default async function ShopProductPage({ params }) {
   const { slug } = await params;
   const supabase = await createClient();
 
+  // Public always sees live approved row (not pending_snapshot)
   const { data: product } = await supabase
     .from("shop_products")
     .select("*, shop_product_media(*)")
@@ -67,7 +69,6 @@ export default async function ShopProductPage({ params }) {
   const media = (product.shop_product_media || [])
     .slice()
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-  const cover = media[0];
 
   const defaultOffer = offers.find((o) => o.is_default) || offers[0] || null;
   const displayCents = defaultOffer?.price_cents ?? product.price_cents;
@@ -92,20 +93,7 @@ export default async function ShopProductPage({ params }) {
       </Link>
 
       <div className="mt-6 grid gap-8 lg:grid-cols-2">
-        <div className="overflow-hidden rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]">
-          {cover?.url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={cover.url}
-              alt={cover.alt_text || product.name}
-              className="aspect-square w-full object-cover"
-            />
-          ) : (
-            <div className="flex aspect-square items-center justify-center text-sm text-[#7a5c4e]">
-              No image
-            </div>
-          )}
-        </div>
+        <ProductGallery images={media} productName={product.name} />
 
         <div>
           {brandShop ? (
