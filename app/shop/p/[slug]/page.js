@@ -5,6 +5,7 @@ import {
   brandShopPath,
   formatShopPrice,
   longevityIconEmoji,
+  shopPath,
   shopProductPath,
 } from "@/lib/shop";
 import { isBatchExpiryMode } from "@/lib/shopInventory";
@@ -44,7 +45,9 @@ export default async function ShopProductPage({ params }) {
   if (product.brand_shop_id) {
     const { data } = await supabase
       .from("shop_shops")
-      .select("id, name, slug, logo_url, is_product_brand, status, expiry_hide_days, expiry_discount_days, expiry_discount_pct")
+      .select(
+        "id, name, slug, logo_url, is_product_brand, status, expiry_hide_days, expiry_discount_days, expiry_discount_pct"
+      )
       .eq("id", product.brand_shop_id)
       .maybeSingle();
     brandShop = data;
@@ -72,10 +75,9 @@ export default async function ShopProductPage({ params }) {
       supabase
         .from("shop_product_offers")
         .select(
-          "id, shop_id, price_cents, currency, hide_price, show_affiliate, show_add_to_cart, affiliate_url, product_page_url, is_default, shop:shop_shops(id, name, slug, logo_url, is_product_brand, status)"
+          "id, shop_id, price_cents, currency, hide_price, show_affiliate, show_add_to_cart, affiliate_url, product_page_url, is_default, status"
         )
-        .eq("product_id", product.id)
-        .eq("status", "approved"),
+        .eq("product_id", product.id),
       supabase
         .from("shop_product_longevity_items")
         .select("id, icon_key, label, note, sort_order")
@@ -88,6 +90,31 @@ export default async function ShopProductPage({ params }) {
         .eq("is_active", true)
         .order("sort_order"),
     ]);
+
+  const offerShopIds = [...new Set((offerRows || []).map((o) => o.shop_id).filter(Boolean))];
+  let shopsById = {};
+  if (offerShopIds.length) {
+    const { data: offerShops } = await supabase
+      .from("shop_shops")
+      .select("id, name, slug, logo_url, is_product_brand, status")
+      .in("id", offerShopIds);
+    shopsById = Object.fromEntries((offerShops || []).map((s) => [s.id, s]));
+  }
+
+  const offers = (offerRows || []).map((o) => ({
+    ...o,
+    shop: shopsById[o.shop_id] || null,
+  }));
+
+  // All shops admin attached, except the product's own brand hub and inactive shops.
+  // Do not require product_page_url — fall back to the retailer storefront.
+  const eligibleRetailers = offers.filter((o) => {
+    const s = o.shop;
+    if (!s || s.status !== "active") return false;
+    if (product.brand_shop_id && o.shop_id === product.brand_shop_id) return false;
+    if (o.status && o.status !== "approved") return false;
+    return true;
+  });
 
   let variants = variantsRaw || [];
   const batchMode = isBatchExpiryMode(product.inventory_mode);
@@ -117,11 +144,6 @@ export default async function ShopProductPage({ params }) {
       })
       .filter((v) => !v.hidden);
   }
-
-  const offers = (offerRows || []).filter((o) => o.shop && o.shop.status === "active");
-  const eligibleRetailers = offers.filter(
-    (o) => o.shop && !o.shop.is_product_brand && (o.product_page_url || "").trim()
-  );
 
   const media = (product.shop_product_media || [])
     .slice()
@@ -211,7 +233,8 @@ export default async function ShopProductPage({ params }) {
               <ul className="mt-3 flex flex-wrap gap-3">
                 {eligibleRetailers.map((o) => {
                   const s = o.shop;
-                  const href = (o.product_page_url || "").trim() || shopProductPath(s, product);
+                  const custom = (o.product_page_url || "").trim();
+                  const href = custom || shopPath(s) || shopProductPath(s, product);
                   const external = /^https?:\/\//i.test(href);
                   const inner = (
                     <>
@@ -233,7 +256,7 @@ export default async function ShopProductPage({ params }) {
                     </>
                   );
                   return (
-                    <li key={o.id}>
+                    <li key={o.id || o.shop_id}>
                       {external ? (
                         <a href={href} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center gap-1.5" title={s.name}>
                           {inner}
