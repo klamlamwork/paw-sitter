@@ -6,6 +6,7 @@ import { brandShopPath, shopPath } from "@/lib/shop";
 import { buildExpiringRows } from "@/lib/shopExpiring";
 import ShopPortalClient from "./ShopPortalClient";
 import ExpiringSoonPanel from "./ExpiringSoonPanel";
+import NearExpiryRulesForm from "./NearExpiryRulesForm";
 
 export const metadata = { title: "My shop | Paw Sitter" };
 
@@ -43,14 +44,16 @@ export default async function AccountShopPortalPage() {
     supabase.from("shop_products").select(productSelect).in("brand_shop_id", shopIds).order("updated_at", { ascending: false }),
   ]);
 
-  // Optional columns from later SQL — fetch separately so missing columns don't crash the page
   let typeById = {};
-  const { data: typeRows } = await supabase
-    .from("shop_products")
-    .select("id, product_type, inventory_mode")
-    .in("id", [...new Set([...(byPrimary || []), ...(byBrand || [])].map((p) => p.id))]);
-  if (typeRows) {
-    typeById = Object.fromEntries(typeRows.map((r) => [r.id, r]));
+  const typeIds = [...new Set([...(byPrimary || []), ...(byBrand || [])].map((p) => p.id))];
+  if (typeIds.length) {
+    const { data: typeRows } = await supabase
+      .from("shop_products")
+      .select("id, product_type, inventory_mode")
+      .in("id", typeIds);
+    if (typeRows) {
+      typeById = Object.fromEntries(typeRows.map((r) => [r.id, r]));
+    }
   }
 
   const map = new Map();
@@ -146,10 +149,10 @@ export default async function AccountShopPortalPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop portal</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Product type controls stock mode. Variety / batch changes need no admin approval.
+        Product type controls stock mode. Variety / batch / expiry rules need no admin approval.
       </p>
 
-      <ul className="mt-6 space-y-2">
+      <ul className="mt-6 space-y-3">
         {myShops.map((s) => (
           <li key={s.id} className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm">
             <p className="font-semibold text-[#3b2a22]">{s.name}</p>
@@ -159,6 +162,7 @@ export default async function AccountShopPortalPage() {
                 <> · <Link href={brandShopPath(s)} className="text-[#c45c26] hover:underline">Brand hub</Link></>
               ) : null}
             </p>
+            <NearExpiryRulesForm shop={s} />
           </li>
         ))}
       </ul>

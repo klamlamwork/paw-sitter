@@ -7,7 +7,8 @@ import {
   longevityIconEmoji,
   shopProductPath,
 } from "@/lib/shop";
-import { isBatchExpiryMode, sellableQtyFromBatches } from "@/lib/shopInventory";
+import { isBatchExpiryMode } from "@/lib/shopInventory";
+import { sellableQtyWithPolicy } from "@/lib/shopExpiryPolicy";
 import ProductGallery from "@/components/shop/ProductGallery";
 import ProductVariantPicker from "@/components/shop/ProductVariantPicker";
 
@@ -43,11 +44,28 @@ export default async function ShopProductPage({ params }) {
   if (product.brand_shop_id) {
     const { data } = await supabase
       .from("shop_shops")
-      .select("id, name, slug, logo_url, is_product_brand, status")
+      .select("id, name, slug, logo_url, is_product_brand, status, expiry_hide_days, expiry_discount_days, expiry_discount_pct")
       .eq("id", product.brand_shop_id)
       .maybeSingle();
     brandShop = data;
   }
+
+  let stockShop = null;
+  const stockShopId = product.primary_shop_id || product.brand_shop_id;
+  if (stockShopId && stockShopId !== product.brand_shop_id) {
+    const { data } = await supabase
+      .from("shop_shops")
+      .select("id, expiry_hide_days, expiry_discount_days, expiry_discount_pct")
+      .eq("id", stockShopId)
+      .maybeSingle();
+    stockShop = data;
+  } else if (stockShopId === product.brand_shop_id) {
+    stockShop = brandShop;
+  }
+
+  const hideDays = stockShop?.expiry_hide_days ?? brandShop?.expiry_hide_days ?? 0;
+  const discountDays = stockShop?.expiry_discount_days ?? brandShop?.expiry_discount_days ?? 7;
+  const discountPct = stockShop?.expiry_discount_pct ?? brandShop?.expiry_discount_pct ?? 0;
 
   const [{ data: offerRows }, { data: longevityItems }, { data: variantsRaw }] =
     await Promise.all([
@@ -89,7 +107,7 @@ export default async function ShopProductPage({ params }) {
 
     variants = variants
       .map((v) => {
-        const qty = sellableQtyFromBatches(byVariant[v.id] || []);
+        const qty = sellableQtyWithPolicy(byVariant[v.id] || [], hideDays);
         return {
           ...v,
           stock_qty: qty,
@@ -156,6 +174,8 @@ export default async function ShopProductPage({ params }) {
               currency={displayCurrency}
               hidePrice={displayHide}
               showFefo={batchMode}
+              discountDays={discountDays}
+              discountPct={discountPct}
             />
           ) : priceLabel ? (
             <p className="mt-4 text-2xl font-bold text-[#c45c26]">{priceLabel}</p>
