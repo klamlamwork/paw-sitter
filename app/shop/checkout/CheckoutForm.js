@@ -18,7 +18,7 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
     postal_code: defaultAddress?.postal_code || "",
     country: defaultAddress?.country || "Canada",
     label: defaultAddress?.label || "",
-    payment_method: "etransfer",
+    payment_method: "card",
   });
   const [saveAddress, setSaveAddress] = useState(!hasSavedAddress);
   const [submitting, setSubmitting] = useState(false);
@@ -56,6 +56,18 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
       }
 
       if (!userId) throw new Error("You must be signed in to place an order.");
+
+      if (form.payment_method === "card") {
+        const res = await fetch("/api/shop/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address: form }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not start card checkout");
+        window.location.href = data.url;
+        return;
+      }
 
       const cartId = await ensureUserCart(supabase, userId);
       const { data: cartItems, error: cartErr } = await supabase
@@ -175,6 +187,10 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
       <fieldset className="rounded-2xl border border-[#e8d5c4] p-3">
         <legend className="px-1 text-sm font-medium">How will you pay?</legend>
         <label className="mt-2 flex items-start gap-2 text-sm">
+          <input type="radio" name="payment_method" checked={form.payment_method === "card"} onChange={() => setField("payment_method", "card")} />
+          <span>Card (Stripe)</span>
+        </label>
+        <label className="mt-2 flex items-start gap-2 text-sm">
           <input type="radio" name="payment_method" checked={form.payment_method === "etransfer"} onChange={() => setField("payment_method", "etransfer")} />
           <span>Interac e-Transfer (seller confirms when received)</span>
         </label>
@@ -184,7 +200,7 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
         </label>
         <label className="mt-2 flex items-start gap-2 text-sm">
           <input type="radio" name="payment_method" checked={form.payment_method === "later"} onChange={() => setField("payment_method", "later")} />
-          <span>Pay later (card checkout comes next)</span>
+          <span>Pay later</span>
         </label>
       </fieldset>
       <label className="flex items-center gap-2 text-sm">
@@ -196,7 +212,7 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
         disabled={submitting}
         className="rounded-full bg-[#c45c26] px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
       >
-        {submitting ? "Placing orders…" : "Place orders"}
+        {submitting ? "Working…" : form.payment_method === "card" ? "Pay with card" : "Place orders"}
       </button>
     </form>
   );
