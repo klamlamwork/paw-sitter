@@ -1,176 +1,111 @@
-// app/shop/checkout/CheckoutForm.js
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { useRouter } from 'next/navigation';
+import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
-export default function CheckoutForm({ user, defaultAddress }) {
-  const router = useRouter();
+export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }) {
   const [form, setForm] = useState({
-    name: defaultAddress?.name || '',
-    email: defaultAddress?.email || user.email || '',
-    phone: defaultAddress?.phone || '',
-    line1: defaultAddress?.line1 || '',
-    line2: defaultAddress?.line2 || '',
-    city: defaultAddress?.city || '',
-    state: defaultAddress?.state || '',
-    postal_code: defaultAddress?.postal_code || '',
-    country: defaultAddress?.country || 'US',
-    label: defaultAddress?.label || '',
+    name: defaultAddress?.name || "",
+    email: defaultAddress?.email || "",
+    phone: defaultAddress?.phone || "",
+    line1: defaultAddress?.line1 || "",
+    line2: defaultAddress?.line2 || "",
+    city: defaultAddress?.city || "",
+    state: defaultAddress?.state || "",
+    postal_code: defaultAddress?.postal_code || "",
+    country: defaultAddress?.country || "Canada",
+    label: defaultAddress?.label || "",
   });
-  const [saveAddress, setSaveAddress] = useState(!defaultAddress);
+  const [saveAddress, setSaveAddress] = useState(!hasSavedAddress);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
 
-  const supabase = createClient();
+  function setField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
     setSubmitting(true);
-
+    setError("");
+    setOk("");
     try {
-      if (saveAddress) {
-        await supabase.from('user_addresses').upsert({
-          user_id: user.id,
+      if (saveAddress && userId) {
+        const supabase = createClient();
+        const { error: err } = await supabase.from("user_addresses").insert({
+          user_id: userId,
           ...form,
-          is_default: !defaultAddress,
+          is_default: !hasSavedAddress,
         });
+        if (err) throw err;
       }
-
-      // TODO: create order here (next phase)
-      alert('Order placed! (placeholder)');
-      router.push('/account/shop');
-    } finally {
-      setSubmitting(false);
+      setOk("Shipping details saved. Payment comes next.");
+    } catch (err) {
+      setError(err.message || "Could not save address");
     }
+    setSubmitting(false);
   }
 
+  const fieldClass = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid grid-cols-2 gap-4">
-        <label className="col-span-2">
-          <span className="block text-sm font-medium">Full name</span>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={form.name}
-            onChange={e => setForm({ ...form, name: e.target.value })}
-            required
-          />
-        </label>
+    <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+      {error ? <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
+      {ok ? <p className="rounded-xl bg-green-50 px-3 py-2 text-sm text-green-800">{ok}</p> : null}
 
-        <label className="col-span-2">
-          <span className="block text-sm font-medium">Email</span>
-          <input
-            type="email"
-            className="w-full border rounded px-3 py-2"
-            value={form.email}
-            onChange={e => setForm({ ...form, email: e.target.value })}
-            required
-          />
+      <label className="block text-sm">
+        Full name
+        <input className={fieldClass} value={form.name} onChange={(e) => setField("name", e.target.value)} required />
+      </label>
+      <label className="block text-sm">
+        Email
+        <input type="email" className={fieldClass} value={form.email} onChange={(e) => setField("email", e.target.value)} required />
+      </label>
+      <label className="block text-sm">
+        Phone
+        <input type="tel" className={fieldClass} value={form.phone} onChange={(e) => setField("phone", e.target.value)} placeholder="(555) 123-4567" />
+      </label>
+      <label className="block text-sm">
+        Street address
+        <input className={fieldClass} value={form.line1} onChange={(e) => setField("line1", e.target.value)} placeholder="123 Main St" required={!defaultAddress?.line1} />
+      </label>
+      <label className="block text-sm">
+        Apt / suite (optional)
+        <input className={fieldClass} value={form.line2} onChange={(e) => setField("line2", e.target.value)} placeholder="Apt 4B" />
+      </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block text-sm">
+          City
+          <input className={fieldClass} value={form.city} onChange={(e) => setField("city", e.target.value)} placeholder="Toronto" required={!defaultAddress?.city} />
         </label>
-
-        <label className="col-span-2">
-          <span className="block text-sm font-medium">Phone</span>
-          <input
-            type="tel"
-            className="w-full border rounded px-3 py-2"
-            value={form.phone}
-            onChange={e => setForm({ ...form, phone: e.target.value })}
-            placeholder="+1 (555) 123‑4567"
-          />
+        <label className="block text-sm">
+          Province / state
+          <input className={fieldClass} value={form.state} onChange={(e) => setField("state", e.target.value)} placeholder="ON" />
         </label>
-
-        <label className="col-span-2">
-          <span className="block text-sm font-medium">Address line 1</span>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={form.line1}
-            onChange={e => setForm({ ...form, line1: e.target.value })}
-            placeholder="123 Main St"
-            required={!defaultAddress?.line1}
-          />
+        <label className="block text-sm">
+          Postal code
+          <input className={fieldClass} value={form.postal_code} onChange={(e) => setField("postal_code", e.target.value)} placeholder="M5V 2T6" />
         </label>
-
-        <label className="col-span-2">
-          <span className="block text-sm font-medium">Address line 2 (optional)</span>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={form.line2}
-            onChange={e => setForm({ ...form, line2: e.target.value })}
-            placeholder="Apt 4B"
-          />
-        </label>
-
-        <label>
-          <span className="block text-sm font-medium">City</span>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={form.city}
-            onChange={e => setForm({ ...form, city: e.target.value })}
-            placeholder="San Francisco"
-            required={!defaultAddress?.city}
-          />
-        </label>
-
-        <label>
-          <span className="block text-sm font-medium">State / Province</span>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={form.state}
-            onChange={e => setForm({ ...form, state: e.target.value })}
-            placeholder="CA"
-            required={!defaultAddress?.state}
-          />
-        </label>
-
-        <label>
-          <span className="block text-sm font-medium">Postal code</span>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={form.postal_code}
-            onChange={e => setForm({ ...form, postal_code: e.target.value })}
-            placeholder="94107"
-            required={!defaultAddress?.postal_code}
-          />
-        </label>
-
-        <label>
-          <span className="block text-sm font-medium">Country</span>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={form.country}
-            onChange={e => setForm({ ...form, country: e.target.value })}
-            placeholder="US"
-            required
-          />
-        </label>
-
-        <label className="col-span-2">
-          <span className="block text-sm font-medium">Label (optional)</span>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={form.label}
-            onChange={e => setForm({ ...form, label: e.target.value })}
-            placeholder="Home"
-          />
-        </label>
-
-        <label className="col-span-2 flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={saveAddress}
-            onChange={e => setSaveAddress(e.target.checked)}
-          />
-          <span className="text-sm">Save this address for future use</span>
+        <label className="block text-sm">
+          Country
+          <input className={fieldClass} value={form.country} onChange={(e) => setField("country", e.target.value)} required />
         </label>
       </div>
-
+      <label className="block text-sm">
+        Address label (optional)
+        <input className={fieldClass} value={form.label} onChange={(e) => setField("label", e.target.value)} placeholder="Home" />
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={saveAddress} onChange={(e) => setSaveAddress(e.target.checked)} />
+        Save this address for future use
+      </label>
       <button
         type="submit"
         disabled={submitting}
-        className="bg-black text-white px-6 py-3 rounded disabled:opacity-50"
+        className="rounded-full bg-[#c45c26] px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
       >
-        {submitting ? 'Placing order…' : 'Place order'}
+        {submitting ? "Saving…" : "Continue"}
       </button>
     </form>
   );
