@@ -76,11 +76,20 @@ export default async function ShopHomePage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold text-[#3b2a22] sm:text-4xl">Shop</h1>
-      <p className="mt-2 max-w-2xl text-sm text-[#7a5c4e]">
-        Product brands and retailers in one place. Open a product, then choose a seller when offers
-        are available.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold text-[#3b2a22] sm:text-4xl">Shop</h1>
+          <p className="mt-2 max-w-2xl text-sm text-[#7a5c4e]">
+            Product brands and retailers in one place.
+          </p>
+        </div>
+        <Link
+          href="/shop/cart"
+          className="rounded-full border border-[#e8d5c4] bg-white px-4 py-2 text-sm font-semibold text-[#3b2a22] hover:border-[#c45c26]/50"
+        >
+          Cart
+        </Link>
+      </div>
 
       <section className="mt-10">
         <div className="flex items-end justify-between gap-2">
