@@ -146,18 +146,23 @@ export default async function ShopProductPage({ params }) {
     .slice()
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-  const defaultOffer = offers.find((o) => o.is_default) || offers[0] || null;
-  const displayCents = defaultOffer?.price_cents ?? product.price_cents;
-  const displayCurrency = defaultOffer?.currency || product.currency || "CAD";
-  const displayHide = defaultOffer ? defaultOffer.hide_price : product.hide_price;
+  const sellerOffer =
+    offers.find((o) => o.shop_id === product.primary_shop_id) ||
+    offers.find((o) => o.is_default) ||
+    offers[0] ||
+    null;
 
-  const showAffiliate = defaultOffer
-    ? defaultOffer.show_affiliate && defaultOffer.affiliate_url
-    : product.show_affiliate && product.affiliate_url;
-  const affiliateUrl = defaultOffer?.affiliate_url || product.affiliate_url;
-  const showCart = defaultOffer
-    ? defaultOffer.show_add_to_cart
-    : product.show_add_to_cart;
+  const displayCents = sellerOffer?.price_cents ?? product.price_cents;
+  const displayCurrency = sellerOffer?.currency || product.currency || "CAD";
+  const displayHide = sellerOffer ? sellerOffer.hide_price : product.hide_price;
+
+  const affiliateUrl = (
+    (sellerOffer?.show_affiliate && sellerOffer.affiliate_url) ||
+    (product.show_affiliate && product.affiliate_url) ||
+    ""
+  ).trim();
+  const showAffiliate = !!affiliateUrl;
+  const showCart = !!(sellerOffer?.show_add_to_cart || product.show_add_to_cart);
 
   const chips = longevityItems || [];
   const cartShopId = product.primary_shop_id || product.brand_shop_id;
@@ -199,6 +204,8 @@ export default async function ShopProductPage({ params }) {
             discountDays={discountDays}
             discountPct={discountPct}
             showCart={!!showCart}
+            showAffiliate={showAffiliate}
+            affiliateUrl={affiliateUrl}
             cartLineBase={{
               product_id: product.id,
               shop_id: cartShopId,
@@ -275,19 +282,6 @@ export default async function ShopProductPage({ params }) {
               </ul>
             </section>
           ) : null}
-
-          <div className="mt-6 flex flex-wrap gap-3">
-            {showAffiliate ? (
-              <a
-                href={affiliateUrl}
-                target="_blank"
-                rel="noopener noreferrer sponsored"
-                className="inline-flex rounded-full border border-[#c45c26] px-6 py-2.5 text-sm font-semibold text-[#c45c26]"
-              >
-                Buy / view offer
-              </a>
-            ) : null}
-          </div>
         </div>
       </div>
 
