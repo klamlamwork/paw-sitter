@@ -5,7 +5,6 @@ import {
   brandShopPath,
   formatShopPrice,
   longevityIconEmoji,
-  shopPath,
   shopProductPath,
 } from "@/lib/shop";
 import ProductGallery from "@/components/shop/ProductGallery";
@@ -30,7 +29,6 @@ export default async function ShopProductPage({ params }) {
   const { slug } = await params;
   const supabase = await createClient();
 
-  // Public always sees live approved row (not pending_snapshot)
   const { data: product } = await supabase
     .from("shop_products")
     .select("*, shop_product_media(*)")
@@ -53,7 +51,7 @@ export default async function ShopProductPage({ params }) {
     supabase
       .from("shop_product_offers")
       .select(
-        "id, shop_id, price_cents, currency, hide_price, show_affiliate, show_add_to_cart, affiliate_url, is_default, shop:shop_shops(id, name, slug, logo_url, is_product_brand, status)"
+        "id, shop_id, price_cents, currency, hide_price, show_affiliate, show_add_to_cart, affiliate_url, product_page_url, is_default, shop:shop_shops(id, name, slug, logo_url, is_product_brand, status)"
       )
       .eq("product_id", product.id)
       .eq("status", "approved"),
@@ -65,6 +63,14 @@ export default async function ShopProductPage({ params }) {
   ]);
 
   const offers = (offerRows || []).filter((o) => o.shop && o.shop.status === "active");
+
+  // Eligible retailers: non-brand shops with a product page URL (or any non-brand offer)
+  const eligibleRetailers = offers.filter(
+    (o) =>
+      o.shop &&
+      !o.shop.is_product_brand &&
+      (o.product_page_url || "").trim()
+  );
 
   const media = (product.shop_product_media || [])
     .slice()
@@ -144,6 +150,61 @@ export default async function ShopProductPage({ params }) {
             </section>
           ) : null}
 
+          {eligibleRetailers.length ? (
+            <section className="mt-6">
+              <h2 className="text-sm font-semibold text-[#3b2a22]">Eligible retailers</h2>
+              <ul className="mt-3 flex flex-wrap gap-3">
+                {eligibleRetailers.map((o) => {
+                  const s = o.shop;
+                  const href = (o.product_page_url || "").trim() || shopProductPath(s, product);
+                  const external = /^https?:\/\//i.test(href);
+                  const inner = (
+                    <>
+                      {s.logo_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={s.logo_url}
+                          alt={s.name}
+                          className="h-12 w-12 rounded-full object-cover ring-1 ring-[#e8d5c4] transition group-hover:ring-[#c45c26]"
+                        />
+                      ) : (
+                        <span className="flex h-12 w-12 items-center justify-center rounded-full bg-[#fff8f0] text-sm font-bold text-[#c45c26] ring-1 ring-[#e8d5c4]">
+                          {s.name.slice(0, 1)}
+                        </span>
+                      )}
+                      <span className="max-w-[4.5rem] truncate text-center text-[10px] font-semibold text-[#3b2a22]">
+                        {s.name}
+                      </span>
+                    </>
+                  );
+                  return (
+                    <li key={o.id}>
+                      {external ? (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group flex flex-col items-center gap-1.5"
+                          title={s.name}
+                        >
+                          {inner}
+                        </a>
+                      ) : (
+                        <Link
+                          href={href}
+                          className="group flex flex-col items-center gap-1.5"
+                          title={s.name}
+                        >
+                          {inner}
+                        </Link>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ) : null}
+
           <div className="mt-6 flex flex-wrap gap-3">
             {showAffiliate ? (
               <a
@@ -161,66 +222,6 @@ export default async function ShopProductPage({ params }) {
               </span>
             ) : null}
           </div>
-
-          {offers.length > 0 ? (
-            <div className="mt-8">
-              <h2 className="text-sm font-semibold text-[#3b2a22]">Available from</h2>
-              <ul className="mt-3 flex flex-wrap gap-3">
-                {offers.map((o) => {
-                  const s = o.shop;
-                  const href = shopProductPath(s, product);
-                  const label = formatShopPrice(o.price_cents, o.currency, o.hide_price);
-                  return (
-                    <li key={o.id}>
-                      <Link
-                        href={href}
-                        className="flex flex-col items-center gap-1 rounded-2xl border border-[#e8d5c4] bg-white px-3 py-2 text-center hover:border-[#c45c26]/50"
-                        title={s.name}
-                      >
-                        {s.logo_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={s.logo_url}
-                            alt={s.name}
-                            className="h-10 w-10 rounded-full object-cover"
-                          />
-                        ) : (
-                          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#fff8f0] text-xs font-bold text-[#c45c26]">
-                            {s.name.slice(0, 1)}
-                          </span>
-                        )}
-                        <span className="max-w-[5.5rem] truncate text-[10px] font-semibold text-[#3b2a22]">
-                          {s.name}
-                        </span>
-                        {label ? (
-                          <span className="text-[10px] text-[#c45c26]">{label}</span>
-                        ) : null}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          ) : null}
-
-          {brandShop ? (
-            <p className="mt-6 text-xs text-[#7a5c4e]">
-              Brand page:{" "}
-              <Link
-                href={brandShopPath(brandShop)}
-                className="font-semibold text-[#c45c26] hover:underline"
-              >
-                {brandShop.name}
-              </Link>
-              {" · "}
-              <Link
-                href={shopPath(brandShop)}
-                className="font-semibold text-[#c45c26] hover:underline"
-              >
-                Brand shop storefront
-              </Link>
-            </p>
-          ) : null}
         </div>
       </div>
 
