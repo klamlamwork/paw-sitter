@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { formatShopPrice } from "@/lib/shop";
+import { applyExpiryDiscount, lotGetsDiscount } from "@/lib/shopExpiryPolicy";
 import { previewFefo } from "@/lib/shopFefo";
 
 export default function ProductVariantPicker({
@@ -10,6 +11,8 @@ export default function ProductVariantPicker({
   currency = "CAD",
   hidePrice = false,
   showFefo = false,
+  discountDays = 0,
+  discountPct = 0,
 }) {
   const active = useMemo(
     () => (variants || []).filter((v) => v.is_active && !v.hidden),
@@ -38,11 +41,16 @@ export default function ProductVariantPicker({
     return <p className="mt-4 text-sm text-[#7a5c4e]">Currently unavailable.</p>;
   }
 
-  const cents = selected?.price_cents != null ? selected.price_cents : basePriceCents;
+  const firstLot = fefo[0];
+  const discounted =
+    firstLot && lotGetsDiscount({ expiry_date: firstLot.expiry_date }, discountDays);
+  const centsRaw = selected?.price_cents != null ? selected.price_cents : basePriceCents;
+  const cents = discounted ? applyExpiryDiscount(centsRaw, discountPct) : centsRaw;
   const priceLabel = formatShopPrice(cents, currency, hidePrice);
+  const wasLabel =
+    discounted && centsRaw != null ? formatShopPrice(centsRaw, currency, hidePrice) : null;
   const outOfStock =
     selected?.track_stock && (selected.stock_qty == null || selected.stock_qty <= 0);
-  const firstLot = fefo[0];
 
   return (
     <div className="mt-5 space-y-2">
@@ -72,6 +80,14 @@ export default function ProductVariantPicker({
       </div>
       <div className="flex flex-wrap items-baseline gap-3">
         {priceLabel ? <p className="text-2xl font-bold text-[#c45c26]">{priceLabel}</p> : null}
+        {wasLabel && wasLabel !== priceLabel ? (
+          <p className="text-sm text-[#7a5c4e] line-through">{wasLabel}</p>
+        ) : null}
+        {discounted && discountPct > 0 ? (
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800">
+            {discountPct}% near expiry
+          </span>
+        ) : null}
         {selected?.track_stock ? (
           <p className="text-xs text-[#7a5c4e]">
             {outOfStock ? "Out of stock" : `${selected.stock_qty} in stock`}
