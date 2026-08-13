@@ -39,8 +39,8 @@ export default async function AdminShopShopsPage({ searchParams }) {
         {filter === "product_brand" ? "Product brand shops" : "Shops"}
       </h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Assign an <strong>owner account</strong> (email). That user sees Shop portal under Account
-        and can create products. You approve in Admin → Products.
+        Assign owner account. Set <strong>home sequence</strong> (1–10) for /shop/ “Shop by brand”
+        and “Retailers” (max 10 each).
       </p>
       <p className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
         <Link

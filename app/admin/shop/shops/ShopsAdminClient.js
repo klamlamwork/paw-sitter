@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { slugifyShop } from "@/lib/shop";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
+const SEQ = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
 export default function ShopsAdminClient({
   initialShops,
@@ -20,6 +21,8 @@ export default function ShopsAdminClient({
   const [description, setDescription] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   const [status, setStatus] = useState("active");
+  const [homeBrandSort, setHomeBrandSort] = useState("");
+  const [homeRetailerSort, setHomeRetailerSort] = useState("");
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
@@ -27,6 +30,12 @@ export default function ShopsAdminClient({
   function ownerLabel(p) {
     if (!p) return null;
     return p.email + (p.full_name ? ` (${p.full_name})` : "");
+  }
+
+  function sortVal(v) {
+    if (v === "" || v == null) return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
   }
 
   async function addShop(e) {
@@ -51,6 +60,8 @@ export default function ShopsAdminClient({
       description: description.trim(),
       logo_url: logoUrl.trim(),
       status,
+      home_brand_sort: isProductBrand ? sortVal(homeBrandSort) : null,
+      home_retailer_sort: !isProductBrand ? sortVal(homeRetailerSort) : null,
       updated_at: new Date().toISOString(),
     };
     const { data, error: err } = await supabase
@@ -72,41 +83,34 @@ export default function ShopsAdminClient({
     setDescription("");
     setLogoUrl("");
     setOwnerId("");
+    setHomeBrandSort("");
+    setHomeRetailerSort("");
     setIsProductBrand(!!defaultProductBrand);
-    setOk(
-      owner
-        ? `Shop created. Owner ${owner.email} can use Account → Shop portal.`
-        : "Shop created. Assign an owner so they can add products."
-    );
+    setOk("Shop created.");
     router.refresh();
   }
 
-  async function setShopStatus(s, next) {
+  async function patchShop(s, fields) {
     const supabase = createClient();
     const { error: err } = await supabase
       .from("shop_shops")
-      .update({ status: next, updated_at: new Date().toISOString() })
+      .update({ ...fields, updated_at: new Date().toISOString() })
       .eq("id", s.id);
     if (err) {
       setError(err.message);
-      return;
+      return false;
     }
-    setShops((list) => list.map((x) => (x.id === s.id ? { ...x, status: next } : x)));
+    setShops((list) => list.map((x) => (x.id === s.id ? { ...x, ...fields } : x)));
+    return true;
+  }
+
+  async function setShopStatus(s, next) {
+    await patchShop(s, { status: next });
   }
 
   async function setOwner(s, nextOwnerId) {
-    const supabase = createClient();
-    const { error: err } = await supabase
-      .from("shop_shops")
-      .update({
-        owner_profile_id: nextOwnerId || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", s.id);
-    if (err) {
-      setError(err.message);
-      return;
-    }
+    const okPatch = await patchShop(s, { owner_profile_id: nextOwnerId || null });
+    if (!okPatch) return;
     const owner = nextOwnerId ? profiles.find((p) => p.id === nextOwnerId) || null : null;
     setShops((list) =>
       list.map((x) =>
@@ -119,26 +123,22 @@ export default function ShopsAdminClient({
 
   async function toggleProductBrand(s) {
     const next = !s.is_product_brand;
-    const supabase = createClient();
-    const { error: err } = await supabase
-      .from("shop_shops")
-      .update({
-        is_product_brand: next,
-        shop_type: next ? "brand" : "vendor",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", s.id);
-    if (err) {
-      setError(err.message);
-      return;
-    }
-    setShops((list) =>
-      list.map((x) =>
-        x.id === s.id
-          ? { ...x, is_product_brand: next, shop_type: next ? "brand" : "vendor" }
-          : x
-      )
-    );
+    await patchShop(s, {
+      is_product_brand: next,
+      shop_type: next ? "brand" : "vendor",
+      home_brand_sort: next ? s.home_brand_sort : null,
+      home_retailer_sort: next ? null : s.home_retailer_sort,
+    });
+  }
+
+  async function setHomeBrandSort(s, v) {
+    await patchShop(s, { home_brand_sort: sortVal(v) });
+    setOk("Shop by brand sequence updated.");
+  }
+
+  async function setHomeRetailerSort(s, v) {
+    await patchShop(s, { home_retailer_sort: sortVal(v) });
+    setOk("Retailers sequence updated.");
   }
 
   return (
@@ -171,15 +171,10 @@ export default function ShopsAdminClient({
             checked={isProductBrand}
             onChange={(e) => setIsProductBrand(e.target.checked)}
           />
-          <span>
-            <span className="font-semibold">This is a product brand</span>
-            <span className="block text-xs text-[#7a5c4e]">
-              Can create canonical products. Retailers link offers later.
-            </span>
-          </span>
+          <span className="font-semibold">This is a product brand</span>
         </label>
         <label className="block text-sm font-medium">
-          Owner account (who logs in to manage this shop)
+          Owner account
           <select className={inp} value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
             <option value="">— none yet —</option>
             {profiles.map((p) => (
@@ -189,6 +184,39 @@ export default function ShopsAdminClient({
             ))}
           </select>
         </label>
+        {isProductBrand ? (
+          <label className="block text-sm font-medium">
+            Sequence on /shop/ “Shop by brand” (1–10)
+            <select
+              className={inp}
+              value={homeBrandSort}
+              onChange={(e) => setHomeBrandSort(e.target.value)}
+            >
+              <option value="">— not listed first —</option>
+              {SEQ.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <label className="block text-sm font-medium">
+            Sequence on /shop/ “Retailers” (1–10)
+            <select
+              className={inp}
+              value={homeRetailerSort}
+              onChange={(e) => setHomeRetailerSort(e.target.value)}
+            >
+              <option value="">— not listed first —</option>
+              {SEQ.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="block text-sm font-medium">
           Logo URL
           <input className={inp} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
@@ -239,10 +267,7 @@ export default function ShopsAdminClient({
                     </span>
                   )}
                 </p>
-                <p className="text-xs text-[#7a5c4e]">
-                  /shop/shops/{s.slug}
-                  {s.is_product_brand ? ` · brand hub /shop/brands/${s.slug}` : ""}
-                </p>
+                <p className="text-xs text-[#7a5c4e]">/shop/shops/{s.slug}</p>
                 <p className="mt-2 text-xs">
                   <span className="font-semibold text-[#3b2a22]">Owner email: </span>
                   {s.owner?.email ? (
@@ -250,9 +275,6 @@ export default function ShopsAdminClient({
                   ) : (
                     <span className="text-amber-700">Not assigned</span>
                   )}
-                  {s.owner?.full_name ? (
-                    <span className="text-[#7a5c4e]"> · {s.owner.full_name}</span>
-                  ) : null}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -279,6 +301,48 @@ export default function ShopsAdminClient({
                 </select>
               </div>
             </div>
+
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="block text-xs font-medium text-[#7a5c4e]">
+                (1) Sequence — /shop/ Retailers
+                <select
+                  className={inp + " text-sm"}
+                  value={s.home_retailer_sort ?? ""}
+                  disabled={!!s.is_product_brand}
+                  onChange={(e) => setHomeRetailerSort(s, e.target.value)}
+                >
+                  <option value="">—</option>
+                  {SEQ.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                {s.is_product_brand ? (
+                  <span className="mt-0.5 block text-[10px]">Only for retailer shops</span>
+                ) : null}
+              </label>
+              <label className="block text-xs font-medium text-[#7a5c4e]">
+                (2) Sequence — /shop/ Shop by brand
+                <select
+                  className={inp + " text-sm"}
+                  value={s.home_brand_sort ?? ""}
+                  disabled={!s.is_product_brand}
+                  onChange={(e) => setHomeBrandSort(s, e.target.value)}
+                >
+                  <option value="">—</option>
+                  {SEQ.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+                {!s.is_product_brand ? (
+                  <span className="mt-0.5 block text-[10px]">Only for product brand shops</span>
+                ) : null}
+              </label>
+            </div>
+
             <label className="mt-3 block text-xs font-medium text-[#7a5c4e]">
               Change owner account
               <select

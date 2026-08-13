@@ -7,13 +7,14 @@ export const metadata = {
   description: "Longevity-minded products for pets — brands and retailers on Paw Sitter.",
 };
 
-function ShopTile({ href, name, logoUrl, badge }) {
+/** Compact row: logo left, name right — ~3/5 of previous square tile height */
+function ShopRowTile({ href, name, logoUrl }) {
   return (
     <Link
       href={href}
-      className="group flex h-full flex-col overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white transition hover:border-[#c45c26]/50"
+      className="group flex h-14 items-center gap-3 overflow-hidden rounded-xl border border-[#e8d5c4] bg-white px-2.5 transition hover:border-[#c45c26]/50 sm:h-16"
     >
-      <div className="relative aspect-square w-full bg-[#fff8f0]">
+      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full bg-[#fff8f0] ring-1 ring-[#e8d5c4] sm:h-11 sm:w-11">
         {logoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -22,21 +23,14 @@ function ShopTile({ href, name, logoUrl, badge }) {
             className="absolute inset-0 h-full w-full object-cover"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-3xl font-bold text-[#c45c26]/70">
+          <div className="absolute inset-0 flex items-center justify-center text-sm font-bold text-[#c45c26]/80">
             {(name || "?").slice(0, 1).toUpperCase()}
           </div>
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-1 px-3 py-3">
-        {badge ? (
-          <span className="text-[10px] font-bold uppercase tracking-wide text-[#c45c26]">
-            {badge}
-          </span>
-        ) : null}
-        <span className="line-clamp-2 text-sm font-semibold leading-snug text-[#3b2a22] group-hover:text-[#c45c26]">
-          {name}
-        </span>
-      </div>
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[#3b2a22] group-hover:text-[#c45c26]">
+        {name}
+      </span>
     </Link>
   );
 }
@@ -79,24 +73,33 @@ function ProductTile({ product, coverUrl }) {
   );
 }
 
+function sortHomeList(rows, sortKey) {
+  return [...(rows || [])].sort((a, b) => {
+    const sa = a[sortKey];
+    const sb = b[sortKey];
+    const aHas = sa != null && sa !== "";
+    const bHas = sb != null && sb !== "";
+    if (aHas && bHas) return Number(sa) - Number(sb) || a.name.localeCompare(b.name);
+    if (aHas) return -1;
+    if (bHas) return 1;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 export default async function ShopHomePage() {
   const supabase = await createClient();
-  const [{ data: brandShops }, { data: shops }, { data: products }, { data: categories }] =
+  const [{ data: brandShopsRaw }, { data: shopsRaw }, { data: products }, { data: categories }] =
     await Promise.all([
       supabase
         .from("shop_shops")
-        .select("id, name, slug, logo_url, is_product_brand")
+        .select("id, name, slug, logo_url, is_product_brand, home_brand_sort")
         .eq("is_product_brand", true)
-        .eq("status", "active")
-        .order("name")
-        .limit(24),
+        .eq("status", "active"),
       supabase
         .from("shop_shops")
-        .select("id, name, slug, logo_url, is_product_brand")
+        .select("id, name, slug, logo_url, is_product_brand, home_retailer_sort")
         .eq("status", "active")
-        .eq("is_product_brand", false)
-        .order("name")
-        .limit(24),
+        .eq("is_product_brand", false),
       supabase
         .from("shop_products")
         .select(
@@ -107,6 +110,9 @@ export default async function ShopHomePage() {
         .limit(24),
       supabase.from("shop_categories").select("id, name, slug").order("sort_order").limit(12),
     ]);
+
+  const brandShops = sortHomeList(brandShopsRaw, "home_brand_sort").slice(0, 10);
+  const shops = sortHomeList(shopsRaw, "home_retailer_sort").slice(0, 10);
 
   const productIds = (products || []).map((p) => p.id);
   const coverByProduct = {};
@@ -136,16 +142,11 @@ export default async function ShopHomePage() {
             All brands →
           </Link>
         </div>
-        {(brandShops || []).length ? (
-          <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+        {brandShops.length ? (
+          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {brandShops.map((b) => (
               <li key={b.id} className="min-w-0">
-                <ShopTile
-                  href={brandShopPath(b)}
-                  name={b.name}
-                  logoUrl={b.logo_url}
-                  badge="Brand"
-                />
+                <ShopRowTile href={brandShopPath(b)} name={b.name} logoUrl={b.logo_url} />
               </li>
             ))}
           </ul>
@@ -154,18 +155,18 @@ export default async function ShopHomePage() {
         )}
       </section>
 
-      <section className="mt-10">
+      <section className="mt-8">
         <div className="flex items-end justify-between gap-2">
           <h2 className="text-lg font-semibold text-[#3b2a22]">Retailers</h2>
           <Link href="/shop/shops" className="text-xs font-semibold text-[#c45c26] hover:underline">
             All shops →
           </Link>
         </div>
-        {(shops || []).length ? (
-          <ul className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+        {shops.length ? (
+          <ul className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {shops.map((s) => (
               <li key={s.id} className="min-w-0">
-                <ShopTile href={shopPath(s)} name={s.name} logoUrl={s.logo_url} badge="Retailer" />
+                <ShopRowTile href={shopPath(s)} name={s.name} logoUrl={s.logo_url} />
               </li>
             ))}
           </ul>
