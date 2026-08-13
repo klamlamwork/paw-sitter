@@ -20,15 +20,16 @@ export default function AddToCartButton({ line, disabled, label = "Add to cart" 
     setBusy(true);
     setError("");
     setOk(false);
+    const qty = Math.min(99, Math.max(1, line.qty || 1));
     try {
       const supabase = createClient();
       const { data } = await supabase.auth.getUser();
       const userId = data?.user?.id;
       if (userId) {
-        await addUserCartItem(supabase, userId, line);
+        await addUserCartItem(supabase, userId, { ...line, qty });
       } else {
         const cart = readGuestCart();
-        writeGuestCart({ items: mergeLine(cart.items, { ...line, id: lineKey(line) }) });
+        writeGuestCart({ items: mergeLine(cart.items, { ...line, qty, id: lineKey(line) }) });
       }
       setOk(true);
     } catch (e) {

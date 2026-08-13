@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import ProductVariantPicker from "@/components/shop/ProductVariantPicker";
 import AddToCartButton from "@/components/shop/AddToCartButton";
+import QtyStepper from "@/components/shop/QtyStepper";
 import { formatShopPrice } from "@/lib/shop";
 
 export default function PdpBuyBox({
@@ -14,9 +16,12 @@ export default function PdpBuyBox({
   discountPct,
   showCart,
   cartLineBase,
+  showAffiliate,
+  affiliateUrl,
 }) {
   const hasVariants = (variants || []).length > 0;
   const priceLabel = formatShopPrice(displayCents, displayCurrency, displayHide);
+  const [qty, setQty] = useState(1);
 
   if (hasVariants) {
     return (
@@ -30,6 +35,8 @@ export default function PdpBuyBox({
         discountPct={discountPct}
         showAddToCart={!!showCart}
         cartLineBase={cartLineBase}
+        showAffiliate={!!showAffiliate}
+        affiliateUrl={affiliateUrl || ""}
       />
     );
   }
@@ -42,15 +49,28 @@ export default function PdpBuyBox({
         <p className="text-sm text-[#7a5c4e]">Price on request / see seller</p>
       )}
       {showCart && cartLineBase ? (
-        <AddToCartButton
-          line={{
-            ...cartLineBase,
-            variant_id: null,
-            price_cents: displayCents,
-            currency: displayCurrency || "CAD",
-            qty: 1,
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-4">
+          <QtyStepper qty={qty} onChange={setQty} />
+          <AddToCartButton
+            line={{
+              ...cartLineBase,
+              variant_id: null,
+              price_cents: displayCents,
+              currency: displayCurrency || "CAD",
+              qty,
+            }}
+          />
+        </div>
+      ) : null}
+      {showAffiliate && affiliateUrl ? (
+        <a
+          href={affiliateUrl}
+          target="_blank"
+          rel="noopener noreferrer sponsored"
+          className="inline-flex rounded-full border border-[#c45c26] px-6 py-2.5 text-sm font-semibold text-[#c45c26]"
+        >
+          Buy / view offer
+        </a>
       ) : null}
     </div>
   );

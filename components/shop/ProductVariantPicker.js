@@ -5,6 +5,7 @@ import { formatShopPrice } from "@/lib/shop";
 import { applyExpiryDiscount, lotGetsDiscount } from "@/lib/shopExpiryPolicy";
 import { previewFefo } from "@/lib/shopFefo";
 import AddToCartButton from "@/components/shop/AddToCartButton";
+import QtyStepper from "@/components/shop/QtyStepper";
 
 export default function ProductVariantPicker({
   variants = [],
@@ -16,15 +17,22 @@ export default function ProductVariantPicker({
   discountPct = 0,
   showAddToCart = false,
   cartLineBase = null,
+  affiliateUrl = "",
+  showAffiliate = false,
 }) {
   const active = useMemo(
     () => (variants || []).filter((v) => v.is_active && !v.hidden),
     [variants]
   );
   const [selectedId, setSelectedId] = useState(active[0]?.id || "");
+  const [qty, setQty] = useState(1);
   const [fefo, setFefo] = useState([]);
 
   const selected = active.find((v) => v.id === selectedId) || active[0] || null;
+
+  useEffect(() => {
+    setQty(1);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!showFefo || !selected?.id) {
@@ -32,13 +40,13 @@ export default function ProductVariantPicker({
       return;
     }
     let cancelled = false;
-    previewFefo(selected.id, 1).then(({ rows }) => {
+    previewFefo(selected.id, qty).then(({ rows }) => {
       if (!cancelled) setFefo(rows || []);
     });
     return () => {
       cancelled = true;
     };
-  }, [showFefo, selected?.id]);
+  }, [showFefo, selected?.id, qty]);
 
   if (!active.length && variants?.length) {
     return <p className="mt-4 text-sm text-[#7a5c4e]">Currently unavailable.</p>;
@@ -52,8 +60,9 @@ export default function ProductVariantPicker({
   const priceLabel = formatShopPrice(cents, currency, hidePrice);
   const wasLabel =
     discounted && centsRaw != null ? formatShopPrice(centsRaw, currency, hidePrice) : null;
-  const outOfStock =
-    selected?.track_stock && (selected.stock_qty == null || selected.stock_qty <= 0);
+  const stockMax =
+    selected?.track_stock && selected.stock_qty != null ? selected.stock_qty : 99;
+  const outOfStock = selected?.track_stock && (selected.stock_qty == null || selected.stock_qty <= 0);
 
   const line = cartLineBase
     ? {
@@ -62,12 +71,12 @@ export default function ProductVariantPicker({
         variant_name: selected?.name || "",
         price_cents: cents,
         currency: currency || "CAD",
-        qty: 1,
+        qty,
       }
     : null;
 
   return (
-    <div className="mt-5 space-y-2">
+    <div className="mt-5 space-y-3">
       {active.length ? (
         <>
           <h2 className="text-sm font-semibold text-[#3b2a22]">Choose variety</h2>
@@ -118,10 +127,23 @@ export default function ProductVariantPicker({
           {firstLot.lot_code ? ` · ${firstLot.lot_code}` : ""}).
         </p>
       ) : null}
+
       {showAddToCart && line ? (
-        <div className="pt-2">
+        <div className="flex flex-wrap items-center gap-4 pt-1">
+          <QtyStepper qty={qty} max={outOfStock ? 1 : stockMax} onChange={setQty} />
           <AddToCartButton line={line} disabled={!!outOfStock} />
         </div>
+      ) : null}
+
+      {showAffiliate && affiliateUrl ? (
+        <a
+          href={affiliateUrl}
+          target="_blank"
+          rel="noopener noreferrer sponsored"
+          className="inline-flex rounded-full border border-[#c45c26] px-6 py-2.5 text-sm font-semibold text-[#c45c26]"
+        >
+          Buy / view offer
+        </a>
       ) : null}
     </div>
   );
