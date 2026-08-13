@@ -11,9 +11,10 @@ function ProductCard({ product, coverUrl }) {
   return (
     <Link
       href={productPath(product)}
-      className="group flex w-full overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white transition hover:border-[#c45c26]/50 sm:flex-col"
+      className="group flex h-full min-h-[7.5rem] w-full overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white transition hover:border-[#c45c26]/50 sm:min-h-0 sm:flex-col"
     >
-      <div className="relative h-28 w-28 shrink-0 bg-[#fff8f0] sm:aspect-square sm:h-auto sm:w-full">
+      {/* Fixed image area keeps cards aligned */}
+      <div className="relative h-28 w-28 shrink-0 bg-[#fff8f0] sm:aspect-square sm:h-auto sm:w-full sm:shrink-0">
         {coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
@@ -23,14 +24,17 @@ function ProductCard({ product, coverUrl }) {
           </div>
         )}
       </div>
-      <div className="flex min-w-0 flex-1 flex-col justify-center px-3 py-2.5 sm:py-3">
-        <span className="line-clamp-2 text-sm font-semibold leading-snug text-[#3b2a22] group-hover:text-[#c45c26]">
+      {/* Flex-1 body + reserved price row = equal card heights in a grid row */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col px-3 py-2.5 sm:py-3">
+        <span className="line-clamp-2 min-h-[2.5rem] text-sm font-semibold leading-snug text-[#3b2a22] group-hover:text-[#c45c26]">
           {product.name}
         </span>
-        {product.short_description ? (
-          <span className="mt-1 line-clamp-2 text-xs text-[#7a5c4e]">{product.short_description}</span>
-        ) : null}
-        {price ? <span className="mt-1.5 text-sm font-semibold text-[#c45c26]">{price}</span> : null}
+        <span className="mt-1 line-clamp-2 min-h-[2rem] text-xs text-[#7a5c4e]">
+          {product.short_description || "\u00a0"}
+        </span>
+        <span className="mt-auto pt-1.5 text-sm font-semibold text-[#c45c26]">
+          {price || "\u00a0"}
+        </span>
       </div>
     </Link>
   );
@@ -75,16 +79,31 @@ export default function ShopProductsPanel({
   const filtered = useMemo(() => {
     let list = [...(products || [])];
 
+    // AND within categories: product must include every selected category
     if (selectedCats.size > 0) {
       list = list.filter((p) => {
-        const ids = p.category_ids || (p.category_id ? [p.category_id] : []);
-        return ids.some((id) => selectedCats.has(id));
+        const ids = new Set(p.category_ids || (p.category_id ? [p.category_id] : []));
+        for (const id of selectedCats) {
+          if (!ids.has(id)) return false;
+        }
+        return true;
       });
     }
 
+    // AND within longevity blurb: product must include every selected label
     if (selectedLon.size > 0) {
-      list = list.filter((p) => (p.longevity_labels || []).some((l) => selectedLon.has(l)));
+      list = list.filter((p) => {
+        const labels = new Set(
+          (p.longevity_labels || []).map((l) => String(l).toLowerCase())
+        );
+        for (const lon of selectedLon) {
+          if (!labels.has(String(lon).toLowerCase())) return false;
+        }
+        return true;
+      });
     }
+
+    // Groups already combine with AND (both filters apply)
 
     if (sort === "price_asc") {
       list.sort((a, b) => {
@@ -122,11 +141,19 @@ export default function ShopProductsPanel({
     <div className="mt-4 space-y-4">
       {(categoriesRow1 || []).length ? (
         <div>
-          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">Categories</p>
+          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">
+            Categories
+          </p>
           <div className="flex flex-wrap gap-2">
-            <ToggleChip active={selectedCats.size === 0} onClick={() => setCats(new Set())}>All</ToggleChip>
+            <ToggleChip active={selectedCats.size === 0} onClick={() => setCats(new Set())}>
+              All
+            </ToggleChip>
             {categoriesRow1.map((c) => (
-              <ToggleChip key={c.id} active={selectedCats.has(c.id)} onClick={() => setCats(toggleInSet(selectedCats, c.id))}>
+              <ToggleChip
+                key={c.id}
+                active={selectedCats.has(c.id)}
+                onClick={() => setCats(toggleInSet(selectedCats, c.id))}
+              >
                 {c.name}
               </ToggleChip>
             ))}
@@ -136,10 +163,16 @@ export default function ShopProductsPanel({
 
       {(categoriesRow2 || []).length ? (
         <div>
-          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">More categories</p>
+          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">
+            More categories
+          </p>
           <div className="flex flex-wrap gap-2">
             {categoriesRow2.map((c) => (
-              <ToggleChip key={c.id} active={selectedCats.has(c.id)} onClick={() => setCats(toggleInSet(selectedCats, c.id))}>
+              <ToggleChip
+                key={c.id}
+                active={selectedCats.has(c.id)}
+                onClick={() => setCats(toggleInSet(selectedCats, c.id))}
+              >
                 {c.name}
               </ToggleChip>
             ))}
@@ -149,11 +182,19 @@ export default function ShopProductsPanel({
 
       {(longevityLabels || []).length ? (
         <div>
-          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">Longevity blurb</p>
+          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">
+            Longevity blurb
+          </p>
           <div className="flex flex-wrap gap-2">
-            <ToggleChip active={selectedLon.size === 0} onClick={() => setLon(new Set())}>All</ToggleChip>
+            <ToggleChip active={selectedLon.size === 0} onClick={() => setLon(new Set())}>
+              All
+            </ToggleChip>
             {longevityLabels.map((label) => (
-              <ToggleChip key={label} active={selectedLon.has(label)} onClick={() => setLon(toggleInSet(selectedLon, label))}>
+              <ToggleChip
+                key={label}
+                active={selectedLon.has(label)}
+                onClick={() => setLon(toggleInSet(selectedLon, label))}
+              >
                 {label}
               </ToggleChip>
             ))}
@@ -164,6 +205,9 @@ export default function ShopProductsPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-[#7a5c4e]">
           {filtered.length} product{filtered.length === 1 ? "" : "s"}
+          {selectedCats.size + selectedLon.size > 0 ? (
+            <span className="text-[#a08070]"> · matching all selected filters</span>
+          ) : null}
         </p>
         <label className="flex items-center gap-2 text-xs font-semibold text-[#5c4033]">
           Sort by
@@ -183,9 +227,9 @@ export default function ShopProductsPanel({
       </div>
 
       {slice.length ? (
-        <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <ul className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {slice.map((p) => (
-            <li key={p.id} className="min-w-0">
+            <li key={p.id} className="flex min-w-0">
               <ProductCard product={p} coverUrl={coverByProduct[p.id] || null} />
             </li>
           ))}
@@ -195,17 +239,44 @@ export default function ShopProductsPanel({
       )}
 
       {totalPages > 1 ? (
-        <nav className="flex flex-wrap items-center justify-center gap-2 pt-2" aria-label="Pagination">
-          <button type="button" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40">Previous</button>
+        <nav
+          className="flex flex-wrap items-center justify-center gap-2 pt-2"
+          aria-label="Pagination"
+        >
+          <button
+            type="button"
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40"
+          >
+            Previous
+          </button>
           {Array.from({ length: totalPages }).map((_, i) => {
             const n = i + 1;
             return (
-              <button key={n} type="button" onClick={() => setPage(n)} className={"flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold " + (n === safePage ? "bg-[#c45c26] text-white" : "border border-[#e8d5c4] text-[#5c4033]")}>
+              <button
+                key={n}
+                type="button"
+                onClick={() => setPage(n)}
+                className={
+                  "flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold " +
+                  (n === safePage
+                    ? "bg-[#c45c26] text-white"
+                    : "border border-[#e8d5c4] text-[#5c4033]")
+                }
+              >
                 {n}
               </button>
             );
           })}
-          <button type="button" disabled={safePage >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40">Next</button>
+          <button
+            type="button"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40"
+          >
+            Next
+          </button>
         </nav>
       ) : null}
     </div>
