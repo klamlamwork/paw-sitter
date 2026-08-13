@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { LONGEVITY_ICONS, longevityIconEmoji, slugifyShop } from "@/lib/shop";
 import { snapshotFromForm, syncProductCategories } from "@/lib/shopProductPending";
 import CategoryMultiSelect from "@/components/shop/CategoryMultiSelect";
+import ShopPortalVariantsHook from "./ShopPortalVariantsHook";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
 const emptyChipDraft = () => ({ icon_key: "heart", label: "", note: "" });
@@ -287,7 +288,7 @@ export default function ShopPortalClient({
     }
 
     setBusy(false);
-    setOk("Submitted for admin approval.");
+    setOk("Submitted for admin approval. After it exists, add varieties & stock below (no approval needed).");
     setForm((f) => ({
       ...f,
       name: "",
@@ -309,6 +310,7 @@ export default function ShopPortalClient({
         edit_category_ids: form.category_ids || [],
         media: gallery,
         longevity_items,
+        variants: [],
       },
       ...list,
     ]);
@@ -353,19 +355,13 @@ export default function ShopPortalClient({
         </label>
         <div>
           <p className="text-sm font-medium">Categories & subcategories</p>
-          <p className="text-xs text-[#7a5c4e]">Select one or more.</p>
-          <CategoryMultiSelect
-            categories={categories}
-            selectedIds={form.category_ids}
-            onChange={(ids) => set("category_ids", ids)}
-          />
+          <CategoryMultiSelect categories={categories} selectedIds={form.category_ids} onChange={(ids) => set("category_ids", ids)} />
         </div>
         <label className="block text-sm font-medium">Short description<input className={inp} value={form.short_description} onChange={(e) => set("short_description", e.target.value)} /></label>
         <label className="block text-sm font-medium">Description<textarea className={inp} rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} /></label>
 
         <div className="rounded-xl border border-[#e8d5c4] bg-white p-3">
           <p className="text-sm font-semibold">Gallery</p>
-          <p className="text-xs text-[#7a5c4e]">First image is cover. Use Set cover on any thumb.</p>
           <div className="mt-2 flex gap-2">
             <input className={inp + " flex-1"} placeholder="Image URL" value={createImageUrl} onChange={(e) => setCreateImageUrl(e.target.value)} />
             <button type="button" className="rounded-full border border-[#e8d5c4] px-3 text-xs font-semibold" onClick={() => {
@@ -418,6 +414,7 @@ export default function ShopPortalClient({
           }}>Add chip</button>
         </div>
 
+        <p className="text-xs text-[#7a5c4e]">Varieties & stock: add after the product is created (section under each product).</p>
         <button type="submit" disabled={busy} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy ? "Submitting…" : "Submit product for approval"}</button>
       </form>
 
@@ -435,7 +432,7 @@ export default function ShopPortalClient({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full border border-[#e8d5c4] px-2 py-0.5 text-[10px] font-bold uppercase text-[#7a5c4e]">{p.status}{p.has_pending_edit ? " + update" : ""}</span>
                   {p.status === "approved" ? <Link href={`/shop/p/${p.slug}`} className="text-xs font-semibold text-[#c45c26]">View live</Link> : null}
-                  <button type="button" onClick={() => (editId === p.id ? setEditId("") : openEdit(p))} className="rounded-full bg-[#c45c26] px-3 py-1 text-xs font-semibold text-white">{editId === p.id ? "Close" : "Edit"}</button>
+                  <button type="button" onClick={() => (editId === p.id ? setEditId("") : openEdit(p))} className="rounded-full bg-[#c45c26] px-3 py-1 text-xs font-semibold text-white">{editId === p.id ? "Close" : "Edit content"}</button>
                 </div>
               </div>
 
@@ -445,11 +442,7 @@ export default function ShopPortalClient({
                   <label className="block text-sm font-medium">Slug<input className={inp + " font-mono"} value={editForm.slug} onChange={(e) => setEditForm((f) => ({ ...f, slug: e.target.value }))} /></label>
                   <div>
                     <p className="text-sm font-medium">Categories & subcategories</p>
-                    <CategoryMultiSelect
-                      categories={categories}
-                      selectedIds={editForm.category_ids || []}
-                      onChange={(ids) => setEditForm((f) => ({ ...f, category_ids: ids }))}
-                    />
+                    <CategoryMultiSelect categories={categories} selectedIds={editForm.category_ids || []} onChange={(ids) => setEditForm((f) => ({ ...f, category_ids: ids }))} />
                   </div>
                   <label className="block text-sm font-medium">Short description<input className={inp} value={editForm.short_description} onChange={(e) => setEditForm((f) => ({ ...f, short_description: e.target.value }))} /></label>
                   <label className="block text-sm font-medium">Description<textarea className={inp} rows={3} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} /></label>
@@ -512,6 +505,9 @@ export default function ShopPortalClient({
                   </button>
                 </div>
               ) : null}
+
+              {/* Varieties & stock — always available, no admin approval */}
+              <ShopPortalVariantsHook product={p} />
             </li>
           ))}
         </ul>
