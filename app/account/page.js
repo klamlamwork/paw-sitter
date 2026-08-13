@@ -19,7 +19,8 @@ export default async function AccountPage({ searchParams }) {
     .eq("customer_id", profile.id)
     .order("created_at", { ascending: false });
 
-  const booked = searchParams?.booked;
+  const params = await searchParams;
+  const booked = params?.booked;
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
@@ -36,6 +37,12 @@ export default async function AccountPage({ searchParams }) {
       <div className="mt-6 flex flex-wrap gap-3 text-sm">
         <Link href="/booking" className="font-semibold text-[#c45c26] hover:underline">
           Book a sitter
+        </Link>
+        <Link href="/shop/orders" className="font-semibold text-[#c45c26] hover:underline">
+          Shop orders
+        </Link>
+        <Link href="/account/shop" className="font-semibold text-[#c45c26] hover:underline">
+          Shop portal
         </Link>
         {profile.role === "sitter" || profile.role === "admin" ? (
           <>
@@ -65,7 +72,7 @@ export default async function AccountPage({ searchParams }) {
                   <strong>{SERVICE_TYPES[b.service_type]?.label || b.service_type}</strong>
                   <span className="text-xs font-semibold uppercase">{b.status}</span>
                 </div>
-                <p className="text-[#7a5c4e]">Sitter: {b.sitters?.display_name || "—"}</p>
+                <p className="text-[#7a5c4e]">Sitter: {b.sitters?.display_name || "\u2014"}</p>
                 <ul className="mt-2 space-y-1 text-[#5c4033]">
                   {(b.booking_slots || []).map((s) => (
                     <li key={s.id || s.starts_at}>
