@@ -9,6 +9,7 @@ import { snapshotFromForm, syncProductCategories } from "@/lib/shopProductPendin
 import CategoryMultiSelect from "@/components/shop/CategoryMultiSelect";
 import ProductTypeSelect from "@/components/shop/ProductTypeSelect";
 import ProductGalleryEditor from "@/components/shop/ProductGalleryEditor";
+import LongevityChipsEditor from "@/components/shop/LongevityChipsEditor";
 import ShopPortalVariantsHook from "./ShopPortalVariantsHook";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
@@ -193,7 +194,7 @@ export default function ShopPortalClient({
       setError(err.message);
       return;
     }
-    setOk("Content update submitted for approval. Gallery is included in the pending update.");
+    setOk("Content update submitted for approval. Gallery and longevity chips are included.");
     setEditId("");
     router.refresh();
   }
@@ -279,6 +280,28 @@ export default function ShopPortalClient({
       }
     }
 
+    let longevity_items = [];
+    if (createChips.length) {
+      const rows = createChips.map((c, i) => ({
+        product_id: product.id,
+        icon_key: c.icon_key || "heart",
+        label: c.label,
+        note: c.note || "",
+        sort_order: i,
+      }));
+      const { data: saved, error: chipErr } = await supabase
+        .from("shop_product_longevity_items")
+        .insert(rows)
+        .select("id, product_id, icon_key, label, note, sort_order");
+      if (chipErr) {
+        setBusy(false);
+        setError(`Product created, but longevity chips failed: ${chipErr.message}`);
+        router.refresh();
+        return;
+      }
+      longevity_items = saved || [];
+    }
+
     await syncProductCategories(supabase, product.id, form.category_ids || []);
 
     await supabase.from("shop_product_offers").upsert(
@@ -296,7 +319,7 @@ export default function ShopPortalClient({
     );
 
     setBusy(false);
-    setOk("Submitted. Gallery saved. Add varieties below (no approval).");
+    setOk("Submitted. Gallery and longevity chips saved.");
     setForm((f) => ({
       ...f,
       name: "",
@@ -311,6 +334,7 @@ export default function ShopPortalClient({
       hide_price: false,
     }));
     setCreateChips([]);
+    setCreateChipDraft(emptyChipDraft());
     setCreateGallery([]);
     setProducts((list) => [
       {
@@ -320,7 +344,7 @@ export default function ShopPortalClient({
         edit_name: product.name,
         edit_category_ids: form.category_ids || [],
         media: gallery,
-        longevity_items: [],
+        longevity_items,
         variants: [],
       },
       ...list,
@@ -380,6 +404,13 @@ export default function ShopPortalClient({
           onChange={setCreateGallery}
         />
 
+        <LongevityChipsEditor
+          items={createChips}
+          onChange={setCreateChips}
+          draft={createChipDraft}
+          setDraft={setCreateChipDraft}
+        />
+
         <label className="block text-sm font-medium">Price CAD<input type="number" step="0.01" className={inp} value={form.price} onChange={(e) => set("price", e.target.value)} /></label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.hide_price} onChange={(e) => set("hide_price", e.target.checked)} /> Hide price</label>
         <button type="submit" disabled={busy} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy ? "Submitting…" : "Submit product for approval"}</button>
@@ -426,6 +457,13 @@ export default function ShopPortalClient({
                     inputId={"edit-gallery-url-" + p.id}
                     images={editMedia}
                     onChange={setEditMedia}
+                  />
+
+                  <LongevityChipsEditor
+                    items={editLongevity}
+                    onChange={setEditLongevity}
+                    draft={editChipDraft}
+                    setDraft={setEditChipDraft}
                   />
 
                   <label className="block text-sm font-medium">Price<input type="number" step="0.01" className={inp} value={editForm.price} onChange={(e) => setEditForm((f) => ({ ...f, price: e.target.value }))} /></label>
