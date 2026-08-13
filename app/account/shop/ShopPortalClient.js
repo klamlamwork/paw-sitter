@@ -4,9 +4,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { LONGEVITY_ICONS, longevityIconEmoji, slugifyShop } from "@/lib/shop";
+import { snapshotFromForm } from "@/lib/shopProductPending";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
-
 const emptyChipDraft = () => ({ icon_key: "heart", label: "", note: "" });
 
 export default function ShopPortalClient({
@@ -34,15 +34,20 @@ export default function ShopPortalClient({
     hide_price: false,
     image_url: "",
   });
-  /** Chips staged while creating a new product */
   const [createChips, setCreateChips] = useState([]);
   const [createChipDraft, setCreateChipDraft] = useState(emptyChipDraft());
+  const [createGallery, setCreateGallery] = useState([]);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
-  const [chipDraft, setChipDraft] = useState({});
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const [editId, setEditId] = useState("");
+  const [editForm, setEditForm] = useState(null);
+  const [editMedia, setEditMedia] = useState([]);
+  const [editLongevity, setEditLongevity] = useState([]);
+  const [editChipDraft, setEditChipDraft] = useState(emptyChipDraft());
+  const [editImageUrl, setEditImageUrl] = useState("");
 
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const selectedShop = activeShops.find((s) => s.id === form.shop_id);
 
   function stageCreateChip() {
@@ -64,8 +69,156 @@ export default function ShopPortalClient({
     setCreateChipDraft(emptyChipDraft());
   }
 
-  function removeStagedChip(tempId) {
-    setCreateChips((list) => list.filter((c) => c.tempId !== tempId));
+  function openEdit(p) {
+    setEditId(p.id);
+    setError("");
+    setOk("");
+    setEditForm({
+      name: p.edit_name || p.name || "",
+      slug: p.edit_slug || p.slug || "",
+      short_description: p.edit_short_description || p.short_description || "",
+      description: p.edit_description || p.description || "",
+      category_id: p.edit_category_id || p.category_id || "",
+      price:
+        (p.edit_price_cents ?? p.price_cents) != null
+          ? String((p.edit_price_cents ?? p.price_cents) / 100)
+          : "",
+      hide_price: !!(p.edit_hide_price ?? p.hide_price),
+      shop_id: p.primary_shop_id || "",
+      brand_shop_id: p.brand_shop_id || "",
+    });
+    setEditMedia(
+      (p.media || []).map((m, i) => ({
+        url: m.url,
+        alt_text: m.alt_text || "",
+        sort_order: m.sort_order ?? i,
+      }))
+    );
+    setEditLongevity(
+      (p.longevity_items || []).map((it, i) => ({
+        icon_key: it.icon_key || "heart",
+        label: it.label,
+        note: it.note || "",
+        sort_order: it.sort_order ?? i,
+      }))
+    );
+    setEditChipDraft(emptyChipDraft());
+    setEditImageUrl("");
+  }
+
+  async function submitEdit(p) {
+    if (!editForm?.name?.trim()) {
+      setError("Name required");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setOk("");
+    const supabase = createClient();
+    const snap = snapshotFromForm(
+      {
+        ...editForm,
+        slug: slugifyShop(editForm.slug || editForm.name),
+        primary_shop_id: p.primary_shop_id,
+        brand_shop_id: p.brand_shop_id,
+      },
+      editMedia,
+      editLongevity
+    );
+
+    // Never-approved: write live + stay pending
+    if (p.status !== "approved") {
+      const { error: err } = await supabase
+        .from("shop_products")
+        .update({
+          name: snap.name,
+          slug: snap.slug,
+          short_description: snap.short_description,
+          description: snap.description,
+          price_cents: snap.price_cents,
+          hide_price: snap.hide_price,
+          category_id: snap.category_id,
+          status: "pending",
+          has_pending_edit: false,
+          pending_snapshot: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", p.id);
+      if (err) {
+        setBusy(false);
+        setError(err.message);
+        return;
+      }
+      await supabase.from("shop_product_media").delete().eq("product_id", p.id);
+      if (snap.media.length) {
+        await supabase.from("shop_product_media").insert(
+          snap.media.map((m, i) => ({
+            product_id: p.id,
+            url: m.url,
+            alt_text: m.alt_text || "",
+            sort_order: i,
+          }))
+        );
+      }
+      await supabase.from("shop_product_longevity_items").delete().eq("product_id", p.id);
+      if (snap.longevity_items.length) {
+        await supabase.from("shop_product_longevity_items").insert(
+          snap.longevity_items.map((it, i) => ({
+            product_id: p.id,
+            icon_key: it.icon_key,
+            label: it.label,
+            note: it.note || "",
+            sort_order: i,
+          }))
+        );
+      }
+      setBusy(false);
+      setOk("Saved — still pending first approval.");
+      setEditId("");
+      router.refresh();
+      return;
+    }
+
+    // Already live: store pending snapshot only (public unchanged)
+    const { error: err } = await supabase
+      .from("shop_products")
+      .update({
+        has_pending_edit: true,
+        pending_snapshot: snap,
+        pending_submitted_at: new Date().toISOString(),
+        pending_submitted_by: profileId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", p.id);
+
+    setBusy(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setProducts((list) =>
+      list.map((x) =>
+        x.id === p.id
+          ? {
+              ...x,
+              has_pending_edit: true,
+              pending_snapshot: snap,
+              edit_name: snap.name,
+              edit_slug: snap.slug,
+              edit_short_description: snap.short_description,
+              edit_description: snap.description,
+              edit_price_cents: snap.price_cents,
+              edit_hide_price: snap.hide_price,
+              edit_category_id: snap.category_id,
+              media: snap.media,
+              longevity_items: snap.longevity_items,
+            }
+          : x
+      )
+    );
+    setOk("Update submitted for approval. Public page still shows the last approved version.");
+    setEditId("");
+    router.refresh();
   }
 
   async function createProduct(e) {
@@ -86,16 +239,18 @@ export default function ShopPortalClient({
     }
 
     let brandShopId = null;
-    if (selectedShop.is_product_brand) {
-      brandShopId = selectedShop.id;
-    } else if (form.brand_shop_id) {
-      brandShopId = form.brand_shop_id;
-    }
+    if (selectedShop.is_product_brand) brandShopId = selectedShop.id;
+    else if (form.brand_shop_id) brandShopId = form.brand_shop_id;
 
     const slug = slugifyShop(form.slug || name);
     const priceCents =
       form.price === "" || form.price == null ? null : Math.round(Number(form.price) * 100);
     const supabase = createClient();
+
+    const gallery = [...createGallery];
+    if (form.image_url.trim()) {
+      gallery.unshift({ url: form.image_url.trim(), alt_text: name, sort_order: 0 });
+    }
 
     const { data: product, error: err } = await supabase
       .from("shop_products")
@@ -116,10 +271,11 @@ export default function ShopPortalClient({
         affiliate_url: "",
         status: "pending",
         created_by: profileId,
+        has_pending_edit: false,
         updated_at: new Date().toISOString(),
       })
       .select(
-        "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, updated_at"
+        "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, has_pending_edit, updated_at"
       )
       .single();
 
@@ -129,13 +285,15 @@ export default function ShopPortalClient({
       return;
     }
 
-    if (form.image_url.trim()) {
-      await supabase.from("shop_product_media").insert({
-        product_id: product.id,
-        url: form.image_url.trim(),
-        alt_text: name,
-        sort_order: 0,
-      });
+    if (gallery.length) {
+      await supabase.from("shop_product_media").insert(
+        gallery.map((m, i) => ({
+          product_id: product.id,
+          url: m.url,
+          alt_text: m.alt_text || name,
+          sort_order: i,
+        }))
+      );
     }
 
     await supabase.from("shop_product_offers").upsert(
@@ -155,7 +313,6 @@ export default function ShopPortalClient({
       { onConflict: "product_id,shop_id" }
     );
 
-    // Persist longevity chips staged at create time
     let longevity_items = [];
     if (createChips.length) {
       const rows = createChips.map((c, i) => ({
@@ -165,30 +322,15 @@ export default function ShopPortalClient({
         note: c.note || "",
         sort_order: i,
       }));
-      const { data: saved, error: chipErr } = await supabase
+      const { data: saved } = await supabase
         .from("shop_product_longevity_items")
         .insert(rows)
         .select("id, product_id, icon_key, label, note, sort_order");
-      if (chipErr) {
-        setBusy(false);
-        setError(
-          `Product created, but longevity chips failed: ${chipErr.message}. You can add them below.`
-        );
-        setProducts((list) => [{ ...product, longevity_items: [] }, ...list]);
-        setCreateChips([]);
-        setCreateChipDraft(emptyChipDraft());
-        router.refresh();
-        return;
-      }
       longevity_items = saved || [];
     }
 
     setBusy(false);
-    setOk(
-      longevity_items.length
-        ? `Submitted with ${longevity_items.length} longevity chip(s). Pending admin approval.`
-        : "Submitted for admin approval. You can still add longevity chips below."
-    );
+    setOk("Submitted for admin approval.");
     setForm((f) => ({
       ...f,
       name: "",
@@ -202,90 +344,30 @@ export default function ShopPortalClient({
       image_url: "",
     }));
     setCreateChips([]);
+    setCreateGallery([]);
     setCreateChipDraft(emptyChipDraft());
-    setProducts((list) => [{ ...product, longevity_items }, ...list]);
+    setProducts((list) => [
+      {
+        ...product,
+        edit_name: product.name,
+        edit_slug: product.slug,
+        edit_short_description: product.short_description,
+        edit_description: product.description,
+        edit_price_cents: product.price_cents,
+        edit_hide_price: product.hide_price,
+        edit_category_id: product.category_id,
+        media: gallery,
+        longevity_items,
+      },
+      ...list,
+    ]);
     router.refresh();
-  }
-
-  function draftFor(productId) {
-    return (
-      chipDraft[productId] || {
-        icon_key: "heart",
-        label: "",
-        note: "",
-      }
-    );
-  }
-
-  function setDraft(productId, patch) {
-    setChipDraft((d) => ({
-      ...d,
-      [productId]: { ...draftFor(productId), ...patch },
-    }));
-  }
-
-  async function addChip(product) {
-    const d = draftFor(product.id);
-    const label = d.label.trim();
-    if (!label) {
-      setError("Longevity keywords required");
-      return;
-    }
-    setError("");
-    const supabase = createClient();
-    const sort_order = (product.longevity_items || []).length;
-    const { data, error: err } = await supabase
-      .from("shop_product_longevity_items")
-      .insert({
-        product_id: product.id,
-        icon_key: d.icon_key || "heart",
-        label,
-        note: (d.note || "").trim(),
-        sort_order,
-      })
-      .select("id, product_id, icon_key, label, note, sort_order")
-      .single();
-    if (err) {
-      setError(err.message);
-      return;
-    }
-    setProducts((list) =>
-      list.map((p) =>
-        p.id === product.id
-          ? { ...p, longevity_items: [...(p.longevity_items || []), data] }
-          : p
-      )
-    );
-    setDraft(product.id, { label: "", note: "" });
-    router.refresh();
-  }
-
-  async function removeChip(product, itemId) {
-    const supabase = createClient();
-    const { error: err } = await supabase
-      .from("shop_product_longevity_items")
-      .delete()
-      .eq("id", itemId);
-    if (err) {
-      setError(err.message);
-      return;
-    }
-    setProducts((list) =>
-      list.map((p) =>
-        p.id === product.id
-          ? {
-              ...p,
-              longevity_items: (p.longevity_items || []).filter((x) => x.id !== itemId),
-            }
-          : p
-      )
-    );
   }
 
   if (!activeShops.length) {
     return (
       <p className="mt-8 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-        None of your shops are <strong>active</strong>. Ask admin to set status to active.
+        None of your shops are <strong>active</strong>.
       </p>
     );
   }
@@ -300,10 +382,6 @@ export default function ShopPortalClient({
         className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5"
       >
         <h2 className="font-semibold text-[#3b2a22]">Add product</h2>
-        <p className="text-xs text-[#7a5c4e]">
-          Add longevity chips here before submit, or manage them anytime on products below.
-        </p>
-
         <label className="block text-sm font-medium">
           List under my shop
           <select
@@ -322,7 +400,6 @@ export default function ShopPortalClient({
             ))}
           </select>
         </label>
-
         {selectedShop && !selectedShop.is_product_brand ? (
           <label className="block text-sm font-medium">
             Link to product brand (optional)
@@ -340,7 +417,6 @@ export default function ShopPortalClient({
             </select>
           </label>
         ) : null}
-
         <label className="block text-sm font-medium">
           Name
           <input
@@ -355,19 +431,11 @@ export default function ShopPortalClient({
         </label>
         <label className="block text-sm font-medium">
           Slug
-          <input
-            className={inp + " font-mono"}
-            value={form.slug}
-            onChange={(e) => set("slug", e.target.value)}
-          />
+          <input className={inp + " font-mono"} value={form.slug} onChange={(e) => set("slug", e.target.value)} />
         </label>
         <label className="block text-sm font-medium">
           Category
-          <select
-            className={inp}
-            value={form.category_id}
-            onChange={(e) => set("category_id", e.target.value)}
-          >
+          <select className={inp} value={form.category_id} onChange={(e) => set("category_id", e.target.value)}>
             <option value="">—</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
@@ -378,244 +446,279 @@ export default function ShopPortalClient({
         </label>
         <label className="block text-sm font-medium">
           Short description
-          <input
-            className={inp}
-            value={form.short_description}
-            onChange={(e) => set("short_description", e.target.value)}
-          />
+          <input className={inp} value={form.short_description} onChange={(e) => set("short_description", e.target.value)} />
         </label>
         <label className="block text-sm font-medium">
           Description
-          <textarea
-            className={inp}
-            rows={3}
-            value={form.description}
-            onChange={(e) => set("description", e.target.value)}
-          />
+          <textarea className={inp} rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} />
         </label>
         <label className="block text-sm font-medium">
-          Cover image URL
-          <input
-            className={inp}
-            value={form.image_url}
-            onChange={(e) => set("image_url", e.target.value)}
-          />
+          Cover / gallery image URL
+          <input className={inp} value={form.image_url} onChange={(e) => set("image_url", e.target.value)} />
         </label>
+        <div className="flex gap-2">
+          <input
+            className={inp + " flex-1"}
+            placeholder="Add another gallery image URL"
+            id="create-gal"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const v = e.currentTarget.value.trim();
+                if (!v) return;
+                setCreateGallery((g) => [...g, { url: v, alt_text: "", sort_order: g.length }]);
+                e.currentTarget.value = "";
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="rounded-full border border-[#e8d5c4] px-3 text-xs font-semibold"
+            onClick={() => {
+              const el = document.getElementById("create-gal");
+              const v = el?.value?.trim();
+              if (!v) return;
+              setCreateGallery((g) => [...g, { url: v, alt_text: "", sort_order: g.length }]);
+              if (el) el.value = "";
+            }}
+          >
+            Add image
+          </button>
+        </div>
+        {createGallery.length ? (
+          <ul className="flex flex-wrap gap-2 text-xs text-[#7a5c4e]">
+            {createGallery.map((m, i) => (
+              <li key={i} className="rounded-full border border-[#e8d5c4] px-2 py-0.5">
+                img {i + 1}{" "}
+                <button type="button" className="text-red-600" onClick={() => setCreateGallery((g) => g.filter((_, j) => j !== i))}>
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <label className="block text-sm font-medium">
           Price CAD (optional)
-          <input
-            type="number"
-            step="0.01"
-            min="0"
-            className={inp}
-            value={form.price}
-            onChange={(e) => set("price", e.target.value)}
-          />
+          <input type="number" step="0.01" min="0" className={inp} value={form.price} onChange={(e) => set("price", e.target.value)} />
         </label>
         <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.hide_price}
-            onChange={(e) => set("hide_price", e.target.checked)}
-          />
+          <input type="checkbox" checked={form.hide_price} onChange={(e) => set("hide_price", e.target.checked)} />
           Hide price
         </label>
 
-        {/* Longevity chips at create time */}
         <div className="rounded-xl border border-[#e8d5c4] bg-white p-3">
-          <p className="text-sm font-semibold text-[#3b2a22]">Longevity chips</p>
-          <p className="mt-0.5 text-xs text-[#7a5c4e]">
-            Circle icon + keywords. Shown in a grid on the product page.
-          </p>
-
+          <p className="text-sm font-semibold">Longevity chips</p>
           {createChips.length ? (
-            <ul className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
+            <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
               {createChips.map((c) => (
-                <li
-                  key={c.tempId}
-                  className="relative flex flex-col items-center rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-2 py-3 text-center"
-                >
-                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl shadow-sm ring-1 ring-[#e8d5c4]">
+                <li key={c.tempId} className="relative flex flex-col items-center rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-2 py-3 text-center">
+                  <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl ring-1 ring-[#e8d5c4]">
                     {longevityIconEmoji(c.icon_key)}
                   </span>
-                  <span className="mt-2 text-[11px] font-semibold leading-tight text-[#3b2a22]">
-                    {c.label}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeStagedChip(c.tempId)}
-                    className="absolute right-1 top-1 text-[10px] font-bold text-red-600"
-                    aria-label="Remove"
-                  >
-                    ×
-                  </button>
+                  <span className="mt-2 text-[11px] font-semibold">{c.label}</span>
+                  <button type="button" className="absolute right-1 top-1 text-red-600" onClick={() => setCreateChips((list) => list.filter((x) => x.tempId !== c.tempId))}>×</button>
                 </li>
               ))}
             </ul>
-          ) : (
-            <p className="mt-2 text-xs text-[#7a5c4e]">No chips yet — optional.</p>
-          )}
-
-          <div className="mt-3 space-y-2 border-t border-dashed border-[#e8d5c4] pt-3">
-            <div className="flex flex-wrap gap-1.5">
-              {LONGEVITY_ICONS.map((ic) => (
-                <button
-                  key={ic.key}
-                  type="button"
-                  onClick={() =>
-                    setCreateChipDraft((d) => ({ ...d, icon_key: ic.key }))
-                  }
-                  title={ic.label}
-                  className={
-                    "flex h-9 w-9 items-center justify-center rounded-full text-base " +
-                    (createChipDraft.icon_key === ic.key
-                      ? "bg-[#c45c26] ring-2 ring-[#c45c26]/40"
-                      : "bg-[#fff8f0] ring-1 ring-[#e8d5c4]")
-                  }
-                >
-                  {ic.emoji}
-                </button>
-              ))}
-            </div>
-            <input
-              className={inp}
-              placeholder="Keywords (e.g. Joint support)"
-              value={createChipDraft.label}
-              onChange={(e) =>
-                setCreateChipDraft((d) => ({ ...d, label: e.target.value }))
-              }
-            />
-            <input
-              className={inp}
-              placeholder="Optional short note"
-              value={createChipDraft.note}
-              onChange={(e) =>
-                setCreateChipDraft((d) => ({ ...d, note: e.target.value }))
-              }
-            />
-            <button
-              type="button"
-              onClick={stageCreateChip}
-              className="rounded-full border border-[#e8d5c4] px-4 py-1.5 text-xs font-semibold text-[#3b2a22]"
-            >
-              Add chip to this product
-            </button>
+          ) : null}
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {LONGEVITY_ICONS.map((ic) => (
+              <button
+                key={ic.key}
+                type="button"
+                onClick={() => setCreateChipDraft((d) => ({ ...d, icon_key: ic.key }))}
+                className={
+                  "flex h-9 w-9 items-center justify-center rounded-full text-base " +
+                  (createChipDraft.icon_key === ic.key ? "bg-[#c45c26]" : "bg-[#fff8f0] ring-1 ring-[#e8d5c4]")
+                }
+              >
+                {ic.emoji}
+              </button>
+            ))}
           </div>
+          <input className={inp} placeholder="Keywords" value={createChipDraft.label} onChange={(e) => setCreateChipDraft((d) => ({ ...d, label: e.target.value }))} />
+          <button type="button" onClick={stageCreateChip} className="mt-2 rounded-full border border-[#e8d5c4] px-4 py-1.5 text-xs font-semibold">
+            Add chip
+          </button>
         </div>
 
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-        >
+        <button type="submit" disabled={busy} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
           {busy ? "Submitting…" : "Submit product for approval"}
         </button>
       </form>
 
       <div>
-        <h2 className="font-semibold text-[#3b2a22]">Your products & longevity chips</h2>
+        <h2 className="font-semibold text-[#3b2a22]">Your products</h2>
         <ul className="mt-3 space-y-4">
-          {products.map((p) => {
-            const d = draftFor(p.id);
-            return (
-              <li
-                key={p.id}
-                className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-4 text-sm"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="font-semibold">{p.name}</p>
-                    <p className="text-xs text-[#7a5c4e]">/shop/p/{p.slug}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="rounded-full border border-[#e8d5c4] px-2 py-0.5 text-[10px] font-bold uppercase text-[#7a5c4e]">
-                      {p.status}
-                    </span>
-                    {p.status === "approved" ? (
-                      <Link
-                        href={`/shop/p/${p.slug}`}
-                        className="text-xs font-semibold text-[#c45c26]"
-                      >
-                        View
-                      </Link>
-                    ) : null}
-                  </div>
+          {products.map((p) => (
+            <li key={p.id} className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-semibold">{p.name}</p>
+                  <p className="text-xs text-[#7a5c4e]">/shop/p/{p.slug}</p>
+                  {p.has_pending_edit ? (
+                    <p className="mt-1 text-xs font-semibold text-amber-800">Update awaiting admin approval</p>
+                  ) : null}
                 </div>
-
-                <p className="mt-3 text-xs font-semibold uppercase tracking-wide text-[#7a5c4e]">
-                  Longevity chips (circle + keywords)
-                </p>
-                <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {(p.longevity_items || []).map((it) => (
-                    <li
-                      key={it.id}
-                      className="relative flex flex-col items-center rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-2 py-3 text-center"
-                    >
-                      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl shadow-sm ring-1 ring-[#e8d5c4]">
-                        {longevityIconEmoji(it.icon_key)}
-                      </span>
-                      <span className="mt-2 text-[11px] font-semibold leading-tight text-[#3b2a22]">
-                        {it.label}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeChip(p, it.id)}
-                        className="absolute right-1 top-1 text-[10px] font-bold text-red-600"
-                        aria-label="Remove"
-                      >
-                        ×
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-
-                <div className="mt-3 space-y-2 rounded-xl border border-dashed border-[#e8d5c4] p-3">
-                  <p className="text-xs font-medium text-[#5c4033]">Add chip</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {LONGEVITY_ICONS.map((ic) => (
-                      <button
-                        key={ic.key}
-                        type="button"
-                        onClick={() => setDraft(p.id, { icon_key: ic.key })}
-                        title={ic.label}
-                        className={
-                          "flex h-9 w-9 items-center justify-center rounded-full text-base " +
-                          (d.icon_key === ic.key
-                            ? "bg-[#c45c26] ring-2 ring-[#c45c26]/40"
-                            : "bg-[#fff8f0] ring-1 ring-[#e8d5c4]")
-                        }
-                      >
-                        {ic.emoji}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    className={inp}
-                    placeholder="Keywords (e.g. Joint support)"
-                    value={d.label}
-                    onChange={(e) => setDraft(p.id, { label: e.target.value })}
-                  />
-                  <input
-                    className={inp}
-                    placeholder="Optional short note"
-                    value={d.note}
-                    onChange={(e) => setDraft(p.id, { note: e.target.value })}
-                  />
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-[#e8d5c4] px-2 py-0.5 text-[10px] font-bold uppercase text-[#7a5c4e]">
+                    {p.status}
+                    {p.has_pending_edit ? " + update" : ""}
+                  </span>
+                  {p.status === "approved" ? (
+                    <Link href={`/shop/p/${p.slug}`} className="text-xs font-semibold text-[#c45c26]">
+                      View live
+                    </Link>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => addChip(p)}
-                    className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white"
+                    onClick={() => (editId === p.id ? setEditId("") : openEdit(p))}
+                    className="rounded-full bg-[#c45c26] px-3 py-1 text-xs font-semibold text-white"
                   >
-                    Add longevity chip
+                    {editId === p.id ? "Close" : "Edit"}
                   </button>
                 </div>
-              </li>
-            );
-          })}
+              </div>
+
+              {editId === p.id && editForm ? (
+                <div className="mt-4 space-y-3 border-t border-[#e8d5c4] pt-4">
+                  <p className="text-xs text-[#7a5c4e]">
+                    {p.status === "approved"
+                      ? "Saving submits a pending update. Public keeps the current approved content until admin approves."
+                      : "Not live yet — saves stay in pending review."}
+                  </p>
+                  <label className="block text-sm font-medium">
+                    Name
+                    <input className={inp} value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Slug
+                    <input className={inp + " font-mono"} value={editForm.slug} onChange={(e) => setEditForm((f) => ({ ...f, slug: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Category
+                    <select className={inp} value={editForm.category_id || ""} onChange={(e) => setEditForm((f) => ({ ...f, category_id: e.target.value }))}>
+                      <option value="">—</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Short description
+                    <input className={inp} value={editForm.short_description} onChange={(e) => setEditForm((f) => ({ ...f, short_description: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Description
+                    <textarea className={inp} rows={3} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Price CAD
+                    <input type="number" step="0.01" className={inp} value={editForm.price} onChange={(e) => setEditForm((f) => ({ ...f, price: e.target.value }))} />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={editForm.hide_price} onChange={(e) => setEditForm((f) => ({ ...f, hide_price: e.target.checked }))} />
+                    Hide price
+                  </label>
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-[#7a5c4e]">Gallery</p>
+                    <ul className="mt-2 flex flex-wrap gap-2">
+                      {editMedia.map((m, i) => (
+                        <li key={i} className="relative h-16 w-16 overflow-hidden rounded-lg border border-[#e8d5c4]">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={m.url} alt="" className="h-full w-full object-cover" />
+                          <button
+                            type="button"
+                            className="absolute right-0 top-0 bg-black/50 px-1 text-[10px] text-white"
+                            onClick={() => setEditMedia((list) => list.filter((_, j) => j !== i))}
+                          >
+                            ×
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-2 flex gap-2">
+                      <input className={inp + " flex-1"} placeholder="Image URL" value={editImageUrl} onChange={(e) => setEditImageUrl(e.target.value)} />
+                      <button
+                        type="button"
+                        className="rounded-full border border-[#e8d5c4] px-3 text-xs font-semibold"
+                        onClick={() => {
+                          const v = editImageUrl.trim();
+                          if (!v) return;
+                          setEditMedia((list) => [...list, { url: v, alt_text: "", sort_order: list.length }]);
+                          setEditImageUrl("");
+                        }}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs font-semibold uppercase text-[#7a5c4e]">Longevity chips</p>
+                    <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                      {editLongevity.map((it, i) => (
+                        <li key={i} className="relative flex flex-col items-center rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-2 py-3 text-center">
+                          <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-xl ring-1 ring-[#e8d5c4]">
+                            {longevityIconEmoji(it.icon_key)}
+                          </span>
+                          <span className="mt-2 text-[11px] font-semibold">{it.label}</span>
+                          <button type="button" className="absolute right-1 top-1 text-red-600" onClick={() => setEditLongevity((list) => list.filter((_, j) => j !== i))}>×</button>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {LONGEVITY_ICONS.map((ic) => (
+                        <button
+                          key={ic.key}
+                          type="button"
+                          onClick={() => setEditChipDraft((d) => ({ ...d, icon_key: ic.key }))}
+                          className={
+                            "flex h-9 w-9 items-center justify-center rounded-full text-base " +
+                            (editChipDraft.icon_key === ic.key ? "bg-[#c45c26]" : "bg-[#fff8f0] ring-1 ring-[#e8d5c4]")
+                          }
+                        >
+                          {ic.emoji}
+                        </button>
+                      ))}
+                    </div>
+                    <input className={inp} placeholder="Keywords" value={editChipDraft.label} onChange={(e) => setEditChipDraft((d) => ({ ...d, label: e.target.value }))} />
+                    <button
+                      type="button"
+                      className="mt-2 rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold"
+                      onClick={() => {
+                        const label = editChipDraft.label.trim();
+                        if (!label) return;
+                        setEditLongevity((list) => [
+                          ...list,
+                          { icon_key: editChipDraft.icon_key, label, note: editChipDraft.note || "", sort_order: list.length },
+                        ]);
+                        setEditChipDraft(emptyChipDraft());
+                      }}
+                    >
+                      Add chip
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => submitEdit(p)}
+                    className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {busy
+                      ? "Saving…"
+                      : p.status === "approved"
+                        ? "Submit update for approval"
+                        : "Save pending product"}
+                  </button>
+                </div>
+              ) : null}
+            </li>
+          ))}
         </ul>
-        {!products.length ? (
-          <p className="mt-2 text-sm text-[#7a5c4e]">No products yet.</p>
-        ) : null}
+        {!products.length ? <p className="mt-2 text-sm text-[#7a5c4e]">No products yet.</p> : null}
       </div>
     </div>
   );
