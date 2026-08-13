@@ -31,7 +31,7 @@ function ShopChip({ href, name, logoUrl }) {
 
 /**
  * Desktop: 4 columns.
- * Mobile: horizontal scroll with next card peek (no arrows / dots).
+ * Mobile: horizontal scroll; left edge aligns with page content; right card peeks.
  */
 export default function ShopEntitySlider({ items, emptyLabel }) {
   if (!items?.length) {
@@ -40,10 +40,14 @@ export default function ShopEntitySlider({ items, emptyLabel }) {
 
   return (
     <div className="relative mt-3">
-      {/* Mobile: peek slider — ~1.65 cards so right card is cut off */}
-      <div className="-mx-4 sm:hidden">
+      {/*
+        Mobile slider:
+        - No negative left margin (aligns with headlines)
+        - Bleed only to the right so next card is cut off
+      */}
+      <div className="sm:hidden">
         <div
-          className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="-mr-4 flex snap-x snap-mandatory gap-2.5 overflow-x-auto pr-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {items.map((it) => (
@@ -54,12 +58,10 @@ export default function ShopEntitySlider({ items, emptyLabel }) {
               <ShopChip href={it.href} name={it.name} logoUrl={it.logoUrl} />
             </div>
           ))}
-          {/* end spacer so last card can scroll fully into view */}
-          <div className="w-2 shrink-0" aria-hidden />
+          <div className="w-1 shrink-0" aria-hidden />
         </div>
       </div>
 
-      {/* Desktop / tablet grid */}
       <ul className="hidden gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-4">
         {items.map((it) => (
           <li key={it.id} className="min-w-0">

@@ -2,22 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { formatShopPrice, productPath } from "@/lib/shop";
 
 const PAGE_SIZE = 8;
-
-function buildQuery(base, patch) {
-  const sp = new URLSearchParams(base.toString());
-  Object.entries(patch).forEach(([k, v]) => {
-    if (v == null || v === "") sp.delete(k);
-    else sp.set(k, String(v));
-  });
-  // reset page when filters/sort change unless page explicitly set
-  if (!("page" in patch)) sp.delete("page");
-  const q = sp.toString();
-  return q ? `?${q}` : "";
-}
 
 function ProductCard({ product, coverUrl }) {
   const price = formatShopPrice(product.price_cents, product.currency, product.hide_price);
@@ -26,7 +13,6 @@ function ProductCard({ product, coverUrl }) {
       href={productPath(product)}
       className="group flex w-full overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white transition hover:border-[#c45c26]/50 sm:flex-col"
     >
-      {/* Mobile: image left · details right | Desktop: image top */}
       <div className="relative h-28 w-28 shrink-0 bg-[#fff8f0] sm:aspect-square sm:h-auto sm:w-full">
         {coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
@@ -58,10 +44,11 @@ function ProductCard({ product, coverUrl }) {
   );
 }
 
-function Chip({ active, href, children }) {
+function ToggleChip({ active, onClick, children }) {
   return (
-    <Link
-      href={href}
+    <button
+      type="button"
+      onClick={onClick}
       className={
         "shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition " +
         (active
@@ -70,8 +57,15 @@ function Chip({ active, href, children }) {
       }
     >
       {children}
-    </Link>
+    </button>
   );
+}
+
+function toggleInSet(set, value) {
+  const next = new Set(set);
+  if (next.has(value)) next.delete(value);
+  else next.add(value);
+  return next;
 }
 
 export default function ShopProductsPanel({
@@ -81,23 +75,25 @@ export default function ShopProductsPanel({
   categoriesRow2,
   longevityLabels,
 }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  const cat = searchParams.get("cat") || "";
-  const lon = searchParams.get("lon") || "";
-  const sort = searchParams.get("sort") || "newest";
-  const page = Math.max(1, Number(searchParams.get("page") || "1") || 1);
+  const [selectedCats, setSelectedCats] = useState(() => new Set());
+  const [selectedLon, setSelectedLon] = useState(() => new Set());
+  const [sort, setSort] = useState("newest");
+  const [page, setPage] = useState(1);
 
   const filtered = useMemo(() => {
     let list = [...(products || [])];
-    if (cat) list = list.filter((p) => p.category_id === cat);
-    if (lon) {
-      list = list.filter((p) =>
-        (p.longevity_labels || []).some((l) => l.toLowerCase() === lon.toLowerCase())
-      );
+
+    if (selectedCats.size > 0) {
+      list = list.filter((p) => p.category_id && selectedCats.has(p.category_id));
     }
+
+    if (selectedLon.size > 0) {
+      list = list.filter((p) => {
+        const labels = p.longevity_labels || [];
+        return labels.some((l) => selectedLon.has(l));
+      });
+    }
+
     if (sort === "price_asc") {
       list.sort((a, b) => {
         const pa = a.hide_price || a.price_cents == null ? Number.POSITIVE_INFINITY : a.price_cents;
@@ -113,16 +109,33 @@ export default function ShopProductsPanel({
     } else {
       list.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
     }
+
     return list;
-  }, [products, cat, lon, sort]);
+  }, [products, selectedCats, selectedLon, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const slice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
-  function hrefFor(patch) {
-    return pathname + buildQuery(searchParams, patch);
+  function setCats(next) {
+    setSelectedCats(next);
+    setPage(1);
   }
+
+  function setLon(next) {
+    setSelectedLon(next);
+    setPage(1);
+  }
+
+  function clearCats() {
+    setCats(new Set());
+  }
+
+  function clearLon() {
+    setLon(new Set());
+  }
+
+  const hasCatFilters = (categoriesRow1 || []).length + (categoriesRow2 || []).length > 0;
 
   return (
     <div className="mt-4 space-y-4">
@@ -133,13 +146,17 @@ export default function ShopProductsPanel({
             Categories
           </p>
           <div className="flex flex-wrap gap-2">
-            <Chip active={!cat} href={hrefFor({ cat: "" })}>
+            <ToggleChip active={selectedCats.size === 0} onClick={clearCats}>
               All
-            </Chip>
+            </ToggleChip>
             {categoriesRow1.map((c) => (
-              <Chip key={c.id} active={cat === c.id} href={hrefFor({ cat: c.id })}>
+              <ToggleChip
+                key={c.id}
+                active={selectedCats.has(c.id)}
+                onClick={() => setCats(toggleInSet(selectedCats, c.id))}
+              >
                 {c.name}
-              </Chip>
+              </ToggleChip>
             ))}
           </div>
         </div>
@@ -153,37 +170,47 @@ export default function ShopProductsPanel({
           </p>
           <div className="flex flex-wrap gap-2">
             {categoriesRow2.map((c) => (
-              <Chip key={c.id} active={cat === c.id} href={hrefFor({ cat: c.id })}>
+              <ToggleChip
+                key={c.id}
+                active={selectedCats.has(c.id)}
+                onClick={() => setCats(toggleInSet(selectedCats, c.id))}
+              >
                 {c.name}
-              </Chip>
+              </ToggleChip>
             ))}
           </div>
         </div>
       ) : null}
 
-      {/* Longevity filters */}
+      {/* Longevity blurb multi-select */}
       {(longevityLabels || []).length ? (
         <div>
           <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">
-            Longevity
+            Longevity blurb
           </p>
           <div className="flex flex-wrap gap-2">
-            <Chip active={!lon} href={hrefFor({ lon: "" })}>
+            <ToggleChip active={selectedLon.size === 0} onClick={clearLon}>
               All
-            </Chip>
+            </ToggleChip>
             {longevityLabels.map((label) => (
-              <Chip key={label} active={lon === label} href={hrefFor({ lon: label })}>
+              <ToggleChip
+                key={label}
+                active={selectedLon.has(label)}
+                onClick={() => setLon(toggleInSet(selectedLon, label))}
+              >
                 {label}
-              </Chip>
+              </ToggleChip>
             ))}
           </div>
         </div>
       ) : null}
 
-      {/* Sort */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-[#7a5c4e]">
           {filtered.length} product{filtered.length === 1 ? "" : "s"}
+          {hasCatFilters || (longevityLabels || []).length ? (
+            <span className="text-[#a08070]"> · tap filters to multi-select</span>
+          ) : null}
         </p>
         <label className="flex items-center gap-2 text-xs font-semibold text-[#5c4033]">
           Sort by
@@ -191,7 +218,8 @@ export default function ShopProductsPanel({
             className="rounded-full border border-[#e8d5c4] bg-white px-3 py-1.5 text-xs font-semibold"
             value={sort}
             onChange={(e) => {
-              router.push(hrefFor({ sort: e.target.value, page: "" }));
+              setSort(e.target.value);
+              setPage(1);
             }}
           >
             <option value="newest">Newest</option>
@@ -201,7 +229,6 @@ export default function ShopProductsPanel({
         </label>
       </div>
 
-      {/* Product grid / list */}
       {slice.length ? (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {slice.map((p) => (
@@ -214,48 +241,45 @@ export default function ShopProductsPanel({
         <p className="text-sm text-[#7a5c4e]">No products match these filters.</p>
       )}
 
-      {/* Pagination */}
       {totalPages > 1 ? (
-        <nav className="flex flex-wrap items-center justify-center gap-2 pt-2" aria-label="Pagination">
-          <Link
-            href={hrefFor({ page: String(Math.max(1, safePage - 1)) })}
-            className={
-              "rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold " +
-              (safePage <= 1 ? "pointer-events-none opacity-40" : "hover:border-[#c45c26]/50")
-            }
-            aria-disabled={safePage <= 1}
+        <nav
+          className="flex flex-wrap items-center justify-center gap-2 pt-2"
+          aria-label="Pagination"
+        >
+          <button
+            type="button"
+            disabled={safePage <= 1}
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40"
           >
             Previous
-          </Link>
+          </button>
           {Array.from({ length: totalPages }).map((_, i) => {
             const n = i + 1;
             return (
-              <Link
+              <button
                 key={n}
-                href={hrefFor({ page: String(n) })}
+                type="button"
+                onClick={() => setPage(n)}
                 className={
                   "flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold " +
                   (n === safePage
                     ? "bg-[#c45c26] text-white"
-                    : "border border-[#e8d5c4] text-[#5c4033] hover:border-[#c45c26]/50")
+                    : "border border-[#e8d5c4] text-[#5c4033]")
                 }
               >
                 {n}
-              </Link>
+              </button>
             );
           })}
-          <Link
-            href={hrefFor({ page: String(Math.min(totalPages, safePage + 1)) })}
-            className={
-              "rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold " +
-              (safePage >= totalPages
-                ? "pointer-events-none opacity-40"
-                : "hover:border-[#c45c26]/50")
-            }
-            aria-disabled={safePage >= totalPages}
+          <button
+            type="button"
+            disabled={safePage >= totalPages}
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40"
           >
             Next
-          </Link>
+          </button>
         </nav>
       ) : null}
     </div>

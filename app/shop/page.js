@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { brandShopPath, shopPath } from "@/lib/shop";
@@ -107,7 +106,7 @@ export default async function ShopHomePage() {
 
   const cats = categories || [];
   const categoriesRow1 = cats
-    .filter((c) => (c.filter_row == null || c.filter_row === 1))
+    .filter((c) => c.filter_row == null || c.filter_row === 1)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
   const categoriesRow2 = cats
     .filter((c) => c.filter_row === 2)
@@ -145,15 +144,13 @@ export default async function ShopHomePage() {
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold text-[#3b2a22]">Products</h2>
-        <Suspense fallback={<p className="mt-3 text-sm text-[#7a5c4e]">Loading products…</p>}>
-          <ShopProductsPanel
-            products={productsEnriched}
-            coverByProduct={coverByProduct}
-            categoriesRow1={categoriesRow1}
-            categoriesRow2={categoriesRow2}
-            longevityLabels={longevityLabels}
-          />
-        </Suspense>
+        <ShopProductsPanel
+          products={productsEnriched}
+          coverByProduct={coverByProduct}
+          categoriesRow1={categoriesRow1}
+          categoriesRow2={categoriesRow2}
+          longevityLabels={longevityLabels}
+        />
       </section>
     </div>
   );
