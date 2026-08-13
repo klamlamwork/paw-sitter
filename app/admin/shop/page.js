@@ -22,7 +22,7 @@ export default async function AdminShopPage() {
 
   const links = [
     { href: "/admin/shop/brands", label: "Brands", desc: "Ready · Shop by brand", ready: true },
-    { href: "/admin/shop/shops", label: "Shops", desc: "Next · /shop/shops/…", ready: false },
+    { href: "/admin/shop/shops", label: "Shops", desc: "Ready · /shop/shops/…", ready: true },
     { href: "/admin/shop/categories", label: "Categories", desc: "Next", ready: false },
     { href: "/admin/shop/products", label: "Products", desc: "Next · approve & CTAs", ready: false },
   ];
@@ -30,7 +30,7 @@ export default async function AdminShopPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Shop admin</h1>
-      <p className="mt-2 text-sm text-[#7a5c4e]">Phase 1B-1: Brands. More sections land in following batches.</p>
+      <p className="mt-2 text-sm text-[#7a5c4e]">Phase 1B-2: Brands + Shops.</p>
 
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
