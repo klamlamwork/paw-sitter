@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { brandShopPath, shopPath } from "@/lib/shop";
+import { enrichProducts, sortCategoriesForFilters } from "@/lib/shopCatalog";
 import ShopEntitySlider from "./ShopHomeSliders";
 import ShopProductsPanel from "./ShopProductsPanel";
 
@@ -24,36 +25,32 @@ function sortHomeList(rows, sortKey) {
 
 export default async function ShopHomePage() {
   const supabase = await createClient();
-  const [
-    { data: brandShopsRaw },
-    { data: shopsRaw },
-    { data: products },
-    { data: categories },
-  ] = await Promise.all([
-    supabase
-      .from("shop_shops")
-      .select("id, name, slug, logo_url, is_product_brand, home_brand_sort")
-      .eq("is_product_brand", true)
-      .eq("status", "active"),
-    supabase
-      .from("shop_shops")
-      .select("id, name, slug, logo_url, is_product_brand, home_retailer_sort")
-      .eq("status", "active")
-      .eq("is_product_brand", false),
-    supabase
-      .from("shop_products")
-      .select(
-        "id, name, slug, short_description, price_cents, currency, hide_price, brand_shop_id, category_id, updated_at"
-      )
-      .eq("status", "approved")
-      .order("updated_at", { ascending: false })
-      .limit(200),
-    supabase
-      .from("shop_categories")
-      .select("id, name, slug, sort_order, filter_row")
-      .order("sort_order")
-      .order("name"),
-  ]);
+  const [{ data: brandShopsRaw }, { data: shopsRaw }, { data: productsRaw }, { data: categories }] =
+    await Promise.all([
+      supabase
+        .from("shop_shops")
+        .select("id, name, slug, logo_url, is_product_brand, home_brand_sort")
+        .eq("is_product_brand", true)
+        .eq("status", "active"),
+      supabase
+        .from("shop_shops")
+        .select("id, name, slug, logo_url, is_product_brand, home_retailer_sort")
+        .eq("status", "active")
+        .eq("is_product_brand", false),
+      supabase
+        .from("shop_products")
+        .select(
+          "id, name, slug, short_description, price_cents, currency, hide_price, brand_shop_id, category_id, updated_at"
+        )
+        .eq("status", "approved")
+        .order("updated_at", { ascending: false })
+        .limit(200),
+      supabase
+        .from("shop_categories")
+        .select("id, name, slug, sort_order, filter_row, parent_id")
+        .order("sort_order")
+        .order("name"),
+    ]);
 
   const brandShops = sortHomeList(brandShopsRaw, "home_brand_sort").slice(0, 10);
   const shops = sortHomeList(shopsRaw, "home_retailer_sort").slice(0, 10);
@@ -71,48 +68,11 @@ export default async function ShopHomePage() {
     href: shopPath(s),
   }));
 
-  const productIds = (products || []).map((p) => p.id);
-  const coverByProduct = {};
-  const longevityByProduct = {};
-  const longevitySet = new Set();
-
-  if (productIds.length) {
-    const [{ data: media }, { data: lonItems }] = await Promise.all([
-      supabase
-        .from("shop_product_media")
-        .select("product_id, url, sort_order")
-        .in("product_id", productIds)
-        .order("sort_order", { ascending: true }),
-      supabase
-        .from("shop_product_longevity_items")
-        .select("product_id, label")
-        .in("product_id", productIds),
-    ]);
-    for (const m of media || []) {
-      if (!coverByProduct[m.product_id]) coverByProduct[m.product_id] = m.url;
-    }
-    for (const it of lonItems || []) {
-      if (!it.label) continue;
-      if (!longevityByProduct[it.product_id]) longevityByProduct[it.product_id] = [];
-      longevityByProduct[it.product_id].push(it.label);
-      longevitySet.add(it.label);
-    }
-  }
-
-  const productsEnriched = (products || []).map((p) => ({
-    ...p,
-    longevity_labels: longevityByProduct[p.id] || [],
-  }));
-
-  const cats = categories || [];
-  const categoriesRow1 = cats
-    .filter((c) => c.filter_row == null || c.filter_row === 1)
-    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
-  const categoriesRow2 = cats
-    .filter((c) => c.filter_row === 2)
-    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
-
-  const longevityLabels = [...longevitySet].sort((a, b) => a.localeCompare(b));
+  const { products, coverByProduct, longevityLabels } = await enrichProducts(
+    supabase,
+    productsRaw || []
+  );
+  const { categoriesRow1, categoriesRow2 } = sortCategoriesForFilters(categories);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -145,7 +105,7 @@ export default async function ShopHomePage() {
       <section className="mt-10">
         <h2 className="text-lg font-semibold text-[#3b2a22]">Products</h2>
         <ShopProductsPanel
-          products={productsEnriched}
+          products={products}
           coverByProduct={coverByProduct}
           categoriesRow1={categoriesRow1}
           categoriesRow2={categoriesRow2}

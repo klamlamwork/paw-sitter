@@ -14,9 +14,12 @@ export default function CategoriesAdminClient({ initialCategories }) {
   const [description, setDescription] = useState("");
   const [sortOrder, setSortOrder] = useState("0");
   const [filterRow, setFilterRow] = useState("1");
+  const [parentId, setParentId] = useState("");
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const parents = cats.filter((c) => !c.parent_id);
 
   function sortCats(list) {
     return [...list].sort(
@@ -25,6 +28,12 @@ export default function CategoriesAdminClient({ initialCategories }) {
         (a.sort_order || 0) - (b.sort_order || 0) ||
         a.name.localeCompare(b.name)
     );
+  }
+
+  function labelFor(c) {
+    if (!c.parent_id) return c.name;
+    const p = cats.find((x) => x.id === c.parent_id);
+    return p ? `${p.name} → ${c.name}` : c.name;
   }
 
   async function addCat(e) {
@@ -47,6 +56,7 @@ export default function CategoriesAdminClient({ initialCategories }) {
         description: description.trim(),
         sort_order: Number(sortOrder) || 0,
         filter_row: Number(filterRow) === 2 ? 2 : 1,
+        parent_id: parentId || null,
       })
       .select("*")
       .single();
@@ -61,6 +71,7 @@ export default function CategoriesAdminClient({ initialCategories }) {
     setDescription("");
     setSortOrder("0");
     setFilterRow("1");
+    setParentId("");
     setOk("Category created.");
     router.refresh();
   }
@@ -94,7 +105,7 @@ export default function CategoriesAdminClient({ initialCategories }) {
       {ok ? <p className="rounded-xl bg-green-50 px-3 py-2 text-sm text-green-800">{ok}</p> : null}
 
       <form onSubmit={addCat} className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
-        <h2 className="font-semibold">Add category</h2>
+        <h2 className="font-semibold">Add category / subcategory</h2>
         <label className="block text-sm font-medium">
           Name
           <input
@@ -108,77 +119,72 @@ export default function CategoriesAdminClient({ initialCategories }) {
           />
         </label>
         <label className="block text-sm font-medium">
-          Slug
-          <input
-            className={inp + " font-mono"}
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-          />
+          Parent category (optional — makes this a subcategory)
+          <select className={inp} value={parentId} onChange={(e) => setParentId(e.target.value)}>
+            <option value="">— top level —</option>
+            {parents.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="block text-sm font-medium">
-          Description
-          <textarea
-            className={inp}
-            rows={2}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
+          Slug
+          <input className={inp + " font-mono"} value={slug} onChange={(e) => setSlug(e.target.value)} />
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="block text-sm font-medium">
             Filter line on /shop/
             <select className={inp} value={filterRow} onChange={(e) => setFilterRow(e.target.value)}>
-              <option value="1">Line 1 (first row)</option>
-              <option value="2">Line 2 (second row)</option>
+              <option value="1">Line 1</option>
+              <option value="2">Line 2</option>
             </select>
           </label>
           <label className="block text-sm font-medium">
-            Sequence within line
-            <input
-              type="number"
-              className={inp}
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value)}
-            />
+            Sequence
+            <input type="number" className={inp} value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
           </label>
         </div>
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
-        >
+        <button type="submit" disabled={busy} className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
           {busy ? "Saving…" : "Create category"}
         </button>
       </form>
 
       <ul className="space-y-2">
         {cats.map((c) => (
-          <li
-            key={c.id}
-            className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm"
-          >
+          <li key={c.id} className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <p className="font-semibold text-[#3b2a22]">{c.name}</p>
+                <p className="font-semibold text-[#3b2a22]">{labelFor(c)}</p>
                 <p className="text-xs text-[#7a5c4e]">/shop/c/{c.slug}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => remove(c)}
-                className="text-xs font-semibold text-red-600"
-              >
-                Delete
-              </button>
+              <button type="button" onClick={() => remove(c)} className="text-xs font-semibold text-red-600">Delete</button>
             </div>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <label className="block text-xs font-medium text-[#7a5c4e]">
+                Parent
+                <select
+                  className={inp + " text-sm"}
+                  value={c.parent_id || ""}
+                  onChange={(e) => patchCat(c, { parent_id: e.target.value || null })}
+                >
+                  <option value="">— top level —</option>
+                  {parents
+                    .filter((p) => p.id !== c.id)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
               <label className="block text-xs font-medium text-[#7a5c4e]">
                 Filter line
                 <select
                   className={inp + " text-sm"}
                   value={String(c.filter_row || 1)}
-                  onChange={(e) =>
-                    patchCat(c, { filter_row: Number(e.target.value) === 2 ? 2 : 1 })
-                  }
+                  onChange={(e) => patchCat(c, { filter_row: Number(e.target.value) === 2 ? 2 : 1 })}
                 >
                   <option value="1">Line 1</option>
                   <option value="2">Line 2</option>

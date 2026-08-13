@@ -16,11 +16,7 @@ function ProductCard({ product, coverUrl }) {
       <div className="relative h-28 w-28 shrink-0 bg-[#fff8f0] sm:aspect-square sm:h-auto sm:w-full">
         {coverUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={coverUrl}
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover"
-          />
+          <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-[#7a5c4e]">
             No image
@@ -32,13 +28,9 @@ function ProductCard({ product, coverUrl }) {
           {product.name}
         </span>
         {product.short_description ? (
-          <span className="mt-1 line-clamp-2 text-xs text-[#7a5c4e]">
-            {product.short_description}
-          </span>
+          <span className="mt-1 line-clamp-2 text-xs text-[#7a5c4e]">{product.short_description}</span>
         ) : null}
-        {price ? (
-          <span className="mt-1.5 text-sm font-semibold text-[#c45c26]">{price}</span>
-        ) : null}
+        {price ? <span className="mt-1.5 text-sm font-semibold text-[#c45c26]">{price}</span> : null}
       </div>
     </Link>
   );
@@ -84,14 +76,14 @@ export default function ShopProductsPanel({
     let list = [...(products || [])];
 
     if (selectedCats.size > 0) {
-      list = list.filter((p) => p.category_id && selectedCats.has(p.category_id));
+      list = list.filter((p) => {
+        const ids = p.category_ids || (p.category_id ? [p.category_id] : []);
+        return ids.some((id) => selectedCats.has(id));
+      });
     }
 
     if (selectedLon.size > 0) {
-      list = list.filter((p) => {
-        const labels = p.longevity_labels || [];
-        return labels.some((l) => selectedLon.has(l));
-      });
+      list = list.filter((p) => (p.longevity_labels || []).some((l) => selectedLon.has(l)));
     }
 
     if (sort === "price_asc") {
@@ -121,40 +113,20 @@ export default function ShopProductsPanel({
     setSelectedCats(next);
     setPage(1);
   }
-
   function setLon(next) {
     setSelectedLon(next);
     setPage(1);
   }
 
-  function clearCats() {
-    setCats(new Set());
-  }
-
-  function clearLon() {
-    setLon(new Set());
-  }
-
-  const hasCatFilters = (categoriesRow1 || []).length + (categoriesRow2 || []).length > 0;
-
   return (
     <div className="mt-4 space-y-4">
-      {/* Filter row 1 */}
       {(categoriesRow1 || []).length ? (
         <div>
-          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">
-            Categories
-          </p>
+          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">Categories</p>
           <div className="flex flex-wrap gap-2">
-            <ToggleChip active={selectedCats.size === 0} onClick={clearCats}>
-              All
-            </ToggleChip>
+            <ToggleChip active={selectedCats.size === 0} onClick={() => setCats(new Set())}>All</ToggleChip>
             {categoriesRow1.map((c) => (
-              <ToggleChip
-                key={c.id}
-                active={selectedCats.has(c.id)}
-                onClick={() => setCats(toggleInSet(selectedCats, c.id))}
-              >
+              <ToggleChip key={c.id} active={selectedCats.has(c.id)} onClick={() => setCats(toggleInSet(selectedCats, c.id))}>
                 {c.name}
               </ToggleChip>
             ))}
@@ -162,19 +134,12 @@ export default function ShopProductsPanel({
         </div>
       ) : null}
 
-      {/* Filter row 2 */}
       {(categoriesRow2 || []).length ? (
         <div>
-          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">
-            More categories
-          </p>
+          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">More categories</p>
           <div className="flex flex-wrap gap-2">
             {categoriesRow2.map((c) => (
-              <ToggleChip
-                key={c.id}
-                active={selectedCats.has(c.id)}
-                onClick={() => setCats(toggleInSet(selectedCats, c.id))}
-              >
+              <ToggleChip key={c.id} active={selectedCats.has(c.id)} onClick={() => setCats(toggleInSet(selectedCats, c.id))}>
                 {c.name}
               </ToggleChip>
             ))}
@@ -182,22 +147,13 @@ export default function ShopProductsPanel({
         </div>
       ) : null}
 
-      {/* Longevity blurb multi-select */}
       {(longevityLabels || []).length ? (
         <div>
-          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">
-            Longevity blurb
-          </p>
+          <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">Longevity blurb</p>
           <div className="flex flex-wrap gap-2">
-            <ToggleChip active={selectedLon.size === 0} onClick={clearLon}>
-              All
-            </ToggleChip>
+            <ToggleChip active={selectedLon.size === 0} onClick={() => setLon(new Set())}>All</ToggleChip>
             {longevityLabels.map((label) => (
-              <ToggleChip
-                key={label}
-                active={selectedLon.has(label)}
-                onClick={() => setLon(toggleInSet(selectedLon, label))}
-              >
+              <ToggleChip key={label} active={selectedLon.has(label)} onClick={() => setLon(toggleInSet(selectedLon, label))}>
                 {label}
               </ToggleChip>
             ))}
@@ -208,9 +164,6 @@ export default function ShopProductsPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-[#7a5c4e]">
           {filtered.length} product{filtered.length === 1 ? "" : "s"}
-          {hasCatFilters || (longevityLabels || []).length ? (
-            <span className="text-[#a08070]"> · tap filters to multi-select</span>
-          ) : null}
         </p>
         <label className="flex items-center gap-2 text-xs font-semibold text-[#5c4033]">
           Sort by
@@ -242,44 +195,17 @@ export default function ShopProductsPanel({
       )}
 
       {totalPages > 1 ? (
-        <nav
-          className="flex flex-wrap items-center justify-center gap-2 pt-2"
-          aria-label="Pagination"
-        >
-          <button
-            type="button"
-            disabled={safePage <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40"
-          >
-            Previous
-          </button>
+        <nav className="flex flex-wrap items-center justify-center gap-2 pt-2" aria-label="Pagination">
+          <button type="button" disabled={safePage <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40">Previous</button>
           {Array.from({ length: totalPages }).map((_, i) => {
             const n = i + 1;
             return (
-              <button
-                key={n}
-                type="button"
-                onClick={() => setPage(n)}
-                className={
-                  "flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold " +
-                  (n === safePage
-                    ? "bg-[#c45c26] text-white"
-                    : "border border-[#e8d5c4] text-[#5c4033]")
-                }
-              >
+              <button key={n} type="button" onClick={() => setPage(n)} className={"flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold " + (n === safePage ? "bg-[#c45c26] text-white" : "border border-[#e8d5c4] text-[#5c4033]")}>
                 {n}
               </button>
             );
           })}
-          <button
-            type="button"
-            disabled={safePage >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40"
-          >
-            Next
-          </button>
+          <button type="button" disabled={safePage >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-40">Next</button>
         </nav>
       ) : null}
     </div>

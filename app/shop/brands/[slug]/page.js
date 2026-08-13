@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { formatShopPrice, productPath, shopPath } from "@/lib/shop";
+import { shopPath } from "@/lib/shop";
+import { enrichProducts, sortCategoriesForFilters } from "@/lib/shopCatalog";
+import ShopProductsPanel from "../../ShopProductsPanel";
 
 export async function generateMetadata({ params }) {
   const { slug } = await params;
@@ -32,12 +34,24 @@ export default async function ShopBrandDetailPage({ params }) {
     .maybeSingle();
   if (!brand) notFound();
 
-  const { data: products } = await supabase
+  const { data: productsRaw } = await supabase
     .from("shop_products")
-    .select("id, name, slug, short_description, price_cents, currency, hide_price, status")
+    .select(
+      "id, name, slug, short_description, price_cents, currency, hide_price, brand_shop_id, primary_shop_id, category_id, updated_at, status"
+    )
     .eq("brand_shop_id", brand.id)
     .eq("status", "approved")
-    .order("name");
+    .order("updated_at", { ascending: false });
+
+  const { products, coverByProduct, longevityLabels } = await enrichProducts(
+    supabase,
+    productsRaw || []
+  );
+  const { data: categories } = await supabase
+    .from("shop_categories")
+    .select("id, name, slug, sort_order, filter_row, parent_id")
+    .order("sort_order");
+  const { categoriesRow1, categoriesRow2 } = sortCategoriesForFilters(categories);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -47,7 +61,7 @@ export default async function ShopBrandDetailPage({ params }) {
       <div className="mt-6 flex flex-wrap items-start gap-4">
         {brand.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={brand.logo_url} alt="" className="h-16 w-auto object-contain" />
+          <img src={brand.logo_url} alt="" className="h-16 w-16 rounded-full object-cover ring-1 ring-[#e8d5c4]" />
         ) : null}
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-[#c45c26]">Product brand</p>
@@ -56,7 +70,7 @@ export default async function ShopBrandDetailPage({ params }) {
             <p className="mt-2 max-w-2xl text-sm text-[#5c4033]">{brand.description}</p>
           ) : null}
           <p className="mt-2 text-xs text-[#7a5c4e]">
-            Also a shop storefront:{" "}
+            Storefront:{" "}
             <Link href={shopPath(brand)} className="font-semibold text-[#c45c26] hover:underline">
               {shopPath(brand)}
             </Link>
@@ -64,35 +78,16 @@ export default async function ShopBrandDetailPage({ params }) {
         </div>
       </div>
 
-      <h2 className="mt-10 text-lg font-semibold text-[#3b2a22]">Products</h2>
-      <p className="mt-1 text-xs text-[#7a5c4e]">
-        Brand product pages. On each product, customers can pick other retailers by logo when
-        offers exist.
-      </p>
-      <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-        {(products || []).map((p) => {
-          const price = formatShopPrice(p.price_cents, p.currency, p.hide_price);
-          return (
-            <li key={p.id}>
-              <Link
-                href={productPath(p)}
-                className="block rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 hover:border-[#c45c26]/50"
-              >
-                <span className="font-semibold text-[#3b2a22]">{p.name}</span>
-                {p.short_description ? (
-                  <span className="mt-1 block text-xs text-[#7a5c4e]">{p.short_description}</span>
-                ) : null}
-                {price ? (
-                  <span className="mt-2 block text-sm font-semibold text-[#c45c26]">{price}</span>
-                ) : null}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-      {!(products || []).length ? (
-        <p className="mt-4 text-sm text-[#7a5c4e]">No approved products for this brand yet.</p>
-      ) : null}
+      <section className="mt-10">
+        <h2 className="text-lg font-semibold text-[#3b2a22]">Products</h2>
+        <ShopProductsPanel
+          products={products}
+          coverByProduct={coverByProduct}
+          categoriesRow1={categoriesRow1}
+          categoriesRow2={categoriesRow2}
+          longevityLabels={longevityLabels}
+        />
+      </section>
     </div>
   );
 }
