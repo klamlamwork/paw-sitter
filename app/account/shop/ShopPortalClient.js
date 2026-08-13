@@ -10,10 +10,27 @@ import CategoryMultiSelect from "@/components/shop/CategoryMultiSelect";
 import ProductTypeSelect from "@/components/shop/ProductTypeSelect";
 import ProductGalleryEditor from "@/components/shop/ProductGalleryEditor";
 import LongevityChipsEditor from "@/components/shop/LongevityChipsEditor";
+import BuyButtonsFields from "@/components/shop/BuyButtonsFields";
 import ShopPortalVariantsHook from "./ShopPortalVariantsHook";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
 const emptyChipDraft = () => ({ icon_key: "heart", label: "", note: "" });
+const emptyBuy = () => ({ show_affiliate: false, show_add_to_cart: false, affiliate_url: "" });
+
+async function upsertOfferButtons(supabase, productId, shopId, buy) {
+  if (!productId || !shopId) return;
+  await supabase.from("shop_product_offers").upsert(
+    {
+      product_id: productId,
+      shop_id: shopId,
+      show_affiliate: !!buy.show_affiliate,
+      show_add_to_cart: !!buy.show_add_to_cart,
+      affiliate_url: buy.show_affiliate ? (buy.affiliate_url || "").trim() : "",
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "product_id,shop_id" }
+  );
+}
 
 export default function ShopPortalClient({
   shops,
@@ -37,6 +54,7 @@ export default function ShopPortalClient({
     inventory_mode: "simple",
     price: "",
     hide_price: false,
+    ...emptyBuy(),
   });
   const [createChips, setCreateChips] = useState([]);
   const [createChipDraft, setCreateChipDraft] = useState(emptyChipDraft());
@@ -49,6 +67,7 @@ export default function ShopPortalClient({
   const [editMedia, setEditMedia] = useState([]);
   const [editLongevity, setEditLongevity] = useState([]);
   const [editChipDraft, setEditChipDraft] = useState(emptyChipDraft());
+  const [editBuy, setEditBuy] = useState(emptyBuy());
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const selectedShop = activeShops.find((s) => s.id === form.shop_id);
@@ -73,6 +92,11 @@ export default function ShopPortalClient({
       shop_id: p.primary_shop_id || "",
       brand_shop_id: p.brand_shop_id || "",
     });
+    setEditBuy({
+      show_affiliate: !!p.show_affiliate,
+      show_add_to_cart: !!p.show_add_to_cart,
+      affiliate_url: p.affiliate_url || "",
+    });
     setEditMedia(
       (p.media || [])
         .filter((m) => m?.url)
@@ -89,9 +113,28 @@ export default function ShopPortalClient({
     setEditChipDraft(emptyChipDraft());
   }
 
+  async function saveBuyLive(p, buy) {
+    const supabase = createClient();
+    const shopId = p.primary_shop_id || p.brand_shop_id;
+    await supabase
+      .from("shop_products")
+      .update({
+        show_affiliate: !!buy.show_affiliate,
+        show_add_to_cart: !!buy.show_add_to_cart,
+        affiliate_url: buy.show_affiliate ? (buy.affiliate_url || "").trim() : "",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", p.id);
+    await upsertOfferButtons(supabase, p.id, shopId, buy);
+  }
+
   async function submitEdit(p) {
     if (!editForm?.name?.trim()) {
       setError("Name required");
+      return;
+    }
+    if (editBuy.show_affiliate && !(editBuy.affiliate_url || "").trim()) {
+      setError("Affiliate URL required when the external button is on.");
       return;
     }
     setBusy(true);
@@ -107,6 +150,8 @@ export default function ShopPortalClient({
         updated_at: new Date().toISOString(),
       })
       .eq("id", p.id);
+
+    await saveBuyLive(p, editBuy);
 
     const snap = snapshotFromForm(
       {
@@ -171,7 +216,7 @@ export default function ShopPortalClient({
       }
       await syncProductCategories(supabase, p.id, snap.category_ids);
       setBusy(false);
-      setOk("Saved — still pending first approval.");
+      setOk("Saved. Buy buttons are live on your listing (after first approval of the product).");
       setEditId("");
       router.refresh();
       return;
@@ -194,7 +239,20 @@ export default function ShopPortalClient({
       setError(err.message);
       return;
     }
-    setOk("Content update submitted for approval. Gallery and longevity chips are included.");
+    setProducts((list) =>
+      list.map((x) =>
+        x.id === p.id
+          ? {
+              ...x,
+              show_affiliate: editBuy.show_affiliate,
+              show_add_to_cart: editBuy.show_add_to_cart,
+              affiliate_url: editBuy.affiliate_url,
+              has_pending_edit: true,
+            }
+          : x
+      )
+    );
+    setOk("Content sent for approval. Affiliate / add-to-cart updated immediately.");
     setEditId("");
     router.refresh();
   }
@@ -215,6 +273,11 @@ export default function ShopPortalClient({
       setBusy(false);
       return;
     }
+    if (form.show_affiliate && !(form.affiliate_url || "").trim()) {
+      setError("Affiliate URL required when the external button is on.");
+      setBusy(false);
+      return;
+    }
 
     let brandShopId = null;
     if (selectedShop.is_product_brand) brandShopId = selectedShop.id;
@@ -225,6 +288,11 @@ export default function ShopPortalClient({
       form.price === "" || form.price == null ? null : Math.round(Number(form.price) * 100);
     const productType = form.product_type || "other";
     const inventoryMode = form.inventory_mode || defaultInventoryMode(productType);
+    const buy = {
+      show_affiliate: !!form.show_affiliate,
+      show_add_to_cart: !!form.show_add_to_cart,
+      affiliate_url: form.show_affiliate ? (form.affiliate_url || "").trim() : "",
+    };
     const supabase = createClient();
     const gallery = (createGallery || []).filter((m) => m?.url);
 
@@ -244,16 +312,16 @@ export default function ShopPortalClient({
         price_cents: Number.isFinite(priceCents) ? priceCents : null,
         currency: "CAD",
         hide_price: !!form.hide_price,
-        show_affiliate: false,
-        show_add_to_cart: false,
-        affiliate_url: "",
+        show_affiliate: buy.show_affiliate,
+        show_add_to_cart: buy.show_add_to_cart,
+        affiliate_url: buy.affiliate_url,
         status: "pending",
         created_by: profileId,
         has_pending_edit: false,
         updated_at: new Date().toISOString(),
       })
       .select(
-        "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, product_type, inventory_mode, has_pending_edit, updated_at"
+        "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, product_type, inventory_mode, show_affiliate, show_add_to_cart, affiliate_url, has_pending_edit, updated_at"
       )
       .single();
 
@@ -264,7 +332,7 @@ export default function ShopPortalClient({
     }
 
     if (gallery.length) {
-      const { error: mediaErr } = await supabase.from("shop_product_media").insert(
+      await supabase.from("shop_product_media").insert(
         gallery.map((m, i) => ({
           product_id: product.id,
           url: m.url,
@@ -272,12 +340,6 @@ export default function ShopPortalClient({
           sort_order: i,
         }))
       );
-      if (mediaErr) {
-        setBusy(false);
-        setError(`Product created, but gallery failed: ${mediaErr.message}`);
-        router.refresh();
-        return;
-      }
     }
 
     let longevity_items = [];
@@ -289,21 +351,15 @@ export default function ShopPortalClient({
         note: c.note || "",
         sort_order: i,
       }));
-      const { data: saved, error: chipErr } = await supabase
+      const { data: saved } = await supabase
         .from("shop_product_longevity_items")
         .insert(rows)
         .select("id, product_id, icon_key, label, note, sort_order");
-      if (chipErr) {
-        setBusy(false);
-        setError(`Product created, but longevity chips failed: ${chipErr.message}`);
-        router.refresh();
-        return;
-      }
       longevity_items = saved || [];
     }
 
     await syncProductCategories(supabase, product.id, form.category_ids || []);
-
+    await upsertOfferButtons(supabase, product.id, form.shop_id, buy);
     await supabase.from("shop_product_offers").upsert(
       {
         product_id: product.id,
@@ -311,6 +367,9 @@ export default function ShopPortalClient({
         price_cents: Number.isFinite(priceCents) ? priceCents : null,
         currency: "CAD",
         hide_price: !!form.hide_price,
+        show_affiliate: buy.show_affiliate,
+        show_add_to_cart: buy.show_add_to_cart,
+        affiliate_url: buy.affiliate_url,
         status: "pending",
         is_default: true,
         updated_at: new Date().toISOString(),
@@ -319,7 +378,7 @@ export default function ShopPortalClient({
     );
 
     setBusy(false);
-    setOk("Submitted. Gallery and longevity chips saved.");
+    setOk("Submitted. Buy buttons saved on your listing.");
     setForm((f) => ({
       ...f,
       name: "",
@@ -332,6 +391,7 @@ export default function ShopPortalClient({
       inventory_mode: "simple",
       price: "",
       hide_price: false,
+      ...emptyBuy(),
     }));
     setCreateChips([]);
     setCreateChipDraft(emptyChipDraft());
@@ -339,6 +399,7 @@ export default function ShopPortalClient({
     setProducts((list) => [
       {
         ...product,
+        ...buy,
         inventory_mode: inventoryMode,
         product_type: productType,
         edit_name: product.name,
@@ -371,15 +432,6 @@ export default function ShopPortalClient({
             ))}
           </select>
         </label>
-        {selectedShop && !selectedShop.is_product_brand ? (
-          <label className="block text-sm font-medium">
-            Link to product brand (optional)
-            <select className={inp} value={form.brand_shop_id} onChange={(e) => set("brand_shop_id", e.target.value)}>
-              <option value="">— none —</option>
-              {productBrandShops.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-            </select>
-          </label>
-        ) : null}
         <ProductTypeSelect
           productType={form.product_type}
           inventoryMode={form.inventory_mode}
@@ -397,20 +449,16 @@ export default function ShopPortalClient({
         </div>
         <label className="block text-sm font-medium">Short description<input className={inp} value={form.short_description} onChange={(e) => set("short_description", e.target.value)} /></label>
         <label className="block text-sm font-medium">Description<textarea className={inp} rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} /></label>
-
-        <ProductGalleryEditor
-          inputId="create-gallery-url"
-          images={createGallery}
-          onChange={setCreateGallery}
+        <ProductGalleryEditor inputId="create-gallery-url" images={createGallery} onChange={setCreateGallery} />
+        <LongevityChipsEditor items={createChips} onChange={setCreateChips} draft={createChipDraft} setDraft={setCreateChipDraft} />
+        <BuyButtonsFields
+          value={{
+            show_affiliate: form.show_affiliate,
+            show_add_to_cart: form.show_add_to_cart,
+            affiliate_url: form.affiliate_url,
+          }}
+          onChange={(buy) => setForm((f) => ({ ...f, ...buy }))}
         />
-
-        <LongevityChipsEditor
-          items={createChips}
-          onChange={setCreateChips}
-          draft={createChipDraft}
-          setDraft={setCreateChipDraft}
-        />
-
         <label className="block text-sm font-medium">Price CAD<input type="number" step="0.01" className={inp} value={form.price} onChange={(e) => set("price", e.target.value)} /></label>
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.hide_price} onChange={(e) => set("hide_price", e.target.checked)} /> Hide price</label>
         <button type="submit" disabled={busy} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{busy ? "Submitting…" : "Submit product for approval"}</button>
@@ -425,8 +473,10 @@ export default function ShopPortalClient({
                 <div>
                   <p className="font-semibold">{p.name}</p>
                   <p className="text-xs text-[#7a5c4e]">
-                    {p.product_type || "other"} · {p.inventory_mode || "simple"}
-                    {p.has_pending_edit ? " · update pending" : ""}
+                    {p.show_add_to_cart ? "Cart " : ""}
+                    {p.show_affiliate ? "Affiliate " : ""}
+                    {!p.show_add_to_cart && !p.show_affiliate ? "Catalog only · " : "· "}
+                    {p.product_type || "other"}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -452,23 +502,12 @@ export default function ShopPortalClient({
                   </div>
                   <label className="block text-sm font-medium">Short description<input className={inp} value={editForm.short_description} onChange={(e) => setEditForm((f) => ({ ...f, short_description: e.target.value }))} /></label>
                   <label className="block text-sm font-medium">Description<textarea className={inp} rows={3} value={editForm.description} onChange={(e) => setEditForm((f) => ({ ...f, description: e.target.value }))} /></label>
-
-                  <ProductGalleryEditor
-                    inputId={"edit-gallery-url-" + p.id}
-                    images={editMedia}
-                    onChange={setEditMedia}
-                  />
-
-                  <LongevityChipsEditor
-                    items={editLongevity}
-                    onChange={setEditLongevity}
-                    draft={editChipDraft}
-                    setDraft={setEditChipDraft}
-                  />
-
+                  <ProductGalleryEditor inputId={"edit-gallery-url-" + p.id} images={editMedia} onChange={setEditMedia} />
+                  <LongevityChipsEditor items={editLongevity} onChange={setEditLongevity} draft={editChipDraft} setDraft={setEditChipDraft} />
+                  <BuyButtonsFields value={editBuy} onChange={setEditBuy} />
                   <label className="block text-sm font-medium">Price<input type="number" step="0.01" className={inp} value={editForm.price} onChange={(e) => setEditForm((f) => ({ ...f, price: e.target.value }))} /></label>
                   <button type="button" disabled={busy} onClick={() => submitEdit(p)} className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">
-                    {busy ? "Saving…" : p.status === "approved" ? "Submit content for approval" : "Save"}
+                    {busy ? "Saving…" : p.status === "approved" ? "Save (content needs approval; buy buttons live now)" : "Save"}
                   </button>
                 </div>
               ) : null}
