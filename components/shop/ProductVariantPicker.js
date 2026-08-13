@@ -10,12 +10,16 @@ export default function ProductVariantPicker({
   hidePrice = false,
 }) {
   const active = useMemo(
-    () => (variants || []).filter((v) => v.is_active),
+    () => (variants || []).filter((v) => v.is_active && !v.hidden),
     [variants]
   );
   const [selectedId, setSelectedId] = useState(active[0]?.id || "");
 
-  if (!active.length) return null;
+  if (!active.length) {
+    return (
+      <p className="mt-4 text-sm text-[#7a5c4e]">Currently unavailable.</p>
+    );
+  }
 
   const selected = active.find((v) => v.id === selectedId) || active[0];
   const cents =
@@ -56,9 +60,7 @@ export default function ProductVariantPicker({
         ) : null}
         {selected?.track_stock ? (
           <p className="text-xs text-[#7a5c4e]">
-            {outOfStock
-              ? "Out of stock"
-              : `${selected.stock_qty} in stock`}
+            {outOfStock ? "Out of stock" : `${selected.stock_qty} in stock`}
           </p>
         ) : (
           <p className="text-xs text-[#7a5c4e]">In stock</p>

@@ -7,6 +7,7 @@ import {
   longevityIconEmoji,
   shopProductPath,
 } from "@/lib/shop";
+import { isBatchExpiryMode, sellableQtyFromBatches } from "@/lib/shopInventory";
 import ProductGallery from "@/components/shop/ProductGallery";
 import ProductVariantPicker from "@/components/shop/ProductVariantPicker";
 
@@ -48,7 +49,7 @@ export default async function ShopProductPage({ params }) {
     brandShop = data;
   }
 
-  const [{ data: offerRows }, { data: longevityItems }, { data: variants }] =
+  const [{ data: offerRows }, { data: longevityItems }, { data: variantsRaw }] =
     await Promise.all([
       supabase
         .from("shop_product_offers")
@@ -70,6 +71,35 @@ export default async function ShopProductPage({ params }) {
         .order("sort_order"),
     ]);
 
+  let variants = variantsRaw || [];
+  const batchMode = isBatchExpiryMode(product.inventory_mode);
+
+  if (batchMode && variants.length) {
+    const variantIds = variants.map((v) => v.id);
+    const { data: batches } = await supabase
+      .from("shop_product_batches")
+      .select("id, variant_id, qty_on_hand, expiry_date, status")
+      .in("variant_id", variantIds);
+
+    const byVariant = {};
+    for (const b of batches || []) {
+      if (!byVariant[b.variant_id]) byVariant[b.variant_id] = [];
+      byVariant[b.variant_id].push(b);
+    }
+
+    variants = variants
+      .map((v) => {
+        const qty = sellableQtyFromBatches(byVariant[v.id] || []);
+        return {
+          ...v,
+          stock_qty: qty,
+          track_stock: true,
+          hidden: qty <= 0,
+        };
+      })
+      .filter((v) => !v.hidden);
+  }
+
   const offers = (offerRows || []).filter((o) => o.shop && o.shop.status === "active");
   const eligibleRetailers = offers.filter(
     (o) => o.shop && !o.shop.is_product_brand && (o.product_page_url || "").trim()
@@ -84,7 +114,7 @@ export default async function ShopProductPage({ params }) {
   const displayCurrency = defaultOffer?.currency || product.currency || "CAD";
   const displayHide = defaultOffer ? defaultOffer.hide_price : product.hide_price;
   const priceLabel = formatShopPrice(displayCents, displayCurrency, displayHide);
-  const hasVariants = (variants || []).length > 0;
+  const hasVariants = variants.length > 0;
 
   const showAffiliate = defaultOffer
     ? defaultOffer.show_affiliate && defaultOffer.affiliate_url
@@ -121,7 +151,7 @@ export default async function ShopProductPage({ params }) {
 
           {hasVariants ? (
             <ProductVariantPicker
-              variants={variants || []}
+              variants={variants}
               basePriceCents={displayCents}
               currency={displayCurrency}
               hidePrice={displayHide}
