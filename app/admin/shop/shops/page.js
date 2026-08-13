@@ -21,8 +21,14 @@ export default async function AdminShopShopsPage({ searchParams }) {
   }
   const [{ data: shops }, { data: profiles }] = await Promise.all([
     shopsQuery,
-    supabase.from("profiles").select("id, email, full_name").order("email").limit(200),
+    supabase.from("profiles").select("id, email, full_name").order("email").limit(500),
   ]);
+
+  const profileMap = Object.fromEntries((profiles || []).map((p) => [p.id, p]));
+  const shopsWithOwner = (shops || []).map((s) => ({
+    ...s,
+    owner: s.owner_profile_id ? profileMap[s.owner_profile_id] || null : null,
+  }));
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
@@ -33,9 +39,8 @@ export default async function AdminShopShopsPage({ searchParams }) {
         {filter === "product_brand" ? "Product brand shops" : "Shops"}
       </h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        One registration. Tick <strong>This is a product brand</strong> so other retailers can
-        link products to this brand&apos;s product pages. Selling (affiliate / cart) is per
-        offer later — not required at create.
+        Assign an <strong>owner account</strong> (email). That user sees Shop portal under Account
+        and can create products. You approve in Admin → Products.
       </p>
       <p className="mt-2 flex flex-wrap gap-3 text-xs font-semibold">
         <Link
@@ -54,7 +59,7 @@ export default async function AdminShopShopsPage({ searchParams }) {
         </Link>
       </p>
       <ShopsAdminClient
-        initialShops={shops || []}
+        initialShops={shopsWithOwner}
         profiles={profiles || []}
         defaultProductBrand={filter === "product_brand"}
       />

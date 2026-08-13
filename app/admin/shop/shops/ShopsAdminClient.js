@@ -24,6 +24,11 @@ export default function ShopsAdminClient({
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
 
+  function ownerLabel(p) {
+    if (!p) return null;
+    return p.email + (p.full_name ? ` (${p.full_name})` : "");
+  }
+
   async function addShop(e) {
     e.preventDefault();
     setBusy(true);
@@ -58,14 +63,21 @@ export default function ShopsAdminClient({
       setError(err.message);
       return;
     }
-    setShops((list) => [...list, data].sort((a, b) => a.name.localeCompare(b.name)));
+    const owner = ownerId ? profiles.find((p) => p.id === ownerId) || null : null;
+    setShops((list) =>
+      [...list, { ...data, owner }].sort((a, b) => a.name.localeCompare(b.name))
+    );
     setName("");
     setSlug("");
     setDescription("");
     setLogoUrl("");
     setOwnerId("");
     setIsProductBrand(!!defaultProductBrand);
-    setOk("Shop created.");
+    setOk(
+      owner
+        ? `Shop created. Owner ${owner.email} can use Account → Shop portal.`
+        : "Shop created. Assign an owner so they can add products."
+    );
     router.refresh();
   }
 
@@ -80,6 +92,29 @@ export default function ShopsAdminClient({
       return;
     }
     setShops((list) => list.map((x) => (x.id === s.id ? { ...x, status: next } : x)));
+  }
+
+  async function setOwner(s, nextOwnerId) {
+    const supabase = createClient();
+    const { error: err } = await supabase
+      .from("shop_shops")
+      .update({
+        owner_profile_id: nextOwnerId || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", s.id);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    const owner = nextOwnerId ? profiles.find((p) => p.id === nextOwnerId) || null : null;
+    setShops((list) =>
+      list.map((x) =>
+        x.id === s.id ? { ...x, owner_profile_id: nextOwnerId || null, owner } : x
+      )
+    );
+    setOk(owner ? `Owner set to ${owner.email}` : "Owner cleared");
+    router.refresh();
   }
 
   async function toggleProductBrand(s) {
@@ -139,25 +174,24 @@ export default function ShopsAdminClient({
           <span>
             <span className="font-semibold">This is a product brand</span>
             <span className="block text-xs text-[#7a5c4e]">
-              Brand product pages other retailers can link to. Does not force selling — add
-              offers (affiliate / cart) anytime later.
+              Can create canonical products. Retailers link offers later.
             </span>
           </span>
         </label>
         <label className="block text-sm font-medium">
-          Logo URL
-          <input className={inp} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
-        </label>
-        <label className="block text-sm font-medium">
-          Owner profile (optional)
+          Owner account (who logs in to manage this shop)
           <select className={inp} value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-            <option value="">—</option>
+            <option value="">— none yet —</option>
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.email}{p.full_name ? ` (${p.full_name})` : ""}
+                {ownerLabel(p)}
               </option>
             ))}
           </select>
+        </label>
+        <label className="block text-sm font-medium">
+          Logo URL
+          <input className={inp} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
         </label>
         <label className="block text-sm font-medium">
           Description
@@ -185,14 +219,14 @@ export default function ShopsAdminClient({
         </button>
       </form>
 
-      <ul className="space-y-2">
+      <ul className="space-y-3">
         {shops.map((s) => (
           <li
             key={s.id}
             className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm"
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
+              <div className="min-w-0">
                 <p className="font-semibold text-[#3b2a22]">
                   {s.name}
                   {s.is_product_brand ? (
@@ -208,6 +242,17 @@ export default function ShopsAdminClient({
                 <p className="text-xs text-[#7a5c4e]">
                   /shop/shops/{s.slug}
                   {s.is_product_brand ? ` · brand hub /shop/brands/${s.slug}` : ""}
+                </p>
+                <p className="mt-2 text-xs">
+                  <span className="font-semibold text-[#3b2a22]">Owner email: </span>
+                  {s.owner?.email ? (
+                    <span className="text-[#5c4033]">{s.owner.email}</span>
+                  ) : (
+                    <span className="text-amber-700">Not assigned</span>
+                  )}
+                  {s.owner?.full_name ? (
+                    <span className="text-[#7a5c4e]"> · {s.owner.full_name}</span>
+                  ) : null}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -234,6 +279,21 @@ export default function ShopsAdminClient({
                 </select>
               </div>
             </div>
+            <label className="mt-3 block text-xs font-medium text-[#7a5c4e]">
+              Change owner account
+              <select
+                className={inp + " text-sm"}
+                value={s.owner_profile_id || ""}
+                onChange={(e) => setOwner(s, e.target.value)}
+              >
+                <option value="">— none —</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {ownerLabel(p)}
+                  </option>
+                ))}
+              </select>
+            </label>
           </li>
         ))}
       </ul>
