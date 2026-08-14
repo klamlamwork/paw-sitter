@@ -66,13 +66,17 @@ export default function BookingWizard({
     if (!svc) return 0;
 
     if (form.service_type === "house_sit") {
-      const sorted = [...datesPayload].map((d) => new Date(d.date)).sort((a, b) => a - b);
-      if (sorted.length < 2) return 0;
-      const start = sorted[0];
-      const end = sorted[sorted.length - 1];
+      if (!datesPayload.startTime || !datesPayload.endTime) return 0;
+      const start = new Date(datesPayload[0].date);
+      const end = new Date(datesPayload[datesPayload.length - 1].date);
+      end.setDate(end.getDate() + 1);
+      const [sh, sm] = (datesPayload.startTime || "12:00").split(":").map(Number);
+      const [eh, em] = (datesPayload.endTime || "12:00").split(":").map(Number);
+      start.setHours(sh, sm, 0, 0);
+      end.setHours(eh, em, 0, 0);
       const { total } = estimateHouseSitTotal({
         start,
-        end: new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1),
+        end,
         rateRegular: svc.rate_regular,
         rateHoliday: svc.rate_holiday,
         holidaySet,
@@ -131,13 +135,11 @@ export default function BookingWizard({
         .single();
       if (bErr) throw bErr;
 
-      const dur = form.service_type === "house_sit" ? null : Number(form.drop_in_duration) || 60;
       const slots = [];
       if (form.service_type === "house_sit") {
-        const sorted = [...datesPayload].map((d) => new Date(d.date)).sort((a, b) => a - b);
-        if (sorted.length >= 2) {
-          const start = sorted[0];
-          const end = new Date(sorted[sorted.length - 1]);
+        if (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime) {
+          const start = new Date(datesPayload[0].date);
+          const end = new Date(datesPayload[datesPayload.length - 1].date);
           end.setDate(end.getDate() + 1);
           const [sh, sm] = (datesPayload.startTime || "12:00").split(":").map(Number);
           const [eh, em] = (datesPayload.endTime || "12:00").split(":").map(Number);
@@ -147,6 +149,7 @@ export default function BookingWizard({
           slots.push({ starts_at: start.toISOString(), ends_at: end.toISOString(), duration_minutes: durationMinutes, service_type: form.service_type });
         }
       } else {
+        const dur = Number(form.drop_in_duration) || 60;
         for (const day of datesPayload) {
           const base = new Date(day.date);
           for (const t of day.times || []) {
@@ -181,7 +184,7 @@ export default function BookingWizard({
     }
   }
 
-  const houseSitDatesValid = form.service_type !== "house_sit" || datesPayload.length >= 2;
+  const houseSitDatesValid = form.service_type !== "house_sit" || (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime);
   const visitTimesValid = form.service_type === "house_sit" || datesPayload.some((d) => (d.times || []).length > 0);
 
   return (
@@ -207,7 +210,7 @@ export default function BookingWizard({
       </>}
       {step === 2 && <>
         <h2 className="text-xl font-semibold">Step 2 — Date(s)</h2>
-        {form.service_type === "house_sit" && <p className="text-sm text-[#7a5c4e]">Choose at least two consecutive dates for an overnight house sit.</p>}
+        {form.service_type === "house_sit" && <p className="text-sm text-[#7a5c4e]">Choose start date and end date for an overnight house sit (consecutive nights).</p>}
         <DatesStep value={datesPayload} onChange={setDatesPayload} serviceType={form.service_type} />
         <div className="flex gap-2"><button type="button" onClick={() => setStep(1)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(3)} disabled={!datesPayload.length || !houseSitDatesValid || !visitTimesValid} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button></div>
       </>}
