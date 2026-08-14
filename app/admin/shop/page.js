@@ -11,60 +11,29 @@ export default async function AdminShopPage() {
   if (profile.role !== "admin") redirect("/account");
 
   const supabase = await createClient();
-  const [
-    { count: shops },
-    { count: brandShops },
-    { count: cats },
-    { count: products },
-    { count: pending },
-  ] = await Promise.all([
-    supabase.from("shop_shops").select("id", { count: "exact", head: true }),
-    supabase
-      .from("shop_shops")
-      .select("id", { count: "exact", head: true })
-      .eq("is_product_brand", true),
-    supabase.from("shop_categories").select("id", { count: "exact", head: true }),
-    supabase.from("shop_products").select("id", { count: "exact", head: true }),
-    supabase
-      .from("shop_products")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending"),
-  ]);
+  const [{ count: shops }, { count: brandShops }, { count: cats }, { count: products }, { count: pending }] =
+    await Promise.all([
+      supabase.from("shop_shops").select("id", { count: "exact", head: true }),
+      supabase.from("shop_shops").select("id", { count: "exact", head: true }).eq("is_product_brand", true),
+      supabase.from("shop_categories").select("id", { count: "exact", head: true }),
+      supabase.from("shop_products").select("id", { count: "exact", head: true }),
+      supabase.from("shop_products").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    ]);
 
   const links = [
-    {
-      href: "/admin/shop/shops",
-      label: "Shops",
-      desc: "Create shop · assign owner account · product brand flag",
-      ready: true,
-    },
-    {
-      href: "/admin/shop/shops?filter=product_brand",
-      label: "Product brands",
-      desc: "Shops marked as product brand",
-      ready: true,
-    },
-    {
-      href: "/admin/shop/categories",
-      label: "Categories",
-      desc: "Catalog tree (admin)",
-      ready: true,
-    },
-    {
-      href: "/admin/shop/products",
-      label: "Products",
-      desc: "Moderate · approve / edit / inactive (shops create listings)",
-      ready: true,
-    },
+    { href: "/admin/shop/shops", label: "Shops", desc: "Create, edit, delete shops and owners", ready: true },
+    { href: "/admin/shop/shops?filter=product_brand", label: "Product brands", desc: "Shops marked as product brand", ready: true },
+    { href: "/admin/shop/categories", label: "Categories", desc: "Catalog tree", ready: true },
+    { href: "/admin/shop/longevity", label: "Longevity highlights", desc: "Choices and icons shops pick on products", ready: true },
+    { href: "/admin/shop/products", label: "Products", desc: "Approve listings and eligible retailers", ready: true },
   ];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Shop admin</h1>
       <p className="mt-2 text-sm text-[#7a5c4e]">
-        Admin sets up shops and owners. Shops create products. You approve or deactivate.
+        Admin sets up shops, categories, and longevity highlights. Shops create products. You approve.
       </p>
-
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
           ["Shops", shops ?? 0],
@@ -73,13 +42,12 @@ export default async function AdminShopPage() {
           ["Products", products ?? 0],
           ["Pending", pending ?? 0],
         ].map(([label, n]) => (
-          <div key={label} className="rounded-2xl border border-[#e8d5c4] bg-white p-3 text-center">
-            <dt className="text-[10px] font-semibold uppercase text-[#7a5c4e]">{label}</dt>
-            <dd className="mt-1 text-xl font-bold text-[#3b2a22]">{n}</dd>
+          <div key={label} className="rounded-2xl border border-[#e8d5c4] bg-white p-4 text-center">
+            <dt className="text-xs font-semibold uppercase text-[#7a5c4e]">{label}</dt>
+            <dd className="mt-1 text-2xl font-bold text-[#3b2a22]">{n}</dd>
           </div>
         ))}
       </dl>
-
       <ul className="mt-8 space-y-2">
         {links.map((l) => (
           <li key={l.href + l.label}>
@@ -93,12 +61,7 @@ export default async function AdminShopPage() {
           </li>
         ))}
       </ul>
-
-      <p className="mt-6 text-sm text-[#7a5c4e]">
-        Shop owner portal (create products + affiliate/cart) lands in the next batches.
-      </p>
-
-      <p className="mt-4 text-sm">
+      <p className="mt-6 text-sm">
         <Link href="/shop" className="font-semibold text-[#c45c26] hover:underline">
           View public shop →
         </Link>
