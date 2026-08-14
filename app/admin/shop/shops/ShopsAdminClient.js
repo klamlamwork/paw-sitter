@@ -1,4 +1,5 @@
 "use client";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -7,6 +8,84 @@ import { slugifyShop } from "@/lib/shop";
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
 const SEQ = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
+function emptyCreate(defaultProductBrand) {
+  return {
+    name: "",
+    slug: "",
+    is_product_brand: !!defaultProductBrand,
+    owner_profile_id: "",
+    logo_url: "",
+    description: "",
+    seo_title: "",
+    seo_description: "",
+    status: "active",
+    home_brand_sort: "",
+    home_retailer_sort: "",
+    expiry_hide_days: "0",
+    expiry_discount_days: "7",
+    expiry_discount_pct: "0",
+  };
+}
+
+function formFromShop(s) {
+  return {
+    name: s.name || "",
+    slug: s.slug || "",
+    is_product_brand: !!s.is_product_brand,
+    owner_profile_id: s.owner_profile_id || "",
+    logo_url: s.logo_url || "",
+    description: s.description || "",
+    seo_title: s.seo_title || "",
+    seo_description: s.seo_description || "",
+    status: s.status || "active",
+    home_brand_sort: s.home_brand_sort ?? "",
+    home_retailer_sort: s.home_retailer_sort ?? "",
+    expiry_hide_days: String(s.expiry_hide_days ?? 0),
+    expiry_discount_days: String(s.expiry_discount_days ?? 7),
+    expiry_discount_pct: String(s.expiry_discount_pct ?? 0),
+  };
+}
+
+function sortVal(v) {
+  if (v === "" || v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function clampInt(v, min, max, fallback) {
+  const n = parseInt(v, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, n));
+}
+
+function ownerLabel(p) {
+  if (!p) return null;
+  return p.email + (p.full_name ? ` (${p.full_name})` : "");
+}
+
+function shopPayload(form) {
+  const isBrand = !!form.is_product_brand;
+  return {
+    name: form.name.trim(),
+    slug: slugifyShop(form.slug || form.name),
+    shop_type: isBrand ? "brand" : "vendor",
+    is_product_brand: isBrand,
+    brand_id: null,
+    owner_profile_id: form.owner_profile_id || null,
+    description: form.description.trim(),
+    logo_url: form.logo_url.trim(),
+    seo_title: form.seo_title.trim(),
+    seo_description: form.seo_description.trim(),
+    status: form.status,
+    home_brand_sort: isBrand ? sortVal(form.home_brand_sort) : null,
+    home_retailer_sort: !isBrand ? sortVal(form.home_retailer_sort) : null,
+    expiry_hide_days: clampInt(form.expiry_hide_days, 0, 90, 0),
+    expiry_discount_days: clampInt(form.expiry_discount_days, 0, 90, 7),
+    expiry_discount_pct: clampInt(form.expiry_discount_pct, 0, 90, 0),
+    updated_at: new Date().toISOString(),
+  };
+}
+
 export default function ShopsAdminClient({
   initialShops,
   profiles,
@@ -14,59 +93,72 @@ export default function ShopsAdminClient({
 }) {
   const router = useRouter();
   const [shops, setShops] = useState(initialShops || []);
-  const [name, setName] = useState("");
-  const [slug, setSlug] = useState("");
-  const [isProductBrand, setIsProductBrand] = useState(!!defaultProductBrand);
-  const [ownerId, setOwnerId] = useState("");
-  const [description, setDescription] = useState("");
-  const [logoUrl, setLogoUrl] = useState("");
-  const [status, setStatus] = useState("active");
-  const [homeBrandSort, setHomeBrandSort] = useState("");
-  const [homeRetailerSort, setHomeRetailerSort] = useState("");
+  const [createForm, setCreateForm] = useState(() => emptyCreate(defaultProductBrand));
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
 
-  function ownerLabel(p) {
-    if (!p) return null;
-    return p.email + (p.full_name ? ` (${p.full_name})` : "");
-  }
-
-  function sortVal(v) {
-    if (v === "" || v == null) return null;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : null;
-  }
+  const setCreate = (k, v) => setCreateForm((f) => ({ ...f, [k]: v }));
+  const setEdit = (k, v) => setEditForm((f) => ({ ...f, [k]: v }));
 
   async function addShop(e) {
     e.preventDefault();
     setBusy(true);
     setError("");
     setOk("");
-    const n = name.trim();
-    if (!n) {
+    if (!createForm.name.trim()) {
       setError("Name required");
       setBusy(false);
       return;
     }
+    const payload = shopPayload(createForm);
     const supabase = createClient();
-    const payload = {
-      name: n,
-      slug: slugifyShop(slug || n),
-      shop_type: isProductBrand ? "brand" : "vendor",
-      is_product_brand: !!isProductBrand,
-      brand_id: null,
-      owner_profile_id: ownerId || null,
-      description: description.trim(),
-      logo_url: logoUrl.trim(),
-      status,
-      home_brand_sort: isProductBrand ? sortVal(homeBrandSort) : null,
-      home_retailer_sort: !isProductBrand ? sortVal(homeRetailerSort) : null,
-      updated_at: new Date().toISOString(),
-    };
+    const { data, error: err } = await supabase.from("shop_shops").insert(payload).select("*").single();
+    setBusy(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    const owner = payload.owner_profile_id
+      ? profiles.find((p) => p.id === payload.owner_profile_id) || null
+      : null;
+    setShops((list) => [...list, { ...data, owner }].sort((a, b) => a.name.localeCompare(b.name)));
+    setCreateForm(emptyCreate(defaultProductBrand));
+    setOk("Shop created.");
+    router.refresh();
+  }
+
+  function startEdit(s) {
+    setError("");
+    setOk("");
+    setEditingId(s.id);
+    setEditForm(formFromShop(s));
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditForm(null);
+  }
+
+  async function saveEdit(e) {
+    e.preventDefault();
+    if (!editingId || !editForm) return;
+    setBusy(true);
+    setError("");
+    setOk("");
+    if (!editForm.name.trim()) {
+      setError("Name required");
+      setBusy(false);
+      return;
+    }
+    const payload = shopPayload(editForm);
+    const supabase = createClient();
     const { data, error: err } = await supabase
       .from("shop_shops")
-      .insert(payload)
+      .update(payload)
+      .eq("id", editingId)
       .select("*")
       .single();
     setBusy(false);
@@ -74,71 +166,39 @@ export default function ShopsAdminClient({
       setError(err.message);
       return;
     }
-    const owner = ownerId ? profiles.find((p) => p.id === ownerId) || null : null;
+    const owner = payload.owner_profile_id
+      ? profiles.find((p) => p.id === payload.owner_profile_id) || null
+      : null;
     setShops((list) =>
-      [...list, { ...data, owner }].sort((a, b) => a.name.localeCompare(b.name))
+      list
+        .map((x) => (x.id === editingId ? { ...x, ...data, owner } : x))
+        .sort((a, b) => a.name.localeCompare(b.name))
     );
-    setName("");
-    setSlug("");
-    setDescription("");
-    setLogoUrl("");
-    setOwnerId("");
-    setHomeBrandSort("");
-    setHomeRetailerSort("");
-    setIsProductBrand(!!defaultProductBrand);
-    setOk("Shop created.");
+    setEditingId(null);
+    setEditForm(null);
+    setOk("Shop updated.");
     router.refresh();
   }
 
-  async function patchShop(s, fields) {
+  async function deleteShop(s) {
+    const sure = window.confirm(
+      `Delete shop "${s.name}"? Offers for this shop are removed. Products stay but lose this shop link.`
+    );
+    if (!sure) return;
+    setBusy(true);
+    setError("");
+    setOk("");
     const supabase = createClient();
-    const { error: err } = await supabase
-      .from("shop_shops")
-      .update({ ...fields, updated_at: new Date().toISOString() })
-      .eq("id", s.id);
+    const { error: err } = await supabase.from("shop_shops").delete().eq("id", s.id);
+    setBusy(false);
     if (err) {
       setError(err.message);
-      return false;
+      return;
     }
-    setShops((list) => list.map((x) => (x.id === s.id ? { ...x, ...fields } : x)));
-    return true;
-  }
-
-  async function setShopStatus(s, next) {
-    await patchShop(s, { status: next });
-  }
-
-  async function setOwner(s, nextOwnerId) {
-    const okPatch = await patchShop(s, { owner_profile_id: nextOwnerId || null });
-    if (!okPatch) return;
-    const owner = nextOwnerId ? profiles.find((p) => p.id === nextOwnerId) || null : null;
-    setShops((list) =>
-      list.map((x) =>
-        x.id === s.id ? { ...x, owner_profile_id: nextOwnerId || null, owner } : x
-      )
-    );
-    setOk(owner ? `Owner set to ${owner.email}` : "Owner cleared");
+    setShops((list) => list.filter((x) => x.id !== s.id));
+    if (editingId === s.id) cancelEdit();
+    setOk(`Deleted ${s.name}.`);
     router.refresh();
-  }
-
-  async function toggleProductBrand(s) {
-    const next = !s.is_product_brand;
-    await patchShop(s, {
-      is_product_brand: next,
-      shop_type: next ? "brand" : "vendor",
-      home_brand_sort: next ? s.home_brand_sort : null,
-      home_retailer_sort: next ? null : s.home_retailer_sort,
-    });
-  }
-
-  async function updateHomeBrandSort(s, v) {
-    await patchShop(s, { home_brand_sort: sortVal(v) });
-    setOk("Shop by brand sequence updated.");
-  }
-
-  async function updateHomeRetailerSort(s, v) {
-    await patchShop(s, { home_retailer_sort: sortVal(v) });
-    setOk("Retailers sequence updated.");
   }
 
   return (
@@ -148,96 +208,7 @@ export default function ShopsAdminClient({
 
       <form onSubmit={addShop} className="space-y-3 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5">
         <h2 className="font-semibold">Add shop</h2>
-        <label className="block text-sm font-medium">
-          Name
-          <input
-            className={inp}
-            value={name}
-            required
-            onChange={(e) => {
-              setName(e.target.value);
-              if (!slug) setSlug(slugifyShop(e.target.value));
-            }}
-          />
-        </label>
-        <label className="block text-sm font-medium">
-          Slug
-          <input className={inp + " font-mono"} value={slug} onChange={(e) => setSlug(e.target.value)} />
-        </label>
-        <label className="flex items-start gap-2 text-sm">
-          <input
-            type="checkbox"
-            className="mt-1"
-            checked={isProductBrand}
-            onChange={(e) => setIsProductBrand(e.target.checked)}
-          />
-          <span className="font-semibold">This is a product brand</span>
-        </label>
-        <label className="block text-sm font-medium">
-          Owner account
-          <select className={inp} value={ownerId} onChange={(e) => setOwnerId(e.target.value)}>
-            <option value="">— none yet —</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {ownerLabel(p)}
-              </option>
-            ))}
-          </select>
-        </label>
-        {isProductBrand ? (
-          <label className="block text-sm font-medium">
-            Sequence on /shop/ “Shop by brand” (1–10)
-            <select
-              className={inp}
-              value={homeBrandSort}
-              onChange={(e) => setHomeBrandSort(e.target.value)}
-            >
-              <option value="">— not listed first —</option>
-              {SEQ.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <label className="block text-sm font-medium">
-            Sequence on /shop/ “Retailers” (1–10)
-            <select
-              className={inp}
-              value={homeRetailerSort}
-              onChange={(e) => setHomeRetailerSort(e.target.value)}
-            >
-              <option value="">— not listed first —</option>
-              {SEQ.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <label className="block text-sm font-medium">
-          Logo URL
-          <input className={inp} value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
-        </label>
-        <label className="block text-sm font-medium">
-          Description
-          <textarea
-            className={inp}
-            rows={2}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </label>
-        <label className="block text-sm font-medium">
-          Status
-          <select className={inp} value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="active">active</option>
-            <option value="pending">pending</option>
-            <option value="suspended">suspended</option>
-          </select>
-        </label>
+        <ShopFields form={createForm} set={setCreate} profiles={profiles} />
         <button
           type="submit"
           disabled={busy}
@@ -249,119 +220,227 @@ export default function ShopsAdminClient({
 
       <ul className="space-y-3">
         {shops.map((s) => (
-          <li
-            key={s.id}
-            className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-semibold text-[#3b2a22]">
-                  {s.name}
-                  {s.is_product_brand ? (
-                    <span className="ml-2 rounded-full bg-[#c45c26]/15 px-2 py-0.5 text-[10px] font-bold uppercase text-[#c45c26]">
-                      Product brand
-                    </span>
-                  ) : (
-                    <span className="ml-2 rounded-full border border-[#e8d5c4] px-2 py-0.5 text-[10px] font-bold uppercase text-[#7a5c4e]">
-                      Retailer
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-[#7a5c4e]">/shop/shops/{s.slug}</p>
-                <p className="mt-2 text-xs">
-                  <span className="font-semibold text-[#3b2a22]">Owner email: </span>
-                  {s.owner?.email ? (
-                    <span className="text-[#5c4033]">{s.owner.email}</span>
-                  ) : (
-                    <span className="text-amber-700">Not assigned</span>
-                  )}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => toggleProductBrand(s)}
-                  className={
-                    "rounded-full px-3 py-1 text-xs font-semibold " +
-                    (s.is_product_brand
-                      ? "bg-[#c45c26] text-white"
-                      : "border border-[#e8d5c4]")
-                  }
-                >
-                  {s.is_product_brand ? "Product brand" : "Mark as product brand"}
-                </button>
-                <select
-                  value={s.status}
-                  onChange={(e) => setShopStatus(s, e.target.value)}
-                  className="rounded-full border border-[#e8d5c4] px-2 py-1 text-xs"
-                >
-                  <option value="active">active</option>
-                  <option value="pending">pending</option>
-                  <option value="suspended">suspended</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="block text-xs font-medium text-[#7a5c4e]">
-                (1) Sequence — /shop/ Retailers
-                <select
-                  className={inp + " text-sm"}
-                  value={s.home_retailer_sort ?? ""}
-                  disabled={!!s.is_product_brand}
-                  onChange={(e) => updateHomeRetailerSort(s, e.target.value)}
-                >
-                  <option value="">—</option>
-                  {SEQ.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-                {s.is_product_brand ? (
-                  <span className="mt-0.5 block text-[10px]">Only for retailer shops</span>
-                ) : null}
-              </label>
-              <label className="block text-xs font-medium text-[#7a5c4e]">
-                (2) Sequence — /shop/ Shop by brand
-                <select
-                  className={inp + " text-sm"}
-                  value={s.home_brand_sort ?? ""}
-                  disabled={!s.is_product_brand}
-                  onChange={(e) => updateHomeBrandSort(s, e.target.value)}
-                >
-                  <option value="">—</option>
-                  {SEQ.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-                {!s.is_product_brand ? (
-                  <span className="mt-0.5 block text-[10px]">Only for product brand shops</span>
-                ) : null}
-              </label>
-            </div>
-
-            <label className="mt-3 block text-xs font-medium text-[#7a5c4e]">
-              Change owner account
-              <select
-                className={inp + " text-sm"}
-                value={s.owner_profile_id || ""}
-                onChange={(e) => setOwner(s, e.target.value)}
-              >
-                <option value="">— none —</option>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {ownerLabel(p)}
-                  </option>
-                ))}
-              </select>
-            </label>
+          <li key={s.id} className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm">
+            {editingId === s.id && editForm ? (
+              <form onSubmit={saveEdit} className="space-y-3">
+                <p className="font-semibold text-[#3b2a22]">Edit {s.name}</p>
+                <ShopFields form={editForm} set={setEdit} profiles={profiles} />
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="submit"
+                    disabled={busy}
+                    className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    {busy ? "Saving…" : "Save changes"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={cancelEdit}
+                    className="rounded-full border border-[#e8d5c4] px-4 py-1.5 text-xs font-semibold"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-[#3b2a22]">
+                      {s.name}
+                      {s.is_product_brand ? (
+                        <span className="ml-2 rounded-full bg-[#c45c26]/15 px-2 py-0.5 text-[10px] font-bold uppercase text-[#c45c26]">
+                          Product brand
+                        </span>
+                      ) : (
+                        <span className="ml-2 rounded-full border border-[#e8d5c4] px-2 py-0.5 text-[10px] font-bold uppercase text-[#7a5c4e]">
+                          Retailer
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-[#7a5c4e]">/shop/shops/{s.slug} · {s.status}</p>
+                    <p className="mt-2 text-xs">
+                      <span className="font-semibold text-[#3b2a22]">Owner email: </span>
+                      {s.owner?.email ? (
+                        <span className="text-[#5c4033]">{s.owner.email}</span>
+                      ) : (
+                        <span className="text-amber-700">Not assigned</span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEdit(s)}
+                      className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => deleteShop(s)}
+                      className="rounded-full border border-red-200 px-3 py-1 text-xs font-semibold text-red-700 disabled:opacity-60"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </li>
         ))}
       </ul>
       {!shops.length ? <p className="text-sm text-[#7a5c4e]">No shops yet.</p> : null}
     </div>
+  );
+}
+
+function ShopFields({ form, set, profiles }) {
+  return (
+    <>
+      <label className="block text-sm font-medium">
+        Name
+        <input
+          className={inp}
+          value={form.name}
+          required
+          onChange={(e) => {
+            set("name", e.target.value);
+            if (!form.slug) set("slug", slugifyShop(e.target.value));
+          }}
+        />
+      </label>
+      <label className="block text-sm font-medium">
+        Slug
+        <input className={inp + " font-mono"} value={form.slug} onChange={(e) => set("slug", e.target.value)} />
+      </label>
+      <label className="flex items-start gap-2 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={!!form.is_product_brand}
+          onChange={(e) => set("is_product_brand", e.target.checked)}
+        />
+        <span className="font-semibold">This is a product brand</span>
+      </label>
+      <label className="block text-sm font-medium">
+        Owner account
+        <select
+          className={inp}
+          value={form.owner_profile_id}
+          onChange={(e) => set("owner_profile_id", e.target.value)}
+        >
+          <option value="">— none —</option>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {ownerLabel(p)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block text-sm font-medium">
+        Status
+        <select className={inp} value={form.status} onChange={(e) => set("status", e.target.value)}>
+          <option value="active">active</option>
+          <option value="pending">pending</option>
+          <option value="suspended">suspended</option>
+        </select>
+      </label>
+      {form.is_product_brand ? (
+        <label className="block text-sm font-medium">
+          Sequence on /shop/ “Shop by brand” (1–10)
+          <select
+            className={inp}
+            value={form.home_brand_sort}
+            onChange={(e) => set("home_brand_sort", e.target.value)}
+          >
+            <option value="">— not listed first —</option>
+            {SEQ.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label className="block text-sm font-medium">
+          Sequence on /shop/ “Retailers” (1–10)
+          <select
+            className={inp}
+            value={form.home_retailer_sort}
+            onChange={(e) => set("home_retailer_sort", e.target.value)}
+          >
+            <option value="">— not listed first —</option>
+            {SEQ.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <label className="block text-sm font-medium">
+        Logo URL
+        <input className={inp} value={form.logo_url} onChange={(e) => set("logo_url", e.target.value)} />
+      </label>
+      <label className="block text-sm font-medium">
+        Description
+        <textarea
+          className={inp}
+          rows={2}
+          value={form.description}
+          onChange={(e) => set("description", e.target.value)}
+        />
+      </label>
+      <label className="block text-sm font-medium">
+        SEO title
+        <input className={inp} value={form.seo_title} onChange={(e) => set("seo_title", e.target.value)} />
+      </label>
+      <label className="block text-sm font-medium">
+        SEO description
+        <textarea
+          className={inp}
+          rows={2}
+          value={form.seo_description}
+          onChange={(e) => set("seo_description", e.target.value)}
+        />
+      </label>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <label className="block text-sm font-medium">
+          Hide when ≤ days left
+          <input
+            type="number"
+            min="0"
+            max="90"
+            className={inp}
+            value={form.expiry_hide_days}
+            onChange={(e) => set("expiry_hide_days", e.target.value)}
+          />
+        </label>
+        <label className="block text-sm font-medium">
+          Discount when ≤ days left
+          <input
+            type="number"
+            min="0"
+            max="90"
+            className={inp}
+            value={form.expiry_discount_days}
+            onChange={(e) => set("expiry_discount_days", e.target.value)}
+          />
+        </label>
+        <label className="block text-sm font-medium">
+          Discount %
+          <input
+            type="number"
+            min="0"
+            max="90"
+            className={inp}
+            value={form.expiry_discount_pct}
+            onChange={(e) => set("expiry_discount_pct", e.target.value)}
+          />
+        </label>
+      </div>
+    </>
   );
 }
