@@ -4,6 +4,13 @@ import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 export const metadata = { title: "My account | Paw Sitter" };
 
+function hoursUntilUTC(startsAtISO) {
+  if (!startsAtISO) return null;
+  const now = Date.now();
+  const start = new Date(startsAtISO).getTime();
+  return (start - now) / (1000 * 60 * 60);
+}
+
 export default async function AccountPage() {
   const profile = await getProfile();
   if (!profile) redirect("/login?next=/account");
@@ -38,8 +45,8 @@ export default async function AccountPage() {
         ) : (
           bookings.map((b) => {
             const firstSlot = (b.booking_slots || [])[0];
-            const startsAt = firstSlot?.starts_at;
-            const hoursUntilStart = startsAt ? (new Date(startsAt).getTime() - Date.now()) / (1000 * 60 * 60) : null;
+            const startsAtISO = firstSlot?.starts_at;
+            const hoursUntilStart = hoursUntilUTC(startsAtISO);
             const showPay = b.status === "accepted" && b.payment_status !== "authorized" && b.payment_status !== "paid";
             const canPay = hoursUntilStart === null || hoursUntilStart >= 48;
             return (
@@ -53,8 +60,8 @@ export default async function AccountPage() {
                 <p className="mt-1 text-[#7a5c4e]">
                   Est. ${Number(b.estimated_total || 0).toFixed(2)} • Payment: <span className="font-medium capitalize">{b.payment_status || "pending"}</span>
                 </p>
-                {startsAt && (
-                  <p className="mt-1 text-xs text-[#7a5c4e]">Starts: {new Date(startsAt).toLocaleString()}</p>
+                {startsAtISO && (
+                  <p className="mt-1 text-xs text-[#7a5c4e]">Starts: {new Date(startsAtISO).toLocaleString()}</p>
                 )}
                 {showPay && (
                   <div className="mt-2">
@@ -62,7 +69,6 @@ export default async function AccountPage() {
                       <p className="text-xs text-red-600">Payment must be made at least 48 hours before the booking starts.</p>
                     ) : (
                       <button
-                        type="button"
                         onClick={async () => {
                           const res = await fetch("/api/booking/pay", {
                             method: "POST",

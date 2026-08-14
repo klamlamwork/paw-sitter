@@ -4,6 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+function hoursUntilUTC(startsAtISO) {
+  if (!startsAtISO) return null;
+  const now = Date.now();
+  const start = new Date(startsAtISO).getTime();
+  return (start - now) / (1000 * 60 * 60);
+}
+
 export async function POST(request) {
   try {
     if (!process.env.STRIPE_SECRET_KEY) {
@@ -35,16 +42,10 @@ export async function POST(request) {
     }
 
     const firstSlot = (booking.booking_slots || [])[0];
-    const startsAt = firstSlot?.starts_at;
-    if (!startsAt) {
-      return NextResponse.json({ error: "No start time found." }, { status: 400 });
-    }
+    const startsAtISO = firstSlot?.starts_at;
+    const hoursUntilStart = hoursUntilUTC(startsAtISO);
 
-    const nowUtc = Date.now();
-    const startUtc = new Date(startsAt).getTime();
-    const hoursUntilStart = (startUtc - nowUtc) / (1000 * 60 * 60);
-
-    if (hoursUntilStart < 48) {
+    if (hoursUntilStart !== null && hoursUntilStart < 48) {
       return NextResponse.json({ error: "Payment must be made at least 48 hours before the booking starts." }, { status: 400 });
     }
 
