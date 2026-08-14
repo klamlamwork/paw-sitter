@@ -29,8 +29,7 @@ export default async function ShopStorefrontPage({ params }) {
 
   if (!shop) notFound();
 
-  // A retailer storefront contains only products created in that retailer account.
-  // Retailer eligibility / offers do not add brand products to this catalog.
+  // Retailer/brand storefront: only products created in this shop account.
   const { data: products } = await supabase
     .from("shop_products")
     .select("id, name, slug, short_description, price_cents, currency, hide_price, shop_product_media(url, sort_order)")
@@ -65,10 +64,11 @@ export default async function ShopStorefrontPage({ params }) {
         {(products || []).map((p) => {
           const img = (p.shop_product_media || []).sort((a, b) => a.sort_order - b.sort_order)[0]?.url;
           const price = formatShopPrice(p.price_cents, p.currency, p.hide_price);
+          const href = productPath(p);
           return (
             <li key={p.id}>
               <Link
-                href={productPath(p.slug)}
+                href={href}
                 className="block overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white hover:border-[#c45c26]/40"
               >
                 <div className="aspect-[4/3] bg-[#fff1e6]">
