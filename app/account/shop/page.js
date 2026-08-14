@@ -39,14 +39,14 @@ export default async function AccountShopPortalPage() {
         supabase
           .from("shop_products")
           .select(
-            "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, show_affiliate, show_add_to_cart, affiliate_url, updated_at"
+            "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, product_type, inventory_mode, stock_qty, show_affiliate, show_add_to_cart, affiliate_url, updated_at"
           )
           .in("primary_shop_id", shopIds)
           .order("updated_at", { ascending: false }),
         supabase
           .from("shop_products")
           .select(
-            "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, show_affiliate, show_add_to_cart, affiliate_url, updated_at"
+            "id, name, slug, status, brand_shop_id, primary_shop_id, short_description, description, price_cents, hide_price, category_id, product_type, inventory_mode, stock_qty, show_affiliate, show_add_to_cart, affiliate_url, updated_at"
           )
           .in("brand_shop_id", shopIds)
           .order("updated_at", { ascending: false }),
@@ -56,6 +56,21 @@ export default async function AccountShopPortalPage() {
       products = [...map.values()];
       if (!products.length && (prim.error || brand.error)) {
         loadNote = (prim.error || brand.error).message;
+      }
+
+      const productIds = products.map((p) => p.id);
+      if (productIds.length) {
+        const { data: variantRows } = await supabase
+          .from("shop_product_variants")
+          .select("*")
+          .in("product_id", productIds)
+          .order("sort_order");
+        const variantsByProduct = {};
+        for (const v of variantRows || []) {
+          if (!variantsByProduct[v.product_id]) variantsByProduct[v.product_id] = [];
+          variantsByProduct[v.product_id].push(v);
+        }
+        products = products.map((p) => ({ ...p, variants: variantsByProduct[p.id] || [] }));
       }
     }
 
@@ -80,6 +95,7 @@ export default async function AccountShopPortalPage() {
     ...p,
     product_type: p.product_type || "other",
     inventory_mode: p.inventory_mode || "simple",
+    stock_qty: p.stock_qty ?? 0,
     show_affiliate: !!p.show_affiliate,
     show_add_to_cart: !!p.show_add_to_cart,
     affiliate_url: p.affiliate_url || "",
@@ -90,11 +106,11 @@ export default async function AccountShopPortalPage() {
     edit_price_cents: p.price_cents,
     edit_hide_price: p.hide_price,
     edit_category_ids: p.category_id ? [p.category_id] : [],
-    edit_product_type: "other",
-    edit_inventory_mode: "simple",
+    edit_product_type: p.product_type || "other",
+    edit_inventory_mode: p.inventory_mode || "simple",
     media: [],
     longevity_items: [],
-    variants: [],
+    variants: p.variants || [],
     has_pending_edit: false,
   }));
 
