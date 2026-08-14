@@ -6,6 +6,7 @@ import { sortPreferredFirst } from "./preferredSitter";
 import { estimateHouseSitTotal, estimateDropInVisitTotal } from "@/lib/booking";
 import GooglePlacesAutocomplete from "./GooglePlacesAutocomplete";
 import DatesStep from "./DatesStep";
+import PetsStep from "./PetsStep";
 
 export default function BookingWizard({
   customerId,
@@ -25,6 +26,8 @@ export default function BookingWizard({
   const [stripeEnabled, setStripeEnabled] = useState(true);
   const [address, setAddress] = useState({ formatted_address: "", lat: null, lng: null, city: "", state: "", postal_code: "", country: "" });
   const [datesPayload, setDatesPayload] = useState([]);
+  const [selectedPetIds, setSelectedPetIds] = useState([]);
+  const [customerMessage, setCustomerMessage] = useState("");
 
   const [form, setForm] = useState({
     service_type: "house_sit",
@@ -120,6 +123,7 @@ export default function BookingWizard({
           service_address_state: address.state,
           service_address_postal_code: address.postal_code,
           service_address_country: address.country,
+          customer_message: customerMessage || null,
           customer_notes: "",
           pet_notes: "",
         })
@@ -156,6 +160,13 @@ export default function BookingWizard({
         slots.map((s) => ({ booking_id: booking.id, ...s }))
       );
       if (sErr) throw sErr;
+
+      if (selectedPetIds.length) {
+        const { error: pErr } = await supabase.from("booking_pets").insert(
+          selectedPetIds.map((pet_id) => ({ booking_id: booking.id, pet_id }))
+        );
+        if (pErr) throw pErr;
+      }
 
       window.location.href = `/booking?placed=1&booking=${booking.id}`;
     } catch (err) {
@@ -196,19 +207,28 @@ export default function BookingWizard({
         <div className="flex gap-2"><button type="button" onClick={() => setStep(1)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(3)} disabled={!datesPayload.length || !houseSitDatesValid || !visitTimesValid} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button></div>
       </>}
       {step === 3 && <>
-        <h2 className="text-xl font-semibold">Step 3 — Choose sitter</h2>
-        {availableSitters.length === 0 ? <p className="text-sm text-[#7a5c4e]">No sitters match. Adjust address or dates.</p> : <div className="grid gap-2 sm:grid-cols-2">{availableSitters.map((s) => <label key={s.id} className="flex items-center gap-2 rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-3 py-2 text-sm"><input type="radio" name="sitter_id" checked={form.sitter_id === s.id} onChange={() => setForm({ ...form, sitter_id: s.id })} /><span>{s.display_name}</span></label>)}</div>}
-        <div className="flex gap-2"><button type="button" onClick={() => setStep(2)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(4)} disabled={!form.sitter_id || estimatedTotal <= 0} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button></div>
+        <h2 className="text-xl font-semibold">Step 3 — Your pets</h2>
+        <PetsStep customerId={customerId} selectedPetIds={selectedPetIds} onChange={setSelectedPetIds} />
+        <label className="block text-sm"><span className="font-medium">Message (optional)</span>
+          <textarea className="mt-1 min-h-[80px] w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" placeholder="Share any details the sitter should know (gate code, pet quirks, etc.)" value={customerMessage} onChange={(e) => setCustomerMessage(e.target.value)} />
+        </label>
+        <div className="flex gap-2"><button type="button" onClick={() => setStep(2)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(4)} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white">Next</button></div>
       </>}
       {step === 4 && <>
-        <h2 className="text-xl font-semibold">Step 4 — Review & submit</h2>
+        <h2 className="text-xl font-semibold">Step 4 — Choose sitter</h2>
+        {availableSitters.length === 0 ? <p className="text-sm text-[#7a5c4e]">No sitters match. Adjust address or dates.</p> : <div className="grid gap-2 sm:grid-cols-2">{availableSitters.map((s) => <label key={s.id} className="flex items-center gap-2 rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-3 py-2 text-sm"><input type="radio" name="sitter_id" checked={form.sitter_id === s.id} onChange={() => setForm({ ...form, sitter_id: s.id })} /><span>{s.display_name}</span></label>)}</div>}
+        <div className="flex gap-2"><button type="button" onClick={() => setStep(3)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(5)} disabled={!form.sitter_id || estimatedTotal <= 0} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button></div>
+      </>}
+      {step === 5 && <>
+        <h2 className="text-xl font-semibold">Step 5 — Review & submit</h2>
         <p className="text-sm text-[#7a5c4e]">Order amount: <strong>${(estimatedTotal / 100).toFixed(2)}</strong> • Platform fee 10% • Sitter gets 90%</p>
+        {customerMessage && <p className="text-sm text-[#7a5c4e]">Your message: <span className="italic">{customerMessage}</span></p>}
         <fieldset className="rounded-2xl border border-[#e8d5c4] p-3"><legend className="px-1 text-sm font-medium">How will you pay?</legend>
           {stripeEnabled && <label className="mt-2 flex items-start gap-2 text-sm"><input type="radio" name="payment_method" checked={form.payment_method === "card"} onChange={() => setForm({ ...form, payment_method: "card" })} /><span>Card (Stripe)</span></label>}
           <label className="mt-2 flex items-start gap-2 text-sm"><input type="radio" name="payment_method" checked={form.payment_method === "etransfer"} onChange={() => setForm({ ...form, payment_method: "etransfer" })} /><span>Interac e-Transfer (seller confirms when received)</span></label>
           <label className="mt-2 flex items-start gap-2 text-sm"><input type="radio" name="payment_method" checked={form.payment_method === "later"} onChange={() => setForm({ ...form, payment_method: "later" })} /><span>Pay later</span></label>
         </fieldset>
-        <div className="flex gap-2"><button type="button" onClick={() => setStep(3)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={submitBooking} disabled={submitting || !form.sitter_id || estimatedTotal <= 0} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{submitting ? "Working…" : "Submit booking request"}</button></div>
+        <div className="flex gap-2"><button type="button" onClick={() => setStep(4)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={submitBooking} disabled={submitting || !form.sitter_id || estimatedTotal <= 0} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{submitting ? "Working…" : "Submit booking request"}</button></div>
       </>}
     </form>
   );
