@@ -1,12 +1,11 @@
 import { cookies } from "next/headers";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createClient } from "@/lib/supabase/server";
 import AccountLocationClient from "./AccountLocationClient";
 import MyPawKidsClient from "./MyPawKidsClient";
 
 export default async function AccountPage() {
   const cookieStore = await cookies();
-  const supabase = createAdminClient(cookieStore.get("sb-access-token")?.value);
-  const { data: { user } } = await supabase.auth.getUser();
+  const { supabase, user } = createClient(cookieStore);
   const customerId = user?.id;
 
   return (
