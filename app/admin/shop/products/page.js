@@ -46,7 +46,7 @@ export default async function AdminShopProductsPage() {
 
   const [{ data: shops }, { data: cats }, { data: creators }] = await Promise.all([
     brandIds.length
-      ? supabase.from("shop_shops").select("id, name, slug, is_product_brand").in("id", brandIds)
+      ? supabase.from("shop_shops").select("id, name, slug").in("id", brandIds)
       : Promise.resolve({ data: [] }),
     catIds.length
       ? supabase.from("shop_categories").select("id, name").in("id", catIds)
@@ -77,10 +77,12 @@ export default async function AdminShopProductsPage() {
       </Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Products</h1>
       <p className="mt-1 text-sm text-[#7a5c4e]">
-        Approve listings/updates. For brand products, assign <strong>eligible retailers</strong> and
-        each retailer&apos;s product page URL (logos on the public PDP).
+        Approve listings. For eligible retailers, paste a <strong>full https:// URL</strong> to that
+        retailer&apos;s own product page (example:{" "}
+        <code className="rounded bg-[#fff8f0] px-1">https://www.chewy.com/...</code>). Leave the URL
+        blank to send shoppers to the retailer&apos;s Paw Sitter shop. Do not use /shop/shops/.../p/...
       </p>
-      {pendingCount > 0 ? (
+      {pendingCount &gt; 0 ? (
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
           {pendingCount} need attention (new or update)
         </p>
