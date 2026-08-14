@@ -1,10 +1,13 @@
+import { cookies } from "next/headers";
+import { createAdminClient } from "@/lib/supabase/admin";
 import AccountLocationClient from "./AccountLocationClient";
 import MyPawKidsClient from "./MyPawKidsClient";
-import { auth } from "@/auth";
 
 export default async function AccountPage() {
-  const session = await auth();
-  const customerId = session?.user?.id;
+  const cookieStore = await cookies();
+  const supabase = createAdminClient(cookieStore.get("sb-access-token")?.value);
+  const { data: { user } } = await supabase.auth.getUser();
+  const customerId = user?.id;
 
   return (
     <div className="mx-auto max-w-5xl p-4">
