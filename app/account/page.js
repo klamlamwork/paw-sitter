@@ -1,13 +1,10 @@
-import { cookies } from "next/headers";
-import { createClient } from "@/lib/supabase/server";
 import AccountLocationClient from "./AccountLocationClient";
 import MyPawKidsClient from "./MyPawKidsClient";
+import { auth } from "@/auth";
 
 export default async function AccountPage() {
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const { data: { user } } = await supabase.auth.getUser();
-  const customerId = user?.id;
+  const session = await auth();
+  const customerId = session?.user?.id;
 
   return (
     <div className="mx-auto max-w-5xl p-4">
