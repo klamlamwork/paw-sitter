@@ -139,6 +139,10 @@ export default function BookingWizard({
           const start = sorted[0];
           const end = new Date(sorted[sorted.length - 1]);
           end.setDate(end.getDate() + 1);
+          const [sh, sm] = (datesPayload.startTime || "12:00").split(":").map(Number);
+          const [eh, em] = (datesPayload.endTime || "12:00").split(":").map(Number);
+          start.setHours(sh, sm, 0, 0);
+          end.setHours(eh, em, 0, 0);
           slots.push({ starts_at: start.toISOString(), ends_at: end.toISOString(), duration_minutes: null, service_type: form.service_type });
         }
       } else {
@@ -202,7 +206,7 @@ export default function BookingWizard({
       </>}
       {step === 2 && <>
         <h2 className="text-xl font-semibold">Step 2 — Date(s)</h2>
-        {form.service_type === "house_sit" && <p className="text-sm text-[#7a5c4e]">Choose at least two dates for an overnight house sit.</p>}
+        {form.service_type === "house_sit" && <p className="text-sm text-[#7a5c4e]">Choose at least two consecutive dates for an overnight house sit.</p>}
         <DatesStep value={datesPayload} onChange={setDatesPayload} serviceType={form.service_type} />
         <div className="flex gap-2"><button type="button" onClick={() => setStep(1)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(3)} disabled={!datesPayload.length || !houseSitDatesValid || !visitTimesValid} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button></div>
       </>}

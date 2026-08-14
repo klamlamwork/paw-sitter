@@ -2,13 +2,6 @@
 
 import { useMemo, useState } from "react";
 
-const TIME_SLOTS = Array.from({ length: 48 }, (_, i) => {
-  const h = Math.floor(i / 2);
-  const m = i % 2 === 0 ? "00" : "30";
-  const label = `${String(h).padStart(2, "0")}:${m}`;
-  return { value: label, label };
-});
-
 function monthMatrix(year, month) {
   const first = new Date(year, month, 1);
   const startDay = first.getDay();
@@ -35,7 +28,11 @@ function monthMatrix(year, month) {
   return weeks;
 }
 
-export default function MultiDateCalendar({ value = [], onChange, minDate = new Date() }) {
+function toYMD(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+export default function MultiDateCalendar({ value = [], onChange, minDate = new Date(), serviceType }) {
   const today = new Date();
   const [cursor, setCursor] = useState({ year: today.getFullYear(), month: today.getMonth() });
   const weeks = useMemo(() => monthMatrix(cursor.year, cursor.month), [cursor]);
@@ -52,17 +49,41 @@ export default function MultiDateCalendar({ value = [], onChange, minDate = new 
   };
 
   function toggleDate(y, m, d) {
-    const dt = new Date(y, m, d).toISOString();
-    if (isSelected(y, m, d)) {
-      onChange(value.filter((x) => x !== dt));
+    if (serviceType === "house_sit") {
+      const clicked = new Date(y, m, d);
+      const existing = value.map((x) => new Date(x)).sort((a, b) => a - b);
+      let minDate = clicked;
+      let maxDate = clicked;
+      for (const dt of existing) {
+        if (dt < minDate) minDate = dt;
+        if (dt > maxDate) maxDate = dt;
+      }
+      if (clicked < minDate) minDate = clicked;
+      if (clicked > maxDate) maxDate = clicked;
+      const range = [];
+      const cur = new Date(minDate);
+      while (cur <= maxDate) {
+        range.push(toYMD(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+      onChange(range.map((d) => new Date(d).toISOString()));
     } else {
-      onChange([...value, dt]);
+      const dt = new Date(y, m, d).toISOString();
+      if (isSelected(y, m, d)) {
+        onChange(value.filter((x) => x !== dt));
+      } else {
+        onChange([...value, dt]);
+      }
     }
   }
 
   function saveDates() {
     onChange([...value]);
   }
+
+  const isHouseSit = serviceType === "house_sit";
+  const count = value.length;
+  const validHouseSit = isHouseSit ? count >= 2 : count > 0;
 
   return (
     <div>
@@ -120,8 +141,12 @@ export default function MultiDateCalendar({ value = [], onChange, minDate = new 
         })}
       </div>
       <div className="mt-3 flex items-center justify-between">
-        <p className="text-xs text-[#7a5c4e]">{value.length} day(s) selected</p>
-        <button type="button" onClick={saveDates} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-sm font-semibold text-white">Save dates</button>
+        <p className="text-xs text-[#7a5c4e]">
+          {isHouseSit
+            ? count >= 2 ? `${count} consecutive nights selected` : "Select at least 2 consecutive nights"
+            : `${count} day(s) selected`}
+        </p>
+        <button type="button" onClick={saveDates} disabled={!validHouseSit} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-sm font-semibold text-white disabled:opacity-60">Save dates</button>
       </div>
     </div>
   );

@@ -17,6 +17,8 @@ export default function DatesStep({ value = [], onChange, serviceType }) {
     value.forEach((v) => { map[v.date] = v.times || []; });
     return map;
   });
+  const [startTime, setStartTime] = useState(value.startTime || "12:00");
+  const [endTime, setEndTime] = useState(value.endTime || "12:00");
 
   function addTime(date, time) {
     setPerDay((p) => {
@@ -37,6 +39,8 @@ export default function DatesStep({ value = [], onChange, serviceType }) {
 
   function save() {
     const payload = selectedDates.map((date) => ({ date, times: perDay[date] || [] }));
+    payload.startTime = startTime;
+    payload.endTime = endTime;
     onChange(payload);
   }
 
@@ -45,7 +49,23 @@ export default function DatesStep({ value = [], onChange, serviceType }) {
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] p-3">
-        <MultiDateCalendar value={selectedDates} onChange={setSelectedDates} />
+        <MultiDateCalendar value={selectedDates} onChange={setSelectedDates} serviceType={serviceType} />
+        {isHouseSit && (
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <label className="text-sm">
+              <span className="font-medium">Start time</span>
+              <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-2 py-1 text-sm" value={startTime} onChange={(e) => setStartTime(e.target.value)}>
+                {TIME_SLOTS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="font-medium">End time</span>
+              <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-2 py-1 text-sm" value={endTime} onChange={(e) => setEndTime(e.target.value)}>
+                {TIME_SLOTS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
       <div className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] p-3">
         <h3 className="text-sm font-semibold text-[#3b2a22]">Times per day</h3>
@@ -66,7 +86,7 @@ export default function DatesStep({ value = [], onChange, serviceType }) {
                     )}
                   </div>
                   {isHouseSit ? (
-                    <p className="mt-1 text-xs text-[#7a5c4e]">House sit: overnight from this date to the next selected date.</p>
+                    <p className="mt-1 text-xs text-[#7a5c4e]">House sit: overnight from first date to last date, with start/end times above.</p>
                   ) : (
                     <div className="mt-2 grid grid-cols-2 gap-2">
                       <select
@@ -87,7 +107,7 @@ export default function DatesStep({ value = [], onChange, serviceType }) {
                         {times.map((t) => (
                           <span key={t} className="inline-flex items-center gap-1 rounded-full bg-[#f3e0d0] px-2 py-0.5 text-xs text-[#c45c26]">
                             {t}
-                            <button onClick={() => removeTime(date, t)} className="text-[#c45c26]">×</button>
+                            <button onClick={() => removeTime(date, t)} className="text-[#c45c26]">×¬</button>
                           </span>
                         ))}
                       </div>
