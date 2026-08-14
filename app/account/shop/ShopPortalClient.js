@@ -12,6 +12,7 @@ import LongevityChipsEditor from "@/components/shop/LongevityChipsEditor";
 import CategoryMultiSelect from "@/components/shop/CategoryMultiSelect";
 import ProductTypeSelect from "@/components/shop/ProductTypeSelect";
 import ShopPortalVariantsHook from "./ShopPortalVariantsHook";
+import ProductEditMediaLongevity from "./ProductEditMediaLongevity";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
 const emptyChip = () => ({ icon_key: "heart", label: "", note: "" });
@@ -23,10 +24,7 @@ export default function ShopPortalClient({
   profileId,
 }) {
   const router = useRouter();
-  const activeShops = useMemo(
-    () => (shops || []).filter((s) => s.status === "active"),
-    [shops]
-  );
+  const activeShops = useMemo(() => (shops || []).filter((s) => s.status === "active"), [shops]);
   const [products, setProducts] = useState(initialProducts || []);
   const [name, setName] = useState("");
   const [shopId, setShopId] = useState(activeShops[0]?.id || "");
@@ -205,6 +203,7 @@ export default function ShopPortalClient({
       await supabase.from("shop_product_longevity_items").insert(
         chips.map((c, i) => ({
           product_id: product.id,
+          highlight_id: c.highlight_id || null,
           icon_key: c.icon_key || "heart",
           label: c.label,
           note: c.note || "",
@@ -245,7 +244,10 @@ export default function ShopPortalClient({
     setCategoryIds([]);
     setGallery([]);
     setChips([]);
-    setProducts((list) => [{ ...product, variants: [], longevity_items: chips, media: gallery, edit_category_ids: categoryIds }, ...list]);
+    setProducts((list) => [
+      { ...product, variants: [], longevity_items: chips, media: gallery, edit_category_ids: categoryIds },
+      ...list,
+    ]);
     router.refresh();
   }
 
@@ -377,6 +379,7 @@ export default function ShopPortalClient({
                     Description
                     <textarea className={inp} rows={3} value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} />
                   </label>
+                  <ProductEditMediaLongevity productId={p.id} />
                   <BuyButtonsFields
                     value={{
                       show_affiliate: edit.show_affiliate,
