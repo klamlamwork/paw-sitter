@@ -49,6 +49,9 @@ export default async function AccountPage() {
             const hoursUntilStart = hoursUntilUTC(startsAtISO);
             const showPay = b.status === "accepted" && b.payment_status !== "authorized" && b.payment_status !== "paid";
             const canPay = hoursUntilStart === null || hoursUntilStart >= 48;
+            const canCancel = b.status !== "canceled" && b.status !== "completed";
+            const isLateCancel = hoursUntilStart !== null && hoursUntilStart < 48;
+            const hasPayment = b.payment_status === "authorized" || b.payment_status === "paid";
             return (
               <li key={b.id} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 px-4 py-3 text-sm">
                 <div className="flex justify-between gap-2">
@@ -84,6 +87,29 @@ export default async function AccountPage() {
                         Pay now
                       </button>
                     )}
+                  </div>
+                )}
+                {canCancel && (
+                  <div className="mt-2">
+                    {isLateCancel && hasPayment ? (
+                      <p className="text-xs text-amber-700">Late cancel: 50% will be charged, remainder refunded.</p>
+                    ) : null}
+                    <button
+                      onClick={async () => {
+                        if (!confirm("Cancel this booking?")) return;
+                        const res = await fetch("/api/booking/cancel", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ booking_id: b.id }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) throw new Error(data.error || "Could not cancel");
+                        window.location.reload();
+                      }}
+                      className="rounded-full border border-[#e8d5c4] bg-white px-4 py-1.5 text-xs font-semibold"
+                    >
+                      Cancel booking
+                    </button>
                   </div>
                 )}
               </li>
