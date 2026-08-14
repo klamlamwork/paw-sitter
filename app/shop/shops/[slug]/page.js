@@ -20,6 +20,7 @@ export async function generateMetadata({ params }) {
 export default async function ShopStorefrontPage({ params }) {
   const { slug } = await params;
   const supabase = await createClient();
+
   const { data: shop } = await supabase
     .from("shop_shops")
     .select("id, name, slug, description, logo_url, is_product_brand, status")
@@ -29,7 +30,8 @@ export default async function ShopStorefrontPage({ params }) {
 
   if (!shop) notFound();
 
-  // Retailer/brand storefront: only products created in this shop account.
+  // Retailer/brand storefront: ONLY products created in this shop account (primary_shop_id).
+  // Do not include brand products where this shop is merely an eligible seller.
   const { data: products } = await supabase
     .from("shop_products")
     .select("id, name, slug, short_description, price_cents, currency, hide_price, shop_product_media(url, sort_order)")
