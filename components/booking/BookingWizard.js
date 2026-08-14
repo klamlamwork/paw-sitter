@@ -143,7 +143,8 @@ export default function BookingWizard({
           const [eh, em] = (datesPayload.endTime || "12:00").split(":").map(Number);
           start.setHours(sh, sm, 0, 0);
           end.setHours(eh, em, 0, 0);
-          slots.push({ starts_at: start.toISOString(), ends_at: end.toISOString(), duration_minutes: null, service_type: form.service_type });
+          const durationMinutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
+          slots.push({ starts_at: start.toISOString(), ends_at: end.toISOString(), duration_minutes: durationMinutes, service_type: form.service_type });
         }
       } else {
         for (const day of datesPayload) {
