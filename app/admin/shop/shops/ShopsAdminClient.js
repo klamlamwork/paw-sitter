@@ -182,17 +182,26 @@ export default function ShopsAdminClient({
 
   async function deleteShop(s) {
     const sure = window.confirm(
-      `Delete shop "${s.name}"? Offers for this shop are removed. Products stay but lose this shop link.`
+      `Delete shop "${s.name}"? Past orders stay (seller name is kept). Offers and cart lines for this shop are removed.`
     );
     if (!sure) return;
     setBusy(true);
     setError("");
     setOk("");
     const supabase = createClient();
+    await supabase
+      .from("shop_orders")
+      .update({ seller_shop_name: s.name })
+      .eq("seller_shop_id", s.id);
     const { error: err } = await supabase.from("shop_shops").delete().eq("id", s.id);
     setBusy(false);
     if (err) {
-      setError(err.message);
+      setError(
+        err.message +
+          (String(err.message || "").includes("shop_order")
+            ? " Run sql/46-shop-delete-with-orders.sql in Supabase, then try again."
+            : "")
+      );
       return;
     }
     setShops((list) => list.filter((x) => x.id !== s.id));
