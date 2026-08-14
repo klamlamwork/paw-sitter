@@ -10,10 +10,14 @@ const NEXT = {
     { status: "accepted", label: "Accept" },
     { status: "declined", label: "Decline" },
   ],
-  accepted: [{ status: "shipped", label: "Mark shipped" }],
+  accepted: [
+    { status: "shipped", label: "Mark shipped" },
+    { status: "cancelled", label: "Cancel (restock)" },
+  ],
 };
 
 const METHOD = {
+  card: "Card",
   etransfer: "E-Transfer",
   pickup: "Pay at pickup",
   later: "Pay later",
@@ -24,20 +28,40 @@ export default function SellerOrdersClient({ initialOrders }) {
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
 
-  async function patch(id, fields) {
+  async function setFulfillment(id, status) {
+    setBusyId(id);
+    setError("");
+    const supabase = createClient();
+    const { error: err } = await supabase.rpc("set_shop_order_fulfillment", {
+      p_order_id: id,
+      p_new_status: status,
+    });
+    setBusyId("");
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setOrders((list) => list.map((o) => (o.id === id ? { ...o, status } : o)));
+  }
+
+  async function markPaid(id) {
     setBusyId(id);
     setError("");
     const supabase = createClient();
     const { error: err } = await supabase
       .from("shop_orders")
-      .update({ ...fields, updated_at: new Date().toISOString() })
+      .update({
+        payment_status: "paid",
+        paid_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", id);
     setBusyId("");
     if (err) {
       setError(err.message);
       return;
     }
-    setOrders((list) => list.map((o) => (o.id === id ? { ...o, ...fields } : o)));
+    setOrders((list) => list.map((o) => (o.id === id ? { ...o, payment_status: "paid" } : o)));
   }
 
   if (!orders.length) {
@@ -105,7 +129,7 @@ export default function SellerOrdersClient({ initialOrders }) {
                   key={a.status}
                   type="button"
                   disabled={busyId === order.id}
-                  onClick={() => patch(order.id, { status: a.status })}
+                  onClick={() => setFulfillment(order.id, a.status)}
                   className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
                 >
                   {busyId === order.id ? "Saving…" : a.label}
@@ -115,7 +139,7 @@ export default function SellerOrdersClient({ initialOrders }) {
                 <button
                   type="button"
                   disabled={busyId === order.id}
-                  onClick={() => patch(order.id, { payment_status: "paid", paid_at: new Date().toISOString() })}
+                  onClick={() => markPaid(order.id)}
                   className="rounded-full border border-[#c45c26] px-4 py-1.5 text-xs font-semibold text-[#c45c26] disabled:opacity-60"
                 >
                   Mark paid
