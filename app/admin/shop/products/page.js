@@ -82,7 +82,7 @@ export default async function AdminShopProductsPage() {
         <code className="rounded bg-[#fff8f0] px-1">https://www.chewy.com/...</code>). Leave the URL
         blank to send shoppers to the retailer&apos;s Paw Sitter shop. Do not use /shop/shops/.../p/...
       </p>
-      {pendingCount &gt; 0 ? (
+      {pendingCount > 0 ? (
         <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900">
           {pendingCount} need attention (new or update)
         </p>
