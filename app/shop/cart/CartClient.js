@@ -126,9 +126,6 @@ export default function ShopCartClient() {
             {g.items.map((i) => (
               <li key={i.id || lineKey(i)} className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm">
                 <div className="min-w-0">
-                  <p className="text-xs">
-                    <SellerName name={i.shop_name || g.shop_name} slug={i.shop_slug || g.shop_slug} />
-                  </p>
                   <Link href={i.slug ? `/shop/p/${i.slug}` : "/shop"} className="font-semibold text-[#3b2a22] hover:text-[#c45c26]">
                     {i.name}
                   </Link>
@@ -184,7 +181,7 @@ export default function ShopCartClient() {
 
 function SellerName({ name, slug }) {
   const label = name || "Shop";
-  if (!slug) return <span className="text-[#c45c26]">{label}</span>;
+  if (!slug) return <span>{label}</span>;
   return (
     <Link href={`/shop/shops/${slug}`} className="font-semibold text-[#c45c26] hover:underline">
       {label}
