@@ -1,0 +1,13 @@
+html.embed-mode header,
+html.embed-mode footer {
+  display: none !important;
+}
+
+html.embed-mode .paw-bg {
+  min-height: 100%;
+  background-image: none;
+}
+
+html.embed-mode main {
+  padding-bottom: 2rem;
+}

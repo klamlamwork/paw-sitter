@@ -2,7 +2,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 import ProductModalHost from "@/components/shop/ProductModalHost";
+import EmbedMode from "@/components/shop/EmbedMode";
 import "./globals.css";
+import "./embed.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,6 +25,7 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <EmbedMode />
         <div className="paw-bg flex min-h-screen flex-col">
           <Header />
           <main className="flex-1">{children}</main>
