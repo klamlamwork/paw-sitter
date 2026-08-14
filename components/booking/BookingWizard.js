@@ -22,6 +22,7 @@ export default function BookingWizard({
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [stripeEnabled, setStripeEnabled] = useState(true);
 
   const [form, setForm] = useState({
     city: "",
@@ -37,7 +38,7 @@ export default function BookingWizard({
   const sitterServicesMap = {};
   for (const s of services || []) {
     if (!sitterServicesMap[s.sitter_id]) sitterServicesMap[s.sitter_id] = [];
-    sitterServicesMap[sitter_id].push(s);
+    sitterServicesMap[s.sitter_id].push(s);
   }
 
   const availableSitters = (() => {
@@ -89,6 +90,10 @@ export default function BookingWizard({
     setSubmitting(true);
     try {
       const supabase = createClient();
+      const { data: payments } = await supabase.from("sitter_payments").select("stripe_enabled").limit(1);
+      const enabled = payments?.[0]?.stripe_enabled !== false;
+      setStripeEnabled(enabled);
+
       const { data: booking, error: bErr } = await supabase
         .from("bookings")
         .insert({
@@ -97,7 +102,7 @@ export default function BookingWizard({
           service_type: form.service_type,
           status: "pending",
           payment_method: form.payment_method,
-          payment_status: form.payment_method === "card" ? "requires_payment" : "pending",
+          payment_status: "pending",
           estimated_total: estimatedTotal,
           customer_notes: "",
           pet_notes: "",
@@ -106,24 +111,6 @@ export default function BookingWizard({
         .single();
 
       if (bErr) throw bErr;
-
-      if (form.payment_method === "card") {
-        const res = await fetch("/api/booking/checkout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            booking_id: booking.id,
-            sitter_id: form.sitter_id,
-            service_type: form.service_type,
-            total_cents: estimatedTotal,
-            customer: customerProfile,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Could not start card checkout");
-        window.location.href = data.url;
-        return;
-      }
 
       router.push(`/booking?placed=1&booking=${booking.id}`);
     } catch (err) {
@@ -264,16 +251,18 @@ export default function BookingWizard({
 
       {step === 4 && (
         <>
-          <h2 className="text-xl font-semibold">Step 4 — Payment</h2>
+          <h2 className="text-xl font-semibold">Step 4 — Review & submit</h2>
           <p className="text-sm text-[#7a5c4e]">
-            Order amount: <strong>${(estimatedTotal / 100).toFixed(2)}</strong> • You get: <strong>${((estimatedTotal * 0.9) / 100).toFixed(2)}</strong> (platform keeps 10%)
+            Order amount: <strong>${(estimatedTotal / 100).toFixed(2)}</strong> • Platform fee 10% • Sitter gets 90%
           </p>
           <fieldset className="rounded-2xl border border-[#e8d5c4] p-3">
             <legend className="px-1 text-sm font-medium">How will you pay?</legend>
-            <label className="mt-2 flex items-start gap-2 text-sm">
-              <input type="radio" name="payment_method" checked={form.payment_method === "card"} onChange={() => setForm({ ...form, payment_method: "card" })} />
-              <span>Card (Stripe)</span>
-            </label>
+            {stripeEnabled && (
+              <label className="mt-2 flex items-start gap-2 text-sm">
+                <input type="radio" name="payment_method" checked={form.payment_method === "card"} onChange={() => setForm({ ...form, payment_method: "card" })} />
+                <span>Card (Stripe)</span>
+              </label>
+            )}
             <label className="mt-2 flex items-start gap-2 text-sm">
               <input type="radio" name="payment_method" checked={form.payment_method === "etransfer"} onChange={() => setForm({ ...form, payment_method: "etransfer" })} />
               <span>Interac e-Transfer (seller confirms when received)</span>
@@ -291,7 +280,7 @@ export default function BookingWizard({
               disabled={submitting || !form.sitter_id || estimatedTotal <= 0}
               className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
             >
-              {submitting ? "Working…" : form.payment_method === "card" ? "Pay with card" : "Place booking"}
+              {submitting ? "Working…" : "Submit booking request"}
             </button>
           </div>
         </>
