@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { sortPreferredFirst } from "./preferredSitter";
 import { SERVICE_TYPES, dropInDurationOptions, estimateHouseSitTotal, estimateDropInVisitTotal } from "@/lib/booking";
+import GooglePlacesAutocomplete from "./GooglePlacesAutocomplete";
 
 export default function BookingWizard({
   customerId,
@@ -18,11 +18,11 @@ export default function BookingWizard({
   holidayDates = [],
   preferredSitterId = "",
 }) {
-  const router = useRouter();
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [stripeEnabled, setStripeEnabled] = useState(true);
+  const [address, setAddress] = useState({ formatted_address: "", lat: null, lng: null, city: "", state: "", postal_code: "", country: "" });
 
   const [form, setForm] = useState({
     city: "",
@@ -42,13 +42,13 @@ export default function BookingWizard({
   }
 
   const availableSitters = (() => {
-    if (!form.city || !form.service_type || !form.start_date) return [];
+    if (!address.city || !form.service_type || !form.start_date) return [];
     const list = (sitters || []).filter((sitter) => {
       const svc = (sitterServicesMap[sitter.id] || []).find(
         (x) => x.service_type === form.service_type && x.enabled
       );
       if (!svc) return false;
-      if (sitter.service_city !== form.city) return false;
+      if (sitter.service_city !== address.city) return false;
       return true;
     });
     return sortPreferredFirst(list, preferredSitterId);
@@ -104,6 +104,13 @@ export default function BookingWizard({
           payment_method: form.payment_method,
           payment_status: "pending",
           estimated_total: estimatedTotal,
+          service_address: address.formatted_address,
+          service_address_lat: address.lat,
+          service_address_lng: address.lng,
+          service_address_city: address.city,
+          service_address_state: address.state,
+          service_address_postal_code: address.postal_code,
+          service_address_country: address.country,
           customer_notes: "",
           pet_notes: "",
         })
@@ -112,7 +119,9 @@ export default function BookingWizard({
 
       if (bErr) throw bErr;
 
-      router.push(`/booking?placed=1&booking=${booking.id}`);
+      // TODO: attach selected pets via booking_pets join in next batch
+
+      window.location.href = `/booking?placed=1&booking=${booking.id}`;
     } catch (err) {
       setError(err.message || "Could not place booking");
     } finally {
@@ -126,20 +135,17 @@ export default function BookingWizard({
 
       {step === 1 && (
         <>
-          <h2 className="text-xl font-semibold">Step 1 — Location & service</h2>
+          <h2 className="text-xl font-semibold">Step 1 — Where & service</h2>
           <label className="block text-sm">
-            <span className="font-medium">City</span>
-            <select
-              className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
-              value={form.city}
-              onChange={(e) => setForm({ ...form, city: e.target.value, sitter_id: preferredSitterId })}
-            >
-              <option value="">Select city</option>
-              <option>Cambridge</option>
-              <option>Kitchener</option>
-              <option>Waterloo</option>
-              <option>Guelph</option>
-            </select>
+            <span className="font-medium">Where</span>
+            <GooglePlacesAutocomplete
+              value={address}
+              onChange={setAddress}
+              placeholder="Type your address"
+            />
+            {address.formatted_address && (
+              <p className="mt-1 text-xs text-[#7a5c4e]">{address.formatted_address}</p>
+            )}
           </label>
           <label className="block text-sm">
             <span className="font-medium">Service type</span>
@@ -148,22 +154,22 @@ export default function BookingWizard({
               value={form.service_type}
               onChange={(e) => setForm({ ...form, service_type: e.target.value })}
             >
-              {Object.values(SERVICE_TYPES).map((t) => (
-                <option key={t.id} value={t.id}>{t.label}</option>
-              ))}
+              <option value="house_sit">House sit</option>
+              <option value="drop_in">Drop-in visits</option>
+              <option value="dog_walking">Dog walking</option>
+              <option value="boarding">Boarding</option>
             </select>
           </label>
           {form.service_type === "drop_in" && (
             <label className="block text-sm">
-              <span className="font-medium">Duration</span>
+              <span className="font-medium">How long</span>
               <select
                 className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
                 value={form.drop_in_duration}
                 onChange={(e) => setForm({ ...form, drop_in_duration: Number(e.target.value) })}
               >
-                {dropInDurationOptions().map((o) => (
-                  <option key={o.minutes} value={o.minutes}>{o.label}</option>
-                ))}
+                <option value={30}>30 minutes</option>
+                <option value={60}>60 minutes</option>
               </select>
             </label>
           )}
@@ -171,7 +177,7 @@ export default function BookingWizard({
             <button
               type="button"
               onClick={() => setStep(2)}
-              disabled={!form.city || !form.service_type}
+              disabled={!address.city || !form.service_type}
               className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
             >
               Next
