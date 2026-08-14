@@ -15,6 +15,7 @@ function MoreIcon({ className = "h-5 w-5" }) {
 
 function SubMenu({ title, items, onNavigate }) {
   const [open, setOpen] = useState(false);
+  if (!items?.length) return null;
   return (
     <div>
       <button
@@ -44,18 +45,45 @@ function SubMenu({ title, items, onNavigate }) {
   );
 }
 
+function DeskMenu({ title, items, open, setOpen, closeOthers }) {
+  if (!items?.length) return null;
+  const menuItemClass =
+    "block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5c4033] hover:bg-[#fff8f0]";
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className="max-w-[10rem] truncate text-sm font-medium text-[#5c4033] hover:text-[#c45c26]"
+        onClick={() => {
+          closeOthers();
+          setOpen((v) => !v);
+        }}
+      >
+        {title} ▾
+      </button>
+      {open ? (
+        <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-2xl border border-[#e8d5c4] bg-white p-2 shadow-lg">
+          {items.map((l) => (
+            <Link key={l.href} href={l.href} className={menuItemClass} onClick={() => setOpen(false)}>
+              {l.label}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function AuthNav({ profile }) {
   const [open, setOpen] = useState(false);
-  const [deskSitter, setDeskSitter] = useState(false);
-  const [deskAccount, setDeskAccount] = useState(false);
+  const [desk, setDesk] = useState("");
   const rootRef = useRef(null);
 
   useEffect(() => {
     function onDoc(e) {
       if (!rootRef.current?.contains(e.target)) {
         setOpen(false);
-        setDeskSitter(false);
-        setDeskAccount(false);
+        setDesk("");
       }
     }
     document.addEventListener("mousedown", onDoc);
@@ -77,72 +105,69 @@ export default function AuthNav({ profile }) {
   const isSitter = profile.role === "sitter" || profile.role === "admin";
   const accountName = profile.full_name || "Account";
 
-  const sitterLinks = [
-    { href: "/sitter/calendar", label: "Calendar" },
-    { href: "/sitter/bookings", label: "Requests" },
-    { href: "/sitter/dashboard", label: "Sitter Profile & Settings" },
+  const exploreLinks = [
+    { href: "/booking", label: "Book a sitter" },
+    { href: "/sitters", label: "Sitters" },
+    { href: "/shop", label: "Shop" },
   ];
+
+  const sitterLinks = isSitter
+    ? [
+        { href: "/sitter/calendar", label: "Calendar" },
+        { href: "/sitter/bookings", label: "Requests" },
+        { href: "/sitter/dashboard", label: "Sitter Profile & Settings" },
+      ]
+    : [];
+
+  const shopLinks = profile.hasShop
+    ? [
+        { href: "/account/shop", label: "Products" },
+        { href: "/account/shop/orders", label: "Orders" },
+      ]
+    : [{ href: "/account/shop", label: "Open shop portal" }];
 
   const accountLinks = [
     { href: "/account", label: "Profile & bookings" },
-    { href: "/shop/orders", label: "Shop orders" },
-    { href: "/account/shop", label: "Shop portal" },
+    { href: "/shop/orders", label: "My shop orders" },
+    { href: "/shop/cart", label: "Cart" },
   ];
   if (profile.role === "admin") {
     accountLinks.push({ href: "/admin/sitters", label: "Admin sitters" });
   }
 
-  const menuItemClass =
-    "block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5c4033] hover:bg-[#fff8f0]";
-  const deskBtn = "max-w-[10rem] truncate text-sm font-medium text-[#5c4033] hover:text-[#c45c26]";
-
   return (
     <div className="relative flex items-center gap-2" ref={rootRef}>
       <div className="hidden items-center gap-3 sm:flex">
+        <DeskMenu
+          title="Explore"
+          items={exploreLinks}
+          open={desk === "explore"}
+          setOpen={(fn) => setDesk((d) => (typeof fn === "function" ? (fn(d === "explore") ? "explore" : "") : ""))}
+          closeOthers={() => {}}
+        />
         {isSitter ? (
-          <div className="relative">
-            <button
-              type="button"
-              className={deskBtn}
-              onClick={() => {
-                setDeskSitter((v) => !v);
-                setDeskAccount(false);
-              }}
-            >
-              Sitter account ▾
-            </button>
-            {deskSitter ? (
-              <div className="absolute right-0 top-full z-50 mt-2 w-56 rounded-2xl border border-[#e8d5c4] bg-white p-2 shadow-lg">
-                {sitterLinks.map((l) => (
-                  <Link key={l.href} href={l.href} className={menuItemClass} onClick={() => setDeskSitter(false)}>
-                    {l.label}
-                  </Link>
-                ))}
-              </div>
-            ) : null}
-          </div>
+          <DeskMenu
+            title="Sitter account"
+            items={sitterLinks}
+            open={desk === "sitter"}
+            setOpen={() => setDesk((d) => (d === "sitter" ? "" : "sitter"))}
+            closeOthers={() => {}}
+          />
         ) : null}
-        <div className="relative">
-          <button
-            type="button"
-            className={deskBtn}
-            onClick={() => {
-              setDeskAccount((v) => !v);
-              setDeskSitter(false);
-            }}
-          >
-            {accountName} ▾
-          </button>
-          {deskAccount ? (
-            <div className="absolute right-0 top-full z-50 mt-2 w-52 rounded-2xl border border-[#e8d5c4] bg-white p-2 shadow-lg">
-              {accountLinks.map((l) => (
-                <Link key={l.href} href={l.href} className={menuItemClass} onClick={() => setDeskAccount(false)}>
-                  {l.label}
-                </Link>
-              ))}
-            </div>
-          ) : null}
-        </div>
+        <DeskMenu
+          title="Shop account"
+          items={shopLinks}
+          open={desk === "shop"}
+          setOpen={() => setDesk((d) => (d === "shop" ? "" : "shop"))}
+          closeOthers={() => {}}
+        />
+        <DeskMenu
+          title={accountName}
+          items={accountLinks}
+          open={desk === "account"}
+          setOpen={() => setDesk((d) => (d === "account" ? "" : "account"))}
+          closeOthers={() => {}}
+        />
         <form action="/auth/signout" method="post">
           <button
             type="submit"
@@ -165,9 +190,9 @@ export default function AuthNav({ profile }) {
         </button>
         {open ? (
           <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-2xl border border-[#e8d5c4] bg-white p-2 shadow-lg">
-            {isSitter ? (
-              <SubMenu title="Sitter account" items={sitterLinks} onNavigate={() => setOpen(false)} />
-            ) : null}
+            <SubMenu title="Explore" items={exploreLinks} onNavigate={() => setOpen(false)} />
+            <SubMenu title="Sitter account" items={sitterLinks} onNavigate={() => setOpen(false)} />
+            <SubMenu title="Shop account" items={shopLinks} onNavigate={() => setOpen(false)} />
             <SubMenu title={accountName} items={accountLinks} onNavigate={() => setOpen(false)} />
             <form action="/auth/signout" method="post" className="mt-1 border-t border-[#e8d5c4] pt-1">
               <button
