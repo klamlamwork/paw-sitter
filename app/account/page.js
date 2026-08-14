@@ -1,11 +1,11 @@
 import { cookies } from "next/headers";
-import { createServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 import AccountLocationClient from "./AccountLocationClient";
 import MyPawKidsClient from "./MyPawKidsClient";
 
 export default async function AccountPage() {
   const cookieStore = await cookies();
-  const supabase = createServerClient(cookieStore);
+  const supabase = createClient(cookieStore);
   const { data: { user } } = await supabase.auth.getUser();
   const customerId = user?.id;
 
