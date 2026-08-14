@@ -48,6 +48,91 @@ export default function ShopPortalClient({
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [busy, setBusy] = useState(false);
+  const [editId, setEditId] = useState("");
+  const [edit, setEdit] = useState(null);
+
+  function openEdit(p) {
+    setError("");
+    setOk("");
+    setEditId(p.id);
+    setEdit({
+      name: p.name || "",
+      short_description: p.short_description || "",
+      description: p.description || "",
+      price: p.price_cents != null ? String(p.price_cents / 100) : "",
+      stock_qty: String(p.stock_qty ?? 0),
+      product_type: p.product_type || "other",
+      inventory_mode: p.inventory_mode || "simple",
+      category_ids: p.edit_category_ids || (p.category_id ? [p.category_id] : []),
+      show_affiliate: !!p.show_affiliate,
+      show_add_to_cart: !!p.show_add_to_cart,
+      affiliate_url: p.affiliate_url || "",
+    });
+  }
+
+  async function saveEdit(p) {
+    if (!edit?.name?.trim()) {
+      setError("Name required");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setOk("");
+    const priceCents = edit.price === "" ? null : Math.round(Number(edit.price) * 100);
+    const supabase = createClient();
+    const { error: err } = await supabase
+      .from("shop_products")
+      .update({
+        name: edit.name.trim(),
+        slug: slugifyShop(edit.name),
+        short_description: (edit.short_description || "").trim(),
+        description: (edit.description || "").trim(),
+        category_id: (edit.category_ids || [])[0] || null,
+        product_type: edit.product_type || "other",
+        inventory_mode: edit.inventory_mode || defaultInventoryMode(edit.product_type),
+        price_cents: Number.isFinite(priceCents) ? priceCents : null,
+        stock_qty: Math.max(0, parseInt(edit.stock_qty, 10) || 0),
+        track_stock: true,
+        show_affiliate: !!edit.show_affiliate,
+        show_add_to_cart: !!edit.show_add_to_cart,
+        affiliate_url: edit.show_affiliate ? (edit.affiliate_url || "").trim() : "",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", p.id);
+    if (!err && (edit.category_ids || []).length) {
+      await supabase.from("shop_product_categories").delete().eq("product_id", p.id);
+      await supabase.from("shop_product_categories").insert(
+        edit.category_ids.map((category_id) => ({ product_id: p.id, category_id }))
+      );
+    }
+    setBusy(false);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    setProducts((list) =>
+      list.map((x) =>
+        x.id === p.id
+          ? {
+              ...x,
+              name: edit.name.trim(),
+              short_description: edit.short_description,
+              description: edit.description,
+              price_cents: Number.isFinite(priceCents) ? priceCents : null,
+              stock_qty: Math.max(0, parseInt(edit.stock_qty, 10) || 0),
+              product_type: edit.product_type,
+              inventory_mode: edit.inventory_mode,
+              show_affiliate: !!edit.show_affiliate,
+              show_add_to_cart: !!edit.show_add_to_cart,
+              affiliate_url: edit.affiliate_url,
+            }
+          : x
+      )
+    );
+    setOk("Saved.");
+    setEditId("");
+    router.refresh();
+  }
 
   async function createProduct(e) {
     e.preventDefault();
@@ -97,7 +182,7 @@ export default function ShopPortalClient({
         updated_at: new Date().toISOString(),
       })
       .select(
-        "id, name, slug, status, primary_shop_id, short_description, price_cents, product_type, inventory_mode, stock_qty, show_affiliate, show_add_to_cart, affiliate_url, updated_at"
+        "id, name, slug, status, primary_shop_id, short_description, description, price_cents, product_type, inventory_mode, stock_qty, category_id, show_affiliate, show_add_to_cart, affiliate_url, updated_at"
       )
       .single();
 
@@ -160,7 +245,7 @@ export default function ShopPortalClient({
     setCategoryIds([]);
     setGallery([]);
     setChips([]);
-    setProducts((list) => [{ ...product, variants: [], longevity_items: chips, media: gallery }, ...list]);
+    setProducts((list) => [{ ...product, variants: [], longevity_items: chips, media: gallery, edit_category_ids: categoryIds }, ...list]);
     router.refresh();
   }
 
@@ -244,12 +329,81 @@ export default function ShopPortalClient({
                     /shop/p/{p.slug} · {p.status}
                     {p.product_type ? ` · ${p.product_type}` : ""}
                     {p.inventory_mode === "batch_expiry" ? " · batch + expiry" : ""}
+                    {p.stock_qty != null ? ` · stock ${p.stock_qty}` : ""}
                   </p>
                 </div>
-                {p.status === "approved" ? (
-                  <Link href={`/shop/p/${p.slug}`} className="text-xs font-semibold text-[#c45c26]">View</Link>
-                ) : null}
+                <div className="flex items-center gap-2">
+                  {p.status === "approved" ? (
+                    <Link href={`/shop/p/${p.slug}`} className="text-xs font-semibold text-[#c45c26]">View</Link>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => (editId === p.id ? setEditId("") : openEdit(p))}
+                    className="rounded-full bg-[#c45c26] px-3 py-1 text-xs font-semibold text-white"
+                  >
+                    {editId === p.id ? "Close" : "Edit"}
+                  </button>
+                </div>
               </div>
+
+              {editId === p.id && edit ? (
+                <div className="mt-4 space-y-3 border-t border-[#e8d5c4] pt-4">
+                  <label className="block text-sm font-medium">
+                    Name
+                    <input className={inp} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
+                  </label>
+                  <ProductTypeSelect
+                    productType={edit.product_type}
+                    inventoryMode={edit.inventory_mode}
+                    onChange={({ product_type, inventory_mode }) =>
+                      setEdit({ ...edit, product_type, inventory_mode })
+                    }
+                  />
+                  {(categories || []).length ? (
+                    <div>
+                      <p className="text-sm font-medium">Product categories</p>
+                      <CategoryMultiSelect
+                        categories={categories}
+                        selectedIds={edit.category_ids || []}
+                        onChange={(ids) => setEdit({ ...edit, category_ids: ids })}
+                      />
+                    </div>
+                  ) : null}
+                  <label className="block text-sm font-medium">
+                    Short description
+                    <input className={inp} value={edit.short_description} onChange={(e) => setEdit({ ...edit, short_description: e.target.value })} />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Description
+                    <textarea className={inp} rows={3} value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} />
+                  </label>
+                  <BuyButtonsFields
+                    value={{
+                      show_affiliate: edit.show_affiliate,
+                      show_add_to_cart: edit.show_add_to_cart,
+                      affiliate_url: edit.affiliate_url,
+                    }}
+                    onChange={(b) => setEdit({ ...edit, ...b })}
+                  />
+                  <label className="block text-sm font-medium">
+                    Price CAD
+                    <input type="number" step="0.01" className={inp} value={edit.price} onChange={(e) => setEdit({ ...edit, price: e.target.value })} />
+                  </label>
+                  <label className="block text-sm font-medium">
+                    Stock qty (no variety)
+                    <input type="number" min="0" className={inp} value={edit.stock_qty} onChange={(e) => setEdit({ ...edit, stock_qty: e.target.value })} />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => saveEdit(p)}
+                    className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {busy ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              ) : null}
+
               <ShopPortalVariantsHook product={p} />
             </li>
           ))}
