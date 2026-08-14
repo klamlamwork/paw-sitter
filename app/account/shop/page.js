@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { buildExpiringRows } from "@/lib/shopExpiring";
 import ShopPortalClient from "./ShopPortalClient";
 import ExpiringSoonPanel from "./ExpiringSoonPanel";
 
@@ -59,18 +60,32 @@ export default async function AccountShopPortalPage() {
       }
 
       const productIds = products.map((p) => p.id);
+      let variantRows = [];
       if (productIds.length) {
-        const { data: variantRows } = await supabase
+        const { data } = await supabase
           .from("shop_product_variants")
           .select("*")
           .in("product_id", productIds)
           .order("sort_order");
+        variantRows = data || [];
         const variantsByProduct = {};
-        for (const v of variantRows || []) {
+        for (const v of variantRows) {
           if (!variantsByProduct[v.product_id]) variantsByProduct[v.product_id] = [];
           variantsByProduct[v.product_id].push(v);
         }
         products = products.map((p) => ({ ...p, variants: variantsByProduct[p.id] || [] }));
+      }
+
+      const variantIds = variantRows.map((v) => v.id);
+      if (variantIds.length) {
+        const { data: batches } = await supabase
+          .from("shop_product_batches")
+          .select("id, variant_id, lot_code, qty_on_hand, expiry_date, status")
+          .in("variant_id", variantIds)
+          .not("expiry_date", "is", null);
+        const variantMap = Object.fromEntries(variantRows.map((v) => [v.id, v]));
+        const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
+        expiringRows = buildExpiringRows(batches || [], variantMap, productMap);
       }
     }
 
