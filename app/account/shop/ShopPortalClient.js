@@ -5,10 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { slugifyShop } from "@/lib/shop";
+import { defaultInventoryMode } from "@/lib/shopInventory";
 import BuyButtonsFields from "@/components/shop/BuyButtonsFields";
 import ProductGalleryEditor from "@/components/shop/ProductGalleryEditor";
 import LongevityChipsEditor from "@/components/shop/LongevityChipsEditor";
 import CategoryMultiSelect from "@/components/shop/CategoryMultiSelect";
+import ProductTypeSelect from "@/components/shop/ProductTypeSelect";
 import ShopPortalVariantsHook from "./ShopPortalVariantsHook";
 
 const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
@@ -31,6 +33,9 @@ export default function ShopPortalClient({
   const [shortDescription, setShortDescription] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
+  const [stockQty, setStockQty] = useState("0");
+  const [productType, setProductType] = useState("other");
+  const [inventoryMode, setInventoryMode] = useState("simple");
   const [categoryIds, setCategoryIds] = useState([]);
   const [gallery, setGallery] = useState([]);
   const [chips, setChips] = useState([]);
@@ -66,6 +71,7 @@ export default function ShopPortalClient({
       return;
     }
     const priceCents = price === "" ? null : Math.round(Number(price) * 100);
+    const qty = Math.max(0, parseInt(stockQty, 10) || 0);
     const supabase = createClient();
     const { data: product, error: err } = await supabase
       .from("shop_products")
@@ -76,9 +82,13 @@ export default function ShopPortalClient({
         description: description.trim(),
         primary_shop_id: shopId,
         category_id: categoryIds[0] || null,
+        product_type: productType || "other",
+        inventory_mode: inventoryMode || defaultInventoryMode(productType),
         price_cents: Number.isFinite(priceCents) ? priceCents : null,
         currency: "CAD",
         hide_price: false,
+        stock_qty: qty,
+        track_stock: true,
         show_affiliate: !!buy.show_affiliate,
         show_add_to_cart: !!buy.show_add_to_cart,
         affiliate_url: buy.show_affiliate ? buy.affiliate_url.trim() : "",
@@ -86,7 +96,9 @@ export default function ShopPortalClient({
         created_by: profileId,
         updated_at: new Date().toISOString(),
       })
-      .select("id, name, slug, status, primary_shop_id, short_description, price_cents, show_affiliate, show_add_to_cart, affiliate_url, updated_at")
+      .select(
+        "id, name, slug, status, primary_shop_id, short_description, price_cents, product_type, inventory_mode, stock_qty, show_affiliate, show_add_to_cart, affiliate_url, updated_at"
+      )
       .single();
 
     if (err) {
@@ -94,7 +106,6 @@ export default function ShopPortalClient({
       setError(err.message);
       return;
     }
-
     if (gallery.length) {
       await supabase.from("shop_product_media").insert(
         gallery.map((m, i) => ({
@@ -143,6 +154,9 @@ export default function ShopPortalClient({
     setShortDescription("");
     setDescription("");
     setPrice("");
+    setStockQty("0");
+    setProductType("other");
+    setInventoryMode("simple");
     setCategoryIds([]);
     setGallery([]);
     setChips([]);
@@ -173,6 +187,23 @@ export default function ShopPortalClient({
           Name
           <input className={inp} value={name} onChange={(e) => setName(e.target.value)} required />
         </label>
+        <ProductTypeSelect
+          productType={productType}
+          inventoryMode={inventoryMode}
+          onChange={({ product_type, inventory_mode }) => {
+            setProductType(product_type);
+            setInventoryMode(inventory_mode);
+          }}
+        />
+        <div>
+          <p className="text-sm font-medium">Product categories</p>
+          <p className="text-[11px] text-[#7a5c4e]">Animal / browse categories (Dog, Cat, Food, etc.)</p>
+          {(categories || []).length ? (
+            <CategoryMultiSelect categories={categories} selectedIds={categoryIds} onChange={setCategoryIds} />
+          ) : (
+            <p className="mt-1 text-sm text-amber-800">No categories loaded. Refresh, or check shop_categories in Supabase.</p>
+          )}
+        </div>
         <label className="block text-sm font-medium">
           Short description
           <input className={inp} value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} />
@@ -181,16 +212,16 @@ export default function ShopPortalClient({
           Description
           <textarea className={inp} rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
         </label>
-        <div>
-          <p className="text-sm font-medium">Categories</p>
-          <CategoryMultiSelect categories={categories} selectedIds={categoryIds} onChange={setCategoryIds} />
-        </div>
         <ProductGalleryEditor inputId="create-gallery-url" images={gallery} onChange={setGallery} />
         <LongevityChipsEditor items={chips} onChange={setChips} draft={chipDraft} setDraft={setChipDraft} />
         <BuyButtonsFields value={buy} onChange={setBuy} />
         <label className="block text-sm font-medium">
           Price CAD
           <input type="number" step="0.01" className={inp} value={price} onChange={(e) => setPrice(e.target.value)} />
+        </label>
+        <label className="block text-sm font-medium">
+          Stock qty (used when there is no variety)
+          <input type="number" min="0" className={inp} value={stockQty} onChange={(e) => setStockQty(e.target.value)} />
         </label>
         <button
           type="submit"
@@ -209,7 +240,11 @@ export default function ShopPortalClient({
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="font-semibold">{p.name}</p>
-                  <p className="text-xs text-[#7a5c4e]">/shop/p/{p.slug} · {p.status}</p>
+                  <p className="text-xs text-[#7a5c4e]">
+                    /shop/p/{p.slug} · {p.status}
+                    {p.product_type ? ` · ${p.product_type}` : ""}
+                    {p.inventory_mode === "batch_expiry" ? " · batch + expiry" : ""}
+                  </p>
                 </div>
                 {p.status === "approved" ? (
                   <Link href={`/shop/p/${p.slug}`} className="text-xs font-semibold text-[#c45c26]">View</Link>
