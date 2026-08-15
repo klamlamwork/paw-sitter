@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import BookingPriceBreakdown from "@/components/booking/BookingPriceBreakdown";
 
 function hoursUntilUTC(startsAtISO) {
   if (!startsAtISO) return null;
@@ -10,7 +11,7 @@ function hoursUntilUTC(startsAtISO) {
 
 function serviceLabel(type) {
   if (type === "house_sit") return "House sit";
-  if (type === "dog_walking") return "Dog walking";
+  if (type === "walking" || type === "dog_walking") return "Dog walking";
   if (type === "boarding") return "Boarding";
   return "Drop-in";
 }
@@ -25,10 +26,7 @@ export default function AccountBookingsClient({ bookings = [] }) {
     let cancelled = false;
     (async () => {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("sitter_payments")
-        .select("stripe_enabled, card_enabled, etransfer_enabled, pay_later_enabled")
-        .limit(1);
+      const { data } = await supabase.from("sitter_payments").select("stripe_enabled, card_enabled, etransfer_enabled, pay_later_enabled").limit(1);
       if (!cancelled) {
         const settings = data?.[0];
         setMethods({
@@ -45,11 +43,7 @@ export default function AccountBookingsClient({ bookings = [] }) {
     setError("");
     setBusyId(bookingId);
     try {
-      const res = await fetch("/api/booking/pay", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ booking_id: bookingId, payment_method: paymentMethod }),
-      });
+      const res = await fetch("/api/booking/pay", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ booking_id: bookingId, payment_method: paymentMethod }) });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not start payment");
       if (paymentMethod === "card") {
@@ -99,6 +93,7 @@ export default function AccountBookingsClient({ bookings = [] }) {
             <li key={b.id} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 px-4 py-3 text-sm">
               <div className="flex justify-between gap-2"><span className="font-semibold">{serviceLabel(b.service_type)} - {b.sitters?.display_name || "Sitter"}</span><span className="rounded-full bg-[#f3e0d0] px-2 py-0.5 text-xs capitalize text-[#c45c26]">{b.status}</span></div>
               <p className="mt-1 text-[#7a5c4e]">Est. ${Number(b.estimated_total || 0).toFixed(2)} • Payment: <span className="font-medium capitalize">{b.payment_status || "pending"}</span>{b.payment_method ? <span className="capitalize"> ({b.payment_method})</span> : null}</p>
+              <BookingPriceBreakdown breakdown={b.price_breakdown} />
               {startsAtISO ? <p className="mt-1 text-xs text-[#7a5c4e]">Starts: {new Date(startsAtISO).toLocaleString()}</p> : null}
               {showPay && (!canPay ? <p className="mt-2 text-xs text-red-600">Payment must be made at least 48 hours before the booking starts.</p> : noMethods ? <p className="mt-2 text-xs text-[#7a5c4e]">Payment options are currently unavailable.</p> : <div className="mt-2">
                 <button type="button" onClick={() => setOpenId(open ? "" : b.id)} disabled={!methods} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{methods ? (open ? "Hide payment options" : "Pay now") : "Loading payment options…"}</button>
