@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import BookingPriceBreakdown from "@/components/booking/BookingPriceBreakdown";
+import { formatInTimezone, serviceLocationText, timezoneLabel } from "@/lib/bookingTime";
 
 function hoursUntilUTC(startsAtISO) {
   if (!startsAtISO) return null;
@@ -16,11 +17,12 @@ function serviceLabel(type) {
   return "Drop-in";
 }
 
-export default function AccountBookingsClient({ bookings = [] }) {
+export default function AccountBookingsClient({ bookings = [], displayTimezone = "" }) {
   const [openId, setOpenId] = useState("");
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [methods, setMethods] = useState(null);
+  const tz = timezoneLabel(displayTimezone);
 
   useEffect(() => {
     let cancelled = false;
@@ -78,9 +80,12 @@ export default function AccountBookingsClient({ bookings = [] }) {
   return (
     <>
       {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
+      <p className="mt-2 text-xs text-[#7a5c4e]">Times are shown in your current account timezone: <strong>{tz}</strong>.</p>
       <ul className="mt-4 space-y-3">
         {bookings.length === 0 ? <li className="text-sm text-[#7a5c4e]">No bookings yet.</li> : bookings.map((b) => {
-          const startsAtISO = (b.booking_slots || [])[0]?.starts_at;
+          const slots = b.booking_slots || [];
+          const firstSlot = slots[0];
+          const startsAtISO = firstSlot?.starts_at;
           const hoursUntilStart = hoursUntilUTC(startsAtISO);
           const showPay = b.status === "accepted" && b.payment_status !== "authorized" && b.payment_status !== "paid";
           const canPay = hoursUntilStart === null || hoursUntilStart >= 48;
@@ -92,9 +97,19 @@ export default function AccountBookingsClient({ bookings = [] }) {
           return (
             <li key={b.id} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 px-4 py-3 text-sm">
               <div className="flex justify-between gap-2"><span className="font-semibold">{serviceLabel(b.service_type)} - {b.sitters?.display_name || "Sitter"}</span><span className="rounded-full bg-[#f3e0d0] px-2 py-0.5 text-xs capitalize text-[#c45c26]">{b.status}</span></div>
+              <p className="mt-1 text-xs text-[#7a5c4e]">Service location: {serviceLocationText(b)}</p>
               <p className="mt-1 text-[#7a5c4e]">Est. ${Number(b.estimated_total || 0).toFixed(2)} • Payment: <span className="font-medium capitalize">{b.payment_status || "pending"}</span>{b.payment_method ? <span className="capitalize"> ({b.payment_method})</span> : null}</p>
               <BookingPriceBreakdown breakdown={b.price_breakdown} />
-              {startsAtISO ? <p className="mt-1 text-xs text-[#7a5c4e]">Starts: {new Date(startsAtISO).toLocaleString()}</p> : null}
+              {slots.length ? (
+                <div className="mt-2 space-y-1 text-xs text-[#5c4033]">
+                  {slots.map((s) => (
+                    <p key={s.starts_at}>
+                      {formatInTimezone(s.starts_at, displayTimezone)}{s.ends_at ? ` → ${formatInTimezone(s.ends_at, displayTimezone)}` : ""}
+                      <span className="text-[#7a5c4e]"> ({tz})</span>
+                    </p>
+                  ))}
+                </div>
+              ) : null}
               {showPay && (!canPay ? <p className="mt-2 text-xs text-red-600">Payment must be made at least 48 hours before the booking starts.</p> : noMethods ? <p className="mt-2 text-xs text-[#7a5c4e]">Payment options are currently unavailable.</p> : <div className="mt-2">
                 <button type="button" onClick={() => setOpenId(open ? "" : b.id)} disabled={!methods} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{methods ? (open ? "Hide payment options" : "Pay now") : "Loading payment options…"}</button>
                 {open && methods ? <div className="mt-2 space-y-2 rounded-xl border border-[#e8d5c4] bg-white p-3">

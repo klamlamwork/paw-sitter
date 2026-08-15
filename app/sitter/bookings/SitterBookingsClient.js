@@ -4,15 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { SERVICE_TYPES } from "@/lib/booking";
-import { formatInTimezone } from "@/lib/locations";
 import BookingPriceBreakdown from "@/components/booking/BookingPriceBreakdown";
+import { formatInTimezone, serviceLocationText, timezoneLabel } from "@/lib/bookingTime";
 
-export default function SitterBookingsClient({ bookings: initial, sitterTimezone }) {
+export default function SitterBookingsClient({ bookings: initial, sitterTimezone, sitterLocation }) {
   const router = useRouter();
   const [bookings, setBookings] = useState(initial || []);
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
-  const sitterTz = sitterTimezone || undefined;
+  const sitterTz = timezoneLabel(sitterTimezone);
 
   async function setStatus(id, status) {
     setBusyId(id);
@@ -43,19 +43,21 @@ export default function SitterBookingsClient({ bookings: initial, sitterTimezone
   return (
     <div className="mt-8 space-y-4">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      <p className="text-xs text-[#7a5c4e]">Times below are in your base timezone{sitterTz ? <>: <strong>{sitterTz}</strong></> : " (set base city on dashboard for correct local times)"}.</p>
+      <p className="text-xs text-[#7a5c4e]">Your times use your dashboard timezone: <strong>{sitterTz}</strong>. Customer times use the customer’s current account timezone.</p>
       {bookings.map((b) => {
         const label = SERVICE_TYPES[b.service_type]?.label || b.service_type;
         const slots = b.booking_slots || [];
         const customer = b.profiles;
-        const customerTz = customer?.timezone || undefined;
+        const customerTz = customer?.timezone || "";
+        const customerTzLabel = timezoneLabel(customerTz);
+        const location = serviceLocationText(b, b.sitters || sitterLocation);
         return (
           <article key={b.id} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <h2 className="text-lg font-semibold text-[#3b2a22]">{label}</h2>
                 <p className="text-sm text-[#7a5c4e]">{customer?.full_name || "Customer"} · {customer?.email || ""}</p>
-                {customer?.city ? <p className="text-xs text-[#7a5c4e]">Service location: {customer.city}{customer.country ? `, ${customer.country}` : ""}</p> : null}
+                <p className="text-xs text-[#7a5c4e]">Service location: {location}</p>
               </div>
               <div className="flex flex-col items-end gap-1">
                 <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-[#5c4033]">{b.status}</span>
@@ -65,8 +67,8 @@ export default function SitterBookingsClient({ bookings: initial, sitterTimezone
             <ul className="mt-3 space-y-2 text-sm text-[#5c4033]">
               {slots.map((s) => (
                 <li key={s.id || s.starts_at} className="rounded-lg border border-[#e8d5c4]/80 bg-white px-3 py-2">
-                  <div><span className="font-semibold">Your time:</span> {formatInTimezone(s.starts_at, sitterTz)} → {formatInTimezone(s.ends_at, sitterTz)}</div>
-                  {customerTz && customerTz !== sitterTz ? <div className="mt-0.5 text-xs text-[#7a5c4e]">Customer time: {formatInTimezone(s.starts_at, customerTz)} → {formatInTimezone(s.ends_at, customerTz)}</div> : null}
+                  <div><span className="font-semibold">Your time:</span> {formatInTimezone(s.starts_at, sitterTimezone)} → {formatInTimezone(s.ends_at, sitterTimezone)} <span className="text-xs text-[#7a5c4e]">({sitterTz})</span></div>
+                  {customerTz ? <div className="mt-0.5 text-xs text-[#7a5c4e]">Customer time: {formatInTimezone(s.starts_at, customerTz)} → {formatInTimezone(s.ends_at, customerTz)} ({customerTzLabel})</div> : null}
                 </li>
               ))}
             </ul>
