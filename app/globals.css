@@ -34,12 +34,19 @@ body {
   background-repeat: repeat;
 }
 
-/* Square filter / sort / search controls */
-.square-filter-controls input,
-.square-filter-controls select,
+/* Listing filter and sorting controls: square, compact */
 .square-filter-controls button,
-.sitters-toolbar input,
+.square-filter-controls select,
+.square-filter-controls input,
+.sitters-toolbar button,
 .sitters-toolbar select,
-.sitters-toolbar button {
+.sitters-toolbar input,
+.shop-filter-controls button,
+.shop-filter-controls select,
+.shop-filter-controls input,
+.blog-filter-controls button,
+.blog-filter-controls select,
+.blog-filter-controls input {
   border-radius: 0 !important;
+  padding: 0.375rem 1rem !important;
 }
