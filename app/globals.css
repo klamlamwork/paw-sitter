@@ -73,7 +73,48 @@ body {
 .paw-bg h1 + p,
 .paw-bg h1 + p.mt-1,
 .paw-bg h1 + p.mt-2,
-.paw-bg h1 + p.mt-3 { color: #000000 !important; }
+.paw-bg h1 + p.mt-3 {
+  color: #000000 !important;
+  font-size: 1.05em !important;
+  font-weight: 500 !important;
+}
+
+header,
+footer {
+  background-color: #ffffff !important;
+  font-size: 105% !important;
+}
+header a,
+header button,
+header span,
+footer a,
+footer p,
+footer span,
+footer li {
+  font-weight: 500 !important;
+}
+header .font-bold,
+header [class*="font-bold"],
+footer .font-bold,
+footer [class*="font-bold"] {
+  font-weight: 800 !important;
+}
+header [class*="font-semibold"],
+footer [class*="font-semibold"] {
+  font-weight: 700 !important;
+}
+
+footer p,
+footer .text-\[\#7a5c4e\],
+footer [class*="text-[#7a5c4e]"] {
+  color: #000000 !important;
+}
+
+/* Homepage body copy */
+.paw-bg p.max-w-lg,
+.paw-bg p.mt-2.text-sm {
+  color: #000000 !important;
+}
 
 [data-page="shop"] button,
 [data-page="shop"] select,

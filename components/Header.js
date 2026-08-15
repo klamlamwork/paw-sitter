@@ -3,7 +3,7 @@ import AuthButtons from "@/components/AuthButtons";
 
 export default function Header() {
   return (
-    <header className="sticky top-0 z-40 border-b border-[#efd09a]/80 bg-[#fff9ed]/95 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-[#efd09a]/80 bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <Link href="/" className="flex min-w-0 items-center gap-2">
           <img src="/logo.svg" alt="Paw Sitter" width={36} height={36} className="h-9 w-9 shrink-0 rounded-full object-cover" />
