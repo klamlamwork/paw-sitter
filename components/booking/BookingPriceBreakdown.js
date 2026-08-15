@@ -1,24 +1,33 @@
 export default function BookingPriceBreakdown({ breakdown, showKeep = false }) {
   if (!breakdown) return null;
-  const rows = [
-    breakdown.base ? ["Base rate", breakdown.base] : null,
-    breakdown.holiday ? ["Holiday rate", breakdown.holiday] : null,
-    breakdown.extra_pet ? [`Additional pet × ${breakdown.extra_pets || 0}`, breakdown.extra_pet] : null,
-    breakdown.duration ? [Number(breakdown.duration_minutes) >= 60 ? "60-minute add-on" : "Duration add-on", breakdown.duration] : null,
-  ].filter(Boolean);
-
-  if (!rows.length && !breakdown.total) return null;
+  const unit = breakdown.unit_label || "visit";
+  const units = Number(breakdown.units) || 0;
+  const regularUnits = Math.max(0, units - (Number(breakdown.holiday_units) || 0));
+  const rows = [];
+  if (regularUnits > 0) {
+    rows.push([`Base rate × ${regularUnits} ${unit}${regularUnits === 1 ? "" : "s"}`, breakdown.base]);
+  }
+  if (breakdown.holiday) {
+    rows.push([`Holiday rate × ${breakdown.holiday_units || 0} ${unit}${(breakdown.holiday_units || 0) === 1 ? "" : "s"}`, breakdown.holiday]);
+  }
+  if ((breakdown.extra_pets || 0) > 0) {
+    rows.push([`Additional pet × ${breakdown.extra_pets} × ${units} ${unit}${units === 1 ? "" : "s"}`, breakdown.extra_pet]);
+  }
+  if (breakdown.duration) {
+    rows.push([`60-minute add-on × ${units}`, breakdown.duration]);
+  }
 
   return (
     <div className="mt-2 rounded-xl border border-[#f0e0d2] bg-white px-3 py-2 text-xs text-[#5c4033]">
+      {units === 0 ? <p className="text-[#7a5c4e]">Add dates and times to see the total.</p> : null}
       {rows.map(([label, amount]) => (
         <p key={label} className="flex justify-between gap-3">
           <span>{label}</span>
-          <span>${Number(amount).toFixed(2)}</span>
+          <span>${Number(amount || 0).toFixed(2)}</span>
         </p>
       ))}
       <p className="mt-1 flex justify-between gap-3 font-semibold text-[#3b2a22]">
-        <span>Total</span>
+        <span>Order total</span>
         <span>${Number(breakdown.total || 0).toFixed(2)}</span>
       </p>
       {showKeep ? (
@@ -27,7 +36,7 @@ export default function BookingPriceBreakdown({ breakdown, showKeep = false }) {
           <span>${Number(breakdown.sitter_keep || 0).toFixed(2)}</span>
         </p>
       ) : (
-        <p className="flex justify-between gap-3 text-[#7a5c4e]">Platform fee 10% • Sitter 90%</p>
+        <p className="text-[#7a5c4e]">Platform fee 10% • Sitter 90%</p>
       )}
     </div>
   );
