@@ -39,18 +39,17 @@ body {
   background-attachment: fixed;
 }
 
-/* Honey-theme compatibility sweep for the existing component palette */
-.paw-bg [class*="bg-[#fff8f0]" { background-color: #fff9ed !important; }
-.paw-bg [class*="bg-[#faf3eb]" { background-color: #fff6e4 !important; }
-.paw-bg [class*="bg-[#f3e0d0]" { background-color: #fde8b8 !important; }
-.paw-bg [class*="bg-[#fff1e6]" { background-color: #ffeecf !important; }
-.paw-bg [class*="border-[#e8d5c4]" { border-color: #efd09a !important; }
-.paw-bg [class*="border-[#f0e0d2]" { border-color: #f3dba8 !important; }
-.paw-bg [class*="text-[#3b2a22]" { color: #3d2a14 !important; }
-.paw-bg [class*="text-[#5c4033]" { color: #5a4018 !important; }
-.paw-bg [class*="text-[#7a5c4e]" { color: #8a6a32 !important; }
-.paw-bg [class*="text-[#c45c26]" { color: #e39b2e !important; }
-.paw-bg [class*="bg-[#c45c26]" { background-color: #e39b2e !important; }
+.paw-bg [class*="bg-[#fff8f0]"] { background-color: #fff9ed !important; }
+.paw-bg [class*="bg-[#faf3eb]"] { background-color: #fff6e4 !important; }
+.paw-bg [class*="bg-[#f3e0d0]"] { background-color: #fde8b8 !important; }
+.paw-bg [class*="bg-[#fff1e6]"] { background-color: #ffeecf !important; }
+.paw-bg [class*="border-[#e8d5c4]"] { border-color: #efd09a !important; }
+.paw-bg [class*="border-[#f0e0d2]"] { border-color: #f3dba8 !important; }
+.paw-bg [class*="text-[#3b2a22]"] { color: #3d2a14 !important; }
+.paw-bg [class*="text-[#5c4033]"] { color: #5a4018 !important; }
+.paw-bg [class*="text-[#7a5c4e]"] { color: #8a6a32 !important; }
+.paw-bg [class*="text-[#c45c26]"] { color: #e39b2e !important; }
+.paw-bg [class*="bg-[#c45c26]"] { background-color: #e39b2e !important; }
 .paw-bg [class*="hover:bg-[#9a4519]"]:hover { background-color: #c47a18 !important; }
 .paw-bg [class*="hover:text-[#c45c26]"]:hover { color: #e39b2e !important; }
 
