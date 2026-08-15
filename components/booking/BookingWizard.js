@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { sortPreferredFirst } from "./preferredSitter";
-import { estimateHouseSitTotal, estimateDropInVisitTotal } from "@/lib/booking";
+import { SERVICE_TYPES } from "@/lib/booking";
+import { estimateBookingPrice, normalizeServiceType } from "@/lib/bookingPricing";
 import GooglePlacesAutocomplete from "./GooglePlacesAutocomplete";
 import DatesStep from "./DatesStep";
 import PetsStep from "./PetsStep";
+import BookingPriceBreakdown from "./BookingPriceBreakdown";
 
 export default function BookingWizard({
   customerId,
@@ -27,7 +29,6 @@ export default function BookingWizard({
   const [datesPayload, setDatesPayload] = useState([]);
   const [selectedPetIds, setSelectedPetIds] = useState([]);
   const [customerMessage, setCustomerMessage] = useState("");
-
   const [form, setForm] = useState({
     service_type: "house_sit",
     drop_in_duration: 60,
@@ -42,81 +43,60 @@ export default function BookingWizard({
     sitterServicesMap[s.sitter_id].push(s);
   }
 
+  function findSvc(sitterId) {
+    const wanted = normalizeServiceType(form.service_type);
+    return (sitterServicesMap[sitterId] || []).find((x) => normalizeServiceType(x.service_type) === wanted && x.enabled);
+  }
+
   const availableSitters = (() => {
     if (!address.city || !form.service_type || datesPayload.length === 0) return [];
     const list = (sitters || []).filter((sitter) => {
-      const svc = (sitterServicesMap[sitter.id] || []).find(
-        (x) => x.service_type === form.service_type && x.enabled
-      );
-      if (!svc) return false;
+      if (!findSvc(sitter.id)) return false;
       if (sitter.service_city !== address.city) return false;
       return true;
     });
     return sortPreferredFirst(list, preferredSitterId);
   })();
 
-  const estimatedTotal = (() => {
-    if (datesPayload.length === 0 || !form.sitter_id) return 0;
-    const sitter = (sitters || []).find((s) => String(s.id) === String(form.sitter_id));
-    if (!sitter) return 0;
-    const svc = (sitterServicesMap[sitter.id] || []).find(
-      (x) => x.service_type === form.service_type && x.enabled
-    );
-    if (!svc) return 0;
-
-    if (form.service_type === "house_sit") {
-      if (!datesPayload.startTime || !datesPayload.endTime) return 0;
-      const start = new Date(datesPayload[0].date);
-      const end = new Date(datesPayload[datesPayload.length - 1].date);
-      end.setDate(end.getDate() + 1);
-      const [sh, sm] = (datesPayload.startTime || "12:00").split(":").map(Number);
-      const [eh, em] = (datesPayload.endTime || "12:00").split(":").map(Number);
-      start.setHours(sh, sm, 0, 0);
-      end.setHours(eh, em, 0, 0);
-      const { total } = estimateHouseSitTotal({
-        start,
-        end,
-        rateRegular: svc.rate_regular,
-        rateHoliday: svc.rate_holiday,
-        holidaySet,
-      });
-      return total;
-    }
-
-    let total = 0;
-    const dur = Number(form.drop_in_duration) || 60;
-    for (const day of datesPayload) {
-      const startsAt = new Date(day.date);
-      for (const _ of day.times || []) {
-        const { total: t } = estimateDropInVisitTotal({
-          minutes: dur,
-          startsAt,
-          rateRegular: svc.rate_regular,
-          rateHoliday: svc.rate_holiday,
-          holidaySet,
-        });
-        total += t;
-      }
-    }
-    return total;
+  const price = (() => {
+    if (datesPayload.length === 0 || !form.sitter_id) return null;
+    const svc = findSvc(form.sitter_id);
+    if (!svc) return null;
+    const visitCount = form.service_type === "house_sit" || form.service_type === "boarding"
+      ? datesPayload.length
+      : datesPayload.reduce((n, d) => n + ((d.times || []).length || 0), 0);
+    return estimateBookingPrice({
+      serviceType: form.service_type,
+      dates: datesPayload,
+      visitCount: visitCount || datesPayload.length,
+      durationMinutes: form.service_type === "house_sit" || form.service_type === "boarding" ? null : Number(form.drop_in_duration) || 60,
+      petCount: selectedPetIds.length,
+      rateRegular: svc.rate_regular,
+      rateHoliday: svc.rate_holiday,
+      extraPetRate: svc.extra_pet_rate,
+      rate60: svc.rate_60min,
+      holidaySet,
+    });
   })();
+
+  const estimatedTotal = price?.total || 0;
 
   async function submitBooking() {
     setError("");
     setSubmitting(true);
     try {
       const supabase = createClient();
-
       const { data: booking, error: bErr } = await supabase
         .from("bookings")
         .insert({
           customer_id: customerId,
           sitter_id: form.sitter_id,
-          service_type: form.service_type,
+          service_type: normalizeServiceType(form.service_type),
           status: "pending",
           payment_method: "later",
           payment_status: "pending",
           estimated_total: estimatedTotal,
+          price_breakdown: price || null,
           service_address: address.formatted_address,
           service_address_lat: address.lat,
           service_address_lng: address.lng,
@@ -133,7 +113,7 @@ export default function BookingWizard({
       if (bErr) throw bErr;
 
       const slots = [];
-      if (form.service_type === "house_sit") {
+      if (form.service_type === "house_sit" || form.service_type === "boarding") {
         if (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime) {
           const start = new Date(datesPayload[0].date);
           const end = new Date(datesPayload[datesPayload.length - 1].date);
@@ -143,7 +123,7 @@ export default function BookingWizard({
           start.setHours(sh, sm, 0, 0);
           end.setHours(eh, em, 0, 0);
           const durationMinutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
-          slots.push({ starts_at: start.toISOString(), ends_at: end.toISOString(), duration_minutes: durationMinutes, service_type: form.service_type });
+          slots.push({ starts_at: start.toISOString(), ends_at: end.toISOString(), duration_minutes: durationMinutes, service_type: normalizeServiceType(form.service_type) });
         }
       } else {
         const dur = Number(form.drop_in_duration) || 60;
@@ -155,24 +135,17 @@ export default function BookingWizard({
             startsAt.setHours(hh, mm, 0, 0);
             const endsAt = new Date(startsAt);
             endsAt.setMinutes(endsAt.getMinutes() + dur);
-            slots.push({ starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), duration_minutes: dur, service_type: form.service_type });
+            slots.push({ starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), duration_minutes: dur, service_type: normalizeServiceType(form.service_type) });
           }
         }
       }
-
       if (!slots.length) throw new Error("Select at least one service time.");
-      const { error: sErr } = await supabase.from("booking_slots").insert(
-        slots.map((s) => ({ booking_id: booking.id, ...s }))
-      );
+      const { error: sErr } = await supabase.from("booking_slots").insert(slots.map((s) => ({ booking_id: booking.id, ...s })));
       if (sErr) throw sErr;
-
       if (selectedPetIds.length) {
-        const { error: pErr } = await supabase.from("booking_pets").insert(
-          selectedPetIds.map((pet_id) => ({ booking_id: booking.id, pet_id }))
-        );
+        const { error: pErr } = await supabase.from("booking_pets").insert(selectedPetIds.map((pet_id) => ({ booking_id: booking.id, pet_id })));
         if (pErr) throw pErr;
       }
-
       window.location.href = `/booking?placed=1&booking=${booking.id}`;
     } catch (err) {
       setError(err.message || "Could not place booking");
@@ -182,7 +155,8 @@ export default function BookingWizard({
   }
 
   const houseSitDatesValid = form.service_type !== "house_sit" || (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime);
-  const visitTimesValid = form.service_type === "house_sit" || datesPayload.some((d) => (d.times || []).length > 0);
+  const visitTimesValid = form.service_type === "house_sit" || form.service_type === "boarding" || datesPayload.some((d) => (d.times || []).length > 0);
+  const timedService = form.service_type === "drop_in" || form.service_type === "dog_walking" || form.service_type === "walking";
 
   return (
     <form className="mt-6 space-y-4">
@@ -195,10 +169,10 @@ export default function BookingWizard({
         </label>
         <label className="block text-sm"><span className="font-medium">What service</span>
           <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" value={form.service_type} onChange={(e) => setForm({ ...form, service_type: e.target.value })}>
-            <option value="house_sit">House sit</option><option value="drop_in">Drop-in visits</option><option value="dog_walking">Dog walking</option><option value="boarding">Boarding</option>
+            {Object.values(SERVICE_TYPES).map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
         </label>
-        {(form.service_type === "drop_in" || form.service_type === "dog_walking") && <label className="block text-sm"><span className="font-medium">How long</span>
+        {timedService && <label className="block text-sm"><span className="font-medium">How long</span>
           <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" value={form.drop_in_duration} onChange={(e) => setForm({ ...form, drop_in_duration: Number(e.target.value) })}>
             <option value={30}>30 minutes</option><option value={60}>60 minutes</option>
           </select>
@@ -207,24 +181,22 @@ export default function BookingWizard({
       </>}
       {step === 2 && <>
         <h2 className="text-xl font-semibold">Step 2 — Date(s)</h2>
-        {form.service_type === "house_sit" && <p className="text-sm text-[#7a5c4e]">Choose start date and end date for an overnight house sit (consecutive nights).</p>}
-        <DatesStep value={datesPayload} onChange={setDatesPayload} serviceType={form.service_type} />
+        {(form.service_type === "house_sit" || form.service_type === "boarding") && <p className="text-sm text-[#7a5c4e]">Choose start date and end date for consecutive overnight service.</p>}
+        <DatesStep value={datesPayload} onChange={setDatesPayload} serviceType={form.service_type === "boarding" ? "house_sit" : form.service_type} />
         <div className="flex gap-2"><button type="button" onClick={() => setStep(1)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(3)} disabled={!datesPayload.length || !houseSitDatesValid || !visitTimesValid} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button></div>
       </>}
       {step === 3 && <>
         <h2 className="text-xl font-semibold">Step 3 — Your pets</h2>
         <PetsStep customerId={customerId} selectedPetIds={selectedPetIds} onChange={setSelectedPetIds} />
         <label className="block text-sm"><span className="font-medium">Message (optional)</span>
-          <textarea className="mt-1 min-h-[80px] w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" placeholder="Share any details the sitter should know (gate code, pet quirks, etc.)" value={customerMessage} onChange={(e) => setCustomerMessage(e.target.value)} />
+          <textarea className="mt-1 min-h-[80px] w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" placeholder="Share any details the sitter should know" value={customerMessage} onChange={(e) => setCustomerMessage(e.target.value)} />
         </label>
         <div className="flex gap-2"><button type="button" onClick={() => setStep(2)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(4)} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white">Next</button></div>
       </>}
       {step === 4 && <>
         <h2 className="text-xl font-semibold">Step 4 — Choose sitter</h2>
         {availableSitters.length === 0 ? <p className="text-sm text-[#7a5c4e]">No sitters match. Adjust address or dates.</p> : <div className="grid gap-2 sm:grid-cols-2">{availableSitters.map((s) => <label key={s.id} className="flex items-center gap-2 rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-3 py-2 text-sm"><input type="radio" name="sitter_id" checked={form.sitter_id === s.id} onChange={() => setForm({ ...form, sitter_id: s.id })} /><span>{s.display_name}</span></label>)}</div>}
-        {form.sitter_id && estimatedTotal > 0 ? (
-          <p className="text-sm text-[#7a5c4e]">Estimated total: <strong>${(estimatedTotal / 100).toFixed(2)}</strong></p>
-        ) : null}
+        {price ? <BookingPriceBreakdown breakdown={price} /> : null}
         <div className="flex gap-2"><button type="button" onClick={() => setStep(3)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={submitBooking} disabled={submitting || !form.sitter_id || estimatedTotal <= 0} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{submitting ? "Working…" : "Submit booking request"}</button></div>
       </>}
     </form>

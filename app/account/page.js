@@ -14,7 +14,7 @@ export default async function AccountPage() {
   const supabase = await createClient();
   const { data: bookings } = await supabase
     .from("bookings")
-    .select("id, service_type, status, payment_status, payment_method, estimated_total, created_at, sitters(display_name), booking_slots(starts_at)")
+    .select("id, service_type, status, payment_status, payment_method, estimated_total, price_breakdown, created_at, sitters(display_name), booking_slots(starts_at)")
     .eq("customer_id", profile.id)
     .order("created_at", { ascending: false })
     .limit(20);
