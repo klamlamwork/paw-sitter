@@ -8,11 +8,7 @@ export default async function AuthButtons() {
   if (profile?.id) {
     try {
       const supabase = await createClient();
-      const { data } = await supabase
-        .from("shop_shops")
-        .select("id")
-        .eq("owner_profile_id", profile.id)
-        .limit(1);
+      const { data } = await supabase.from("shop_shops").select("id").eq("owner_profile_id", profile.id).limit(1);
       hasShop = !!(data && data.length);
     } catch {
       hasShop = false;
@@ -27,6 +23,7 @@ export default async function AuthButtons() {
               full_name: profile.full_name,
               email: profile.email,
               hasShop,
+              avatar_url: profile.avatar_url || profile.photo_url || profile.profile_pic_url || "",
             }
           : null
       }
