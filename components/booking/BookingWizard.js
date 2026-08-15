@@ -31,7 +31,7 @@ export default function BookingWizard({
   const [customerMessage, setCustomerMessage] = useState("");
   const [form, setForm] = useState({
     service_type: "house_sit",
-    drop_in_duration: 60,
+    drop_in_duration: 30,
     sitter_id: preferredSitterId || "",
     payment_method: "later",
   });
@@ -59,27 +59,27 @@ export default function BookingWizard({
   })();
 
   const price = (() => {
-    if (datesPayload.length === 0 || !form.sitter_id) return null;
+    if (!form.sitter_id) return null;
     const svc = findSvc(form.sitter_id);
     if (!svc) return null;
-    const visitCount = form.service_type === "house_sit" || form.service_type === "boarding"
-      ? datesPayload.length
-      : datesPayload.reduce((n, d) => n + ((d.times || []).length || 0), 0);
     return estimateBookingPrice({
       serviceType: form.service_type,
       dates: datesPayload,
-      visitCount: visitCount || datesPayload.length,
-      durationMinutes: form.service_type === "house_sit" || form.service_type === "boarding" ? null : Number(form.drop_in_duration) || 60,
+      durationMinutes: form.service_type === "house_sit" || form.service_type === "boarding" ? null : Number(form.drop_in_duration) || 30,
       petCount: selectedPetIds.length,
-      rateRegular: svc.rate_regular,
-      rateHoliday: svc.rate_holiday,
-      extraPetRate: svc.extra_pet_rate,
-      rate60: svc.rate_60min,
+      rateRegular: Number(svc.rate_regular) || 0,
+      rateHoliday: Number(svc.rate_holiday) || 0,
+      extraPetRate: Number(svc.extra_pet_rate) || 0,
+      rate60: Number(svc.rate_60min) || 0,
       holidaySet,
     });
   })();
 
   const estimatedTotal = price?.total || 0;
+  const overnight = form.service_type === "house_sit" || form.service_type === "boarding";
+  const timedService = form.service_type === "drop_in" || form.service_type === "walking" || form.service_type === "dog_walking";
+  const houseSitDatesValid = !overnight || (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime);
+  const visitTimesValid = overnight || datesPayload.some((d) => (d.times || []).length > 0);
 
   async function submitBooking() {
     setError("");
@@ -113,7 +113,7 @@ export default function BookingWizard({
       if (bErr) throw bErr;
 
       const slots = [];
-      if (form.service_type === "house_sit" || form.service_type === "boarding") {
+      if (overnight) {
         if (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime) {
           const start = new Date(datesPayload[0].date);
           const end = new Date(datesPayload[datesPayload.length - 1].date);
@@ -126,7 +126,7 @@ export default function BookingWizard({
           slots.push({ starts_at: start.toISOString(), ends_at: end.toISOString(), duration_minutes: durationMinutes, service_type: normalizeServiceType(form.service_type) });
         }
       } else {
-        const dur = Number(form.drop_in_duration) || 60;
+        const dur = Number(form.drop_in_duration) || 30;
         for (const day of datesPayload) {
           const base = new Date(day.date);
           for (const t of day.times || []) {
@@ -154,10 +154,6 @@ export default function BookingWizard({
     }
   }
 
-  const houseSitDatesValid = form.service_type !== "house_sit" || (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime);
-  const visitTimesValid = form.service_type === "house_sit" || form.service_type === "boarding" || datesPayload.some((d) => (d.times || []).length > 0);
-  const timedService = form.service_type === "drop_in" || form.service_type === "dog_walking" || form.service_type === "walking";
-
   return (
     <form className="mt-6 space-y-4">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
@@ -168,25 +164,27 @@ export default function BookingWizard({
           {address.formatted_address && <p className="mt-1 text-xs text-[#7a5c4e]">{address.formatted_address}</p>}
         </label>
         <label className="block text-sm"><span className="font-medium">What service</span>
-          <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" value={form.service_type} onChange={(e) => setForm({ ...form, service_type: e.target.value })}>
+          <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" value={form.service_type} onChange={(e) => { setForm({ ...form, service_type: e.target.value }); setDatesPayload([]); }}>
             {Object.values(SERVICE_TYPES).map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
         </label>
         {timedService && <label className="block text-sm"><span className="font-medium">How long</span>
           <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" value={form.drop_in_duration} onChange={(e) => setForm({ ...form, drop_in_duration: Number(e.target.value) })}>
-            <option value={30}>30 minutes</option><option value={60}>60 minutes</option>
+            <option value={30}>30 minutes (base rate)</option><option value={60}>60 minutes (base + 60-min add-on)</option>
           </select>
         </label>}
         <button type="button" onClick={() => setStep(2)} disabled={!address.city} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button>
       </>}
       {step === 2 && <>
         <h2 className="text-xl font-semibold">Step 2 — Date(s)</h2>
-        {(form.service_type === "house_sit" || form.service_type === "boarding") && <p className="text-sm text-[#7a5c4e]">Choose start date and end date for consecutive overnight service.</p>}
-        <DatesStep value={datesPayload} onChange={setDatesPayload} serviceType={form.service_type === "boarding" ? "house_sit" : form.service_type} />
+        {overnight && <p className="text-sm text-[#7a5c4e]">Choose start date and end date. You are charged per night (end date is checkout).</p>}
+        {timedService && <p className="text-sm text-[#7a5c4e]">Select each visit day, then add a start time. Each time is one visit at the 30-minute base rate.</p>}
+        <DatesStep value={datesPayload} onChange={setDatesPayload} serviceType={form.service_type} />
         <div className="flex gap-2"><button type="button" onClick={() => setStep(1)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(3)} disabled={!datesPayload.length || !houseSitDatesValid || !visitTimesValid} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button></div>
       </>}
       {step === 3 && <>
         <h2 className="text-xl font-semibold">Step 3 — Your pets</h2>
+        <p className="text-sm text-[#7a5c4e]">The first pet is included. Each extra pet adds the sitter’s additional cat/dog rate.</p>
         <PetsStep customerId={customerId} selectedPetIds={selectedPetIds} onChange={setSelectedPetIds} />
         <label className="block text-sm"><span className="font-medium">Message (optional)</span>
           <textarea className="mt-1 min-h-[80px] w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" placeholder="Share any details the sitter should know" value={customerMessage} onChange={(e) => setCustomerMessage(e.target.value)} />
