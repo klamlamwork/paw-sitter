@@ -122,16 +122,26 @@ export default function SitterDashboardClient({ sitter }) {
   }
 
   async function saveWeeklyScope(supabase, scope, week) {
-    for (const day of week) {
-      const { error: dErr } = await supabase.from("sitter_weekly_availability").delete()
-        .eq("sitter_id", sitter.id).eq("day_of_week", day.day_of_week).eq("service_scope", scope);
-      if (dErr) throw dErr;
-      const { error: iErr } = await supabase.from("sitter_weekly_availability").insert({
-        sitter_id: sitter.id, day_of_week: day.day_of_week, service_scope: scope,
-        is_available: day.is_available, start_time: day.start_time, end_time: day.end_time,
-      });
-      if (iErr) throw iErr;
+    let del = supabase.from("sitter_weekly_availability").delete().eq("sitter_id", sitter.id);
+    if (scope === "default") {
+      del = del.or("service_scope.eq.default,service_scope.is.null");
+    } else {
+      del = del.eq("service_scope", scope);
     }
+    const { error: dErr } = await del;
+    if (dErr) throw dErr;
+
+    const { error: iErr } = await supabase.from("sitter_weekly_availability").insert(
+      week.map((day) => ({
+        sitter_id: sitter.id,
+        day_of_week: day.day_of_week,
+        service_scope: scope,
+        is_available: day.is_available,
+        start_time: day.start_time,
+        end_time: day.end_time,
+      }))
+    );
+    if (iErr) throw iErr;
   }
 
   async function saveAll() {
@@ -148,6 +158,9 @@ export default function SitterDashboardClient({ sitter }) {
     }
     const supabase = createClient();
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Your session expired. Please sign in again and save.");
+
       const { error: pErr } = await supabase.from("sitters").update({
         display_name: profile.display_name, bio: profile.bio, phone: profile.phone || null,
         service_city: profile.service_city, service_country: profile.service_country,
@@ -191,7 +204,6 @@ export default function SitterDashboardClient({ sitter }) {
       if (dropInEnabled) await saveWeeklyScope(supabase, "drop_in", weekDropIn);
       if (walkingEnabled) await saveWeeklyScope(supabase, "walking", weekWalking);
       setOk("Saved services, additional rates, and weekly hours.");
-      router.refresh();
     } catch (e) {
       setError(e.message || "Save failed");
     } finally {
