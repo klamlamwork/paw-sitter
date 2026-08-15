@@ -11,14 +11,16 @@ function hoursUntilUTC(startsAtISO) {
   return (start - now) / (1000 * 60 * 60);
 }
 
+function toCents(amount) {
+  const n = Number(amount) || 0;
+  if (Number.isInteger(n) && n >= 50) return n;
+  return Math.round(n * 100);
+}
+
 export async function POST(request) {
   try {
-    if (!process.env.STRIPE_SECRET_KEY) {
-      return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 503 });
-    }
-
     const body = await request.json();
-    const { booking_id } = body || {};
+    const { booking_id, payment_method = "card" } = body || {};
 
     if (!booking_id) {
       return NextResponse.json({ error: "Missing booking_id." }, { status: 400 });
@@ -44,19 +46,32 @@ export async function POST(request) {
     const firstSlot = (booking.booking_slots || [])[0];
     const startsAtISO = firstSlot?.starts_at;
     const hoursUntilStart = hoursUntilUTC(startsAtISO);
-
     if (hoursUntilStart !== null && hoursUntilStart < 48) {
       return NextResponse.json({ error: "Payment must be made at least 48 hours before the booking starts." }, { status: 400 });
     }
 
-    const totalCents = Math.round((Number(booking.estimated_total) || 0) * 100);
+    if (payment_method === "etransfer" || payment_method === "later") {
+      const { error } = await supabase
+        .from("bookings")
+        .update({
+          payment_method,
+          payment_status: "pending",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", booking_id)
+        .eq("customer_id", user.id);
+      if (error) throw error;
+      return NextResponse.json({ ok: true, method: payment_method });
+    }
+
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 503 });
+    }
+
+    const totalCents = toCents(booking.estimated_total);
     if (totalCents < 50) {
       return NextResponse.json({ error: "Invalid amount." }, { status: 400 });
     }
-
-    const platformFeePct = 10.0;
-    const platformFeeCents = Math.round((totalCents * platformFeePct) / 100);
-    const sitterPayoutCents = totalCents - platformFeeCents;
 
     const origin =
       process.env.NEXT_PUBLIC_SITE_URL ||
@@ -66,10 +81,7 @@ export async function POST(request) {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-      payment_intent_data: {
-        capture_method: "manual",
-        application_fee_amount: platformFeeCents,
-      },
+      customer_email: user.email || undefined,
       success_url: `${origin}/account?paid=1&booking=${booking_id}`,
       cancel_url: `${origin}/account?canceled=1&booking=${booking_id}`,
       metadata: {
@@ -85,8 +97,7 @@ export async function POST(request) {
             currency: "cad",
             unit_amount: totalCents,
             product_data: {
-              name: booking.service_type === "house_sit" ? "House sit" : "Drop-in visit",
-              description: `Platform fee ${platformFeePct}%`,
+              name: booking.service_type === "house_sit" ? "House sit" : "Sitter booking",
             },
           },
         },
@@ -97,14 +108,11 @@ export async function POST(request) {
       .from("bookings")
       .update({
         payment_method: "card",
-        payment_status: "authorized",
-        stripe_payment_intent: session.payment_intent,
-        platform_fee_cents: platformFeeCents,
-        sitter_payout_cents: sitterPayoutCents,
+        payment_status: "pending",
+        stripe_payment_intent: typeof session.payment_intent === "string" ? session.payment_intent : null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", booking_id);
-
     if (stampErr) throw stampErr;
 
     return NextResponse.json({ url: session.url });
