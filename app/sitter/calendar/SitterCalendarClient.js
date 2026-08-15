@@ -213,7 +213,7 @@ export default function SitterCalendarClient({
             Next year
           </button>
         </div>
-        <div className="flex flex-wrap gap-3 text-xs text-[#7a5c4e]">
+        <div className="flex flex-wrap gap-3 text-xs text-[#ffffff]">
           <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded border border-slate-300 bg-slate-200" /> Past</span>
           <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded border border-[#e8d5c4] bg-white" /> Default</span>
           <span className="inline-flex items-center gap-1"><span className="h-3 w-3 rounded border border-green-300 bg-green-100" /> All services</span>
