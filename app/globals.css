@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fff6e4;
+  --background: #d18f2a;
   --foreground: #3d2a14;
   --brand: #e39b2e;
   --brand-dark: #c47a18;
@@ -31,11 +31,28 @@ body {
 
 .paw-bg {
   min-height: 100vh;
-  background-color: #fff6e4;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='%23f5c571' fill-opacity='0.18'%3E%3Cellipse cx='38' cy='36' rx='8' ry='11' transform='rotate(-20 38 36)'/%3E%3Cellipse cx='60' cy='28' rx='8' ry='11'/%3E%3Cellipse cx='82' cy='36' rx='8' ry='11' transform='rotate(20 82 36)'/%3E%3Cellipse cx='30' cy='54' rx='7' ry='10' transform='rotate(-40 30 54)'/%3E%3Cpath d='M60 46c-11 0-19 8-19 19 0 7 5 14 19 19 14-5 19-12 19-19 0-11-8-19-19-19z'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: 120px 120px;
-  background-repeat: repeat;
+  background-color: #d18f2a;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='1000' viewBox='0 0 1000 1000'%3E%3Cg fill='%23ffffff' fill-opacity='0.28'%3E%3Cellipse cx='340' cy='350' rx='95' ry='135' transform='rotate(-20 340 350)'/%3E%3Cellipse cx='500' cy='260' rx='95' ry='135'/%3E%3Cellipse cx='660' cy='350' rx='95' ry='135' transform='rotate(20 660 350)'/%3E%3Cellipse cx='265' cy='510' rx='82' ry='120' transform='rotate(-43 265 510)'/%3E%3Cpath d='M500 440c-140 0-245 105-245 245 0 95 75 190 245 270 170-80 245-175 245-270 0-140-105-245-245-245z'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: min(1040px, 115vw) min(1040px, 115vw);
+  background-position: center calc(100% + 300px);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
+
+/* Honey-theme compatibility sweep for the existing component palette */
+.paw-bg [class*="bg-[#fff8f0]" { background-color: #fff9ed !important; }
+.paw-bg [class*="bg-[#faf3eb]" { background-color: #fff6e4 !important; }
+.paw-bg [class*="bg-[#f3e0d0]" { background-color: #fde8b8 !important; }
+.paw-bg [class*="bg-[#fff1e6]" { background-color: #ffeecf !important; }
+.paw-bg [class*="border-[#e8d5c4]" { border-color: #efd09a !important; }
+.paw-bg [class*="border-[#f0e0d2]" { border-color: #f3dba8 !important; }
+.paw-bg [class*="text-[#3b2a22]" { color: #3d2a14 !important; }
+.paw-bg [class*="text-[#5c4033]" { color: #5a4018 !important; }
+.paw-bg [class*="text-[#7a5c4e]" { color: #8a6a32 !important; }
+.paw-bg [class*="text-[#c45c26]" { color: #e39b2e !important; }
+.paw-bg [class*="bg-[#c45c26]" { background-color: #e39b2e !important; }
+.paw-bg [class*="hover:bg-[#9a4519]"]:hover { background-color: #c47a18 !important; }
+.paw-bg [class*="hover:text-[#c45c26]"]:hover { color: #e39b2e !important; }
 
 [data-page="shop"] button,
 [data-page="shop"] select,
