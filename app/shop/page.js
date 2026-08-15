@@ -111,12 +111,6 @@ export default async function ShopHomePage() {
             Product brands and retailers in one place.
           </p>
         </div>
-        <Link
-          href="/shop/cart"
-          className="rounded-full border border-[#e8d5c4] bg-white px-4 py-2 text-sm font-semibold text-[#3b2a22] hover:border-[#c45c26]/50"
-        >
-          Cart
-        </Link>
       </div>
 
       <section className="mt-10">
