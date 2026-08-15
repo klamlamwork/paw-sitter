@@ -44,19 +44,35 @@ function DeskMenu({ title, items, open, setOpen, trigger }) {
 
 export default function AuthNav({ profile }) {
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [desk, setDesk] = useState("");
   const rootRef = useRef(null);
 
   useEffect(() => {
     function onDoc(e) {
-      if (!rootRef.current?.contains(e.target)) { setAvatarOpen(false); setDesk(""); }
+      if (!rootRef.current?.contains(e.target)) { setAvatarOpen(false); setMoreOpen(false); setDesk(""); }
     }
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("touchstart", onDoc);
     return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("touchstart", onDoc); };
   }, []);
 
-  if (!profile) return <Link href="/login" className="rounded-full bg-[#e39b2e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#c47a18]">Log in</Link>;
+  if (!profile) {
+    return (
+      <div className="relative flex items-center gap-2" ref={rootRef}>
+        <Link href="/login" className="rounded-full bg-[#e39b2e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#c47a18]">Log in</Link>
+        <div className="relative sm:hidden">
+          <button type="button" aria-expanded={moreOpen} aria-label="More menu" onClick={() => { setMoreOpen((v) => !v); setAvatarOpen(false); }} className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-[#efd09a] bg-white text-[#5a4018] shadow-sm active:bg-[#fff9ed]"><MoreIcon /></button>
+          {moreOpen ? (
+            <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-2xl border border-[#efd09a] bg-white p-2 shadow-lg">
+              <Link href="/sitters" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Sitters</Link>
+              <Link href="/blog" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Blog</Link>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   const isSitter = profile.role === "sitter" || profile.role === "admin";
   const sitterLinks = isSitter ? [
@@ -84,16 +100,27 @@ export default function AuthNav({ profile }) {
         <form action="/auth/signout" method="post"><button type="submit" className="cursor-pointer rounded-full border border-[#efd09a] bg-white px-3 py-1.5 text-xs font-semibold text-[#5a4018]">Log out</button></form>
       </div>
 
-      <div className="relative flex items-center sm:hidden">
-        <button type="button" aria-expanded={avatarOpen} aria-label="Account menu" onClick={() => setAvatarOpen((v) => !v)} className="cursor-pointer"><ProfileAvatar profile={profile} /></button>
-        {avatarOpen ? (
-          <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-2xl border border-[#efd09a] bg-white p-2 shadow-lg">
-            <SubMenu title="Account" items={accountLinks} onNavigate={() => setAvatarOpen(false)} />
-            <SubMenu title="Sitter account" items={sitterLinks} onNavigate={() => setAvatarOpen(false)} />
-            <SubMenu title="Shop account" items={shopLinks} onNavigate={() => setAvatarOpen(false)} />
-            <form action="/auth/signout" method="post" className="mt-1 border-t border-[#efd09a] pt-1"><button type="submit" className="w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#e39b2e] hover:bg-[#fff9ed]">Log out</button></form>
-          </div>
-        ) : null}
+      <div className="flex items-center gap-1 sm:hidden">
+        <div className="relative">
+          <button type="button" aria-expanded={avatarOpen} aria-label="Account menu" onClick={() => { setAvatarOpen((v) => !v); setMoreOpen(false); }} className="cursor-pointer"><ProfileAvatar profile={profile} /></button>
+          {avatarOpen ? (
+            <div className="absolute right-0 top-full z-50 mt-2 w-64 rounded-2xl border border-[#efd09a] bg-white p-2 shadow-lg">
+              <SubMenu title="Account" items={accountLinks} onNavigate={() => setAvatarOpen(false)} />
+              <SubMenu title="Sitter account" items={sitterLinks} onNavigate={() => setAvatarOpen(false)} />
+              <SubMenu title="Shop account" items={shopLinks} onNavigate={() => setAvatarOpen(false)} />
+              <form action="/auth/signout" method="post" className="mt-1 border-t border-[#efd09a] pt-1"><button type="submit" className="w-full cursor-pointer rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#e39b2e] hover:bg-[#fff9ed]">Log out</button></form>
+            </div>
+          ) : null}
+        </div>
+        <div className="relative">
+          <button type="button" aria-expanded={moreOpen} aria-label="More menu" onClick={() => { setMoreOpen((v) => !v); setAvatarOpen(false); }} className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-[#efd09a] bg-white text-[#5a4018] shadow-sm active:bg-[#fff9ed]"><MoreIcon /></button>
+          {moreOpen ? (
+            <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-2xl border border-[#efd09a] bg-white p-2 shadow-lg">
+              <Link href="/sitters" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Sitters</Link>
+              <Link href="/blog" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Blog</Link>
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
