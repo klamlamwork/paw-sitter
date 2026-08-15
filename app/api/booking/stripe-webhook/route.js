@@ -5,6 +5,22 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+async function markBookingPaid(admin, bookingId, paymentIntent) {
+  if (!bookingId) return;
+  const { error } = await admin
+    .from("bookings")
+    .update({
+      payment_method: "card",
+      payment_status: "paid",
+      payment_received: true,
+      payment_received_at: new Date().toISOString(),
+      stripe_payment_intent: paymentIntent || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", bookingId);
+  if (error) throw error;
+}
+
 export async function POST(request) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   const key = process.env.STRIPE_SECRET_KEY;
@@ -23,25 +39,26 @@ export async function POST(request) {
     return NextResponse.json({ error: `Invalid signature: ${err.message}` }, { status: 400 });
   }
 
-  if (event.type === "checkout.session.completed") {
-    const session = event.data.object;
-    const bookingId = session.metadata?.booking_id;
-    if (!bookingId) return NextResponse.json({ received: true });
-
+  try {
     const admin = createAdminClient();
-    const { error } = await admin
-      .from("bookings")
-      .update({
-        payment_status: "authorized",
-        stripe_payment_intent: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", bookingId);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
+      const session = event.data.object;
+      if (session.payment_status === "paid" || event.type === "checkout.session.completed") {
+        const bookingId = session.metadata?.booking_id;
+        const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent || null;
+        await markBookingPaid(admin, bookingId, pi);
+      }
     }
-  }
 
-  return NextResponse.json({ received: true });
+    if (event.type === "payment_intent.succeeded") {
+      const pi = event.data.object;
+      const bookingId = pi.metadata?.booking_id;
+      await markBookingPaid(admin, bookingId, pi.id);
+    }
+
+    return NextResponse.json({ received: true });
+  } catch (err) {
+    return NextResponse.json({ error: err.message || "Webhook failed" }, { status: 500 });
+  }
 }
