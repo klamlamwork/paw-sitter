@@ -48,10 +48,30 @@ body {
 .paw-bg [class*="text-[#3b2a22]"] { color: #3d2a14 !important; }
 .paw-bg [class*="text-[#5c4033]"] { color: #5a4018 !important; }
 .paw-bg [class*="text-[#7a5c4e]"] { color: #8a6a32 !important; }
-.paw-bg [class*="text-[#c45c26]"] { color: #e39b2e !important; }
+.paw-bg [class*="text-[#c45c26]"],
+.paw-bg [class*="text-[#e39b2e]"] { color: #c77e10 !important; }
 .paw-bg [class*="bg-[#c45c26]"] { background-color: #e39b2e !important; }
 .paw-bg [class*="hover:bg-[#9a4519]"]:hover { background-color: #c47a18 !important; }
-.paw-bg [class*="hover:text-[#c45c26]"]:hover { color: #e39b2e !important; }
+.paw-bg [class*="hover:text-[#c45c26]"]:hover { color: #c77e10 !important; }
+
+/* Page subheads */
+.paw-bg p.mt-1.text-sm {
+  color: #ffffff !important;
+}
+
+/* Back / directory links like ← Shop portal */
+.paw-bg a.text-sm.font-semibold[class*="hover:underline"] {
+  color: #ffffff !important;
+}
+
+/* Homepage eyebrow + hero accent */
+.paw-bg p.mb-3.inline-block.uppercase {
+  display: none !important;
+}
+.paw-bg h1 span[class*="text-[#c45c26]"],
+.paw-bg h1 span[class*="text-[#e39b2e]"] {
+  color: #ffffff !important;
+}
 
 [data-page="shop"] button,
 [data-page="shop"] select,
