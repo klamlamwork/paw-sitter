@@ -23,7 +23,6 @@ export default function BookingWizard({
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [stripeEnabled, setStripeEnabled] = useState(true);
   const [address, setAddress] = useState({ formatted_address: "", lat: null, lng: null, city: "", state: "", postal_code: "", country: "" });
   const [datesPayload, setDatesPayload] = useState([]);
   const [selectedPetIds, setSelectedPetIds] = useState([]);
@@ -33,7 +32,7 @@ export default function BookingWizard({
     service_type: "house_sit",
     drop_in_duration: 60,
     sitter_id: preferredSitterId || "",
-    payment_method: "card",
+    payment_method: "later",
   });
 
   const holidaySet = new Set(holidayDates || []);
@@ -107,8 +106,6 @@ export default function BookingWizard({
     setSubmitting(true);
     try {
       const supabase = createClient();
-      const { data: payments } = await supabase.from("sitter_payments").select("stripe_enabled").limit(1);
-      setStripeEnabled(payments?.[0]?.stripe_enabled !== false);
 
       const { data: booking, error: bErr } = await supabase
         .from("bookings")
@@ -117,7 +114,7 @@ export default function BookingWizard({
           sitter_id: form.sitter_id,
           service_type: form.service_type,
           status: "pending",
-          payment_method: form.payment_method,
+          payment_method: "later",
           payment_status: "pending",
           estimated_total: estimatedTotal,
           service_address: address.formatted_address,
@@ -225,18 +222,10 @@ export default function BookingWizard({
       {step === 4 && <>
         <h2 className="text-xl font-semibold">Step 4 — Choose sitter</h2>
         {availableSitters.length === 0 ? <p className="text-sm text-[#7a5c4e]">No sitters match. Adjust address or dates.</p> : <div className="grid gap-2 sm:grid-cols-2">{availableSitters.map((s) => <label key={s.id} className="flex items-center gap-2 rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-3 py-2 text-sm"><input type="radio" name="sitter_id" checked={form.sitter_id === s.id} onChange={() => setForm({ ...form, sitter_id: s.id })} /><span>{s.display_name}</span></label>)}</div>}
-        <div className="flex gap-2"><button type="button" onClick={() => setStep(3)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(5)} disabled={!form.sitter_id || estimatedTotal <= 0} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button></div>
-      </>}
-      {step === 5 && <>
-        <h2 className="text-xl font-semibold">Step 5 — Review & submit</h2>
-        <p className="text-sm text-[#7a5c4e]">Order amount: <strong>${(estimatedTotal / 100).toFixed(2)}</strong> • Platform fee 10% • Sitter gets 90%</p>
-        {customerMessage && <p className="text-sm text-[#7a5c4e]">Your message: <span className="italic">{customerMessage}</span></p>}
-        <fieldset className="rounded-2xl border border-[#e8d5c4] p-3"><legend className="px-1 text-sm font-medium">How will you pay?</legend>
-          {stripeEnabled && <label className="mt-2 flex items-start gap-2 text-sm"><input type="radio" name="payment_method" checked={form.payment_method === "card"} onChange={() => setForm({ ...form, payment_method: "card" })} /><span>Card (Stripe)</span></label>}
-          <label className="mt-2 flex items-start gap-2 text-sm"><input type="radio" name="payment_method" checked={form.payment_method === "etransfer"} onChange={() => setForm({ ...form, payment_method: "etransfer" })} /><span>Interac e-Transfer (seller confirms when received)</span></label>
-          <label className="mt-2 flex items-start gap-2 text-sm"><input type="radio" name="payment_method" checked={form.payment_method === "later"} onChange={() => setForm({ ...form, payment_method: "later" })} /><span>Pay later</span></label>
-        </fieldset>
-        <div className="flex gap-2"><button type="button" onClick={() => setStep(4)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={submitBooking} disabled={submitting || !form.sitter_id || estimatedTotal <= 0} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{submitting ? "Working…" : "Submit booking request"}</button></div>
+        {form.sitter_id && estimatedTotal > 0 ? (
+          <p className="text-sm text-[#7a5c4e]">Estimated total: <strong>${(estimatedTotal / 100).toFixed(2)}</strong></p>
+        ) : null}
+        <div className="flex gap-2"><button type="button" onClick={() => setStep(3)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={submitBooking} disabled={submitting || !form.sitter_id || estimatedTotal <= 0} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{submitting ? "Working…" : "Submit booking request"}</button></div>
       </>}
     </form>
   );
