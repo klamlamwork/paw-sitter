@@ -116,7 +116,7 @@ export default async function ShopHomePage() {
       <section className="mt-10">
         <div className="flex items-end justify-between gap-2">
           <h2 className="text-lg font-semibold text-[#3b2a22]">Shop by brand</h2>
-          <Link href="/shop/brands" className="text-xs font-semibold text-[#c45c26] hover:underline">
+          <Link href="/shop/brands" className="text-xs font-semibold text-[#ffffff] hover:underline">
             All brands →
           </Link>
         </div>
@@ -126,7 +126,7 @@ export default async function ShopHomePage() {
       <section className="mt-8">
         <div className="flex items-end justify-between gap-2">
           <h2 className="text-lg font-semibold text-[#3b2a22]">Retailers</h2>
-          <Link href="/shop/shops" className="text-xs font-semibold text-[#c45c26] hover:underline">
+          <Link href="/shop/shops" className="text-xs font-semibold text-[#ffffff] hover:underline">
             All shops →
           </Link>
         </div>
