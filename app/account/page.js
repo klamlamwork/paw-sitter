@@ -14,7 +14,7 @@ export default async function AccountPage() {
   const supabase = await createClient();
   const { data: bookings } = await supabase
     .from("bookings")
-    .select("id, service_type, status, payment_status, payment_method, estimated_total, price_breakdown, created_at, sitters(display_name), booking_slots(starts_at)")
+    .select("id, service_type, status, payment_status, payment_method, estimated_total, price_breakdown, created_at, booked_timezone, service_address, service_address_city, service_address_state, service_address_country, sitters(display_name, service_city, service_country), booking_slots(starts_at, ends_at)")
     .eq("customer_id", profile.id)
     .order("created_at", { ascending: false })
     .limit(20);
@@ -44,7 +44,7 @@ export default async function AccountPage() {
       <h2 className="mt-10 text-xl font-semibold">My Paw Kids</h2>
       <MyPawKidsClient initialPets={pets || []} profileId={profile.id} />
       <h2 className="mt-10 text-xl font-semibold">Your bookings</h2>
-      <AccountBookingsClient bookings={bookings || []} />
+      <AccountBookingsClient bookings={bookings || []} displayTimezone={profile.timezone || ""} />
     </div>
   );
 }

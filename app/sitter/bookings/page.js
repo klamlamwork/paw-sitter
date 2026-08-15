@@ -20,7 +20,7 @@ export default async function SitterBookingsPage() {
 
   let query = supabase
     .from("bookings")
-    .select("*, booking_slots(*), profiles:customer_id(full_name, email, city, country, timezone)")
+    .select("*, booking_slots(*), profiles:customer_id(full_name, email, city, country, timezone), sitters(service_city, service_country, timezone)")
     .order("created_at", { ascending: false });
 
   if (sitter) {
@@ -43,16 +43,14 @@ export default async function SitterBookingsPage() {
           <h1 className="text-3xl font-bold text-[#3b2a22]">Booking requests</h1>
           <p className="mt-2 text-sm text-[#7a5c4e]">
             Accept or decline requests. After accept, mark paid when payment is received.
-            {sitter?.timezone ? (
-              <> Your timezone: <strong>{sitter.timezone}</strong>{sitter.service_city ? ` (${sitter.service_city})` : ""}.</>
-            ) : null}
+            {sitter?.timezone ? <> Your timezone: <strong>{sitter.timezone}</strong>{sitter.service_city ? ` (${sitter.service_city})` : ""}.</> : null}
           </p>
         </div>
         <Link href="/sitter/calendar" className="rounded-full border border-[#e8d5c4] bg-white px-4 py-2 text-sm font-semibold text-[#5c4033]">
           Calendar
         </Link>
       </div>
-      <SitterBookingsClient bookings={bookings || []} sitterTimezone={sitter?.timezone || null} />
+      <SitterBookingsClient bookings={bookings || []} sitterTimezone={sitter?.timezone || null} sitterLocation={sitter || null} />
     </div>
   );
 }
