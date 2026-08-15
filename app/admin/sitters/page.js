@@ -3,15 +3,18 @@ import { requireRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import AdminSittersClient from "./AdminSittersClient";
 import AdminPaymentsToggle from "./AdminPaymentsToggle";
+
 export const metadata = { title: "Admin Sitters | Paw Sitter" };
+
 export default async function AdminSittersPage() {
   const profile = await requireRole("admin");
   if (!profile) redirect("/login?next=/admin/sitters");
   const supabase = await createClient();
   const [{ data: sitters }, { data: payments }] = await Promise.all([
     supabase.from("sitters").select("*, sitter_services(*), sitter_gallery(*)").order("created_at", { ascending: false }),
-    supabase.from("sitter_payments").select("id, stripe_enabled, platform_fee_pct, updated_at").limit(1),
+    supabase.from("sitter_payments").select("id, stripe_enabled, card_enabled, etransfer_enabled, pay_later_enabled, platform_fee_pct, updated_at").limit(1),
   ]);
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Admin - Sitters</h1>
