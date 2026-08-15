@@ -1,6 +1,5 @@
 @import "tailwindcss";
-@import url("https://fonts.googleapis.com/css2?family=Google+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,400;6..144,500;6..144,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Parkinsans:wght@300..800&display=swap");
 
 :root {
   --background: #d18f2a;
@@ -21,7 +20,7 @@
   --color-brand-dark: var(--brand-dark);
   --color-cream: var(--cream);
   --color-muted: var(--muted);
-  --font-sans: "Google Sans", "Google Sans Flex", system-ui, sans-serif;
+  --font-sans: "Parkinsans", system-ui, sans-serif;
   --font-mono: var(--font-geist-mono);
 }
 
@@ -31,7 +30,7 @@ button,
 input,
 select,
 textarea {
-  font-family: "Google Sans", "Google Sans Flex", system-ui, sans-serif !important;
+  font-family: "Parkinsans", system-ui, sans-serif !important;
 }
 
 body {
@@ -64,32 +63,17 @@ body {
 .paw-bg [class*="hover:bg-[#9a4519]"]:hover { background-color: #c47a18 !important; }
 .paw-bg [class*="hover:text-[#c45c26]"]:hover { color: #c77e10 !important; }
 
-.paw-bg p.mt-1.text-sm {
-  color: #ffffff !important;
-}
-
-.paw-bg a.text-sm.font-semibold[class*="hover:underline"] {
-  color: #ffffff !important;
-}
-
-.paw-bg p.mb-3.inline-block.uppercase {
-  display: none !important;
-}
+.paw-bg p.mt-1.text-sm { color: #ffffff !important; }
+.paw-bg a.text-sm.font-semibold[class*="hover:underline"] { color: #ffffff !important; }
+.paw-bg p.mb-3.inline-block.uppercase { display: none !important; }
 .paw-bg h1 span[class*="text-[#c45c26]"],
-.paw-bg h1 span[class*="text-[#e39b2e]"] {
-  color: #ffffff !important;
-}
+.paw-bg h1 span[class*="text-[#e39b2e]"] { color: #ffffff !important; }
 
-/* H1 intro copy matches heading */
-.paw-bg h1 {
-  color: #000000 !important;
-}
+.paw-bg h1 { color: #000000 !important; }
 .paw-bg h1 + p,
 .paw-bg h1 + p.mt-1,
 .paw-bg h1 + p.mt-2,
-.paw-bg h1 + p.mt-3 {
-  color: #000000 !important;
-}
+.paw-bg h1 + p.mt-3 { color: #000000 !important; }
 
 [data-page="shop"] button,
 [data-page="shop"] select,
@@ -97,12 +81,8 @@ body {
 [data-page="blog"] select,
 .sitters-toolbar input,
 .sitters-toolbar select,
-.sitters-toolbar button {
-  border-radius: 0 !important;
-}
+.sitters-toolbar button { border-radius: 0 !important; }
 
 [data-page="shop"] button,
 [data-page="blog"] button,
-.sitters-toolbar button {
-  padding: 0.375rem 1rem !important;
-}
+.sitters-toolbar button { padding: 0.375rem 1rem !important; }
