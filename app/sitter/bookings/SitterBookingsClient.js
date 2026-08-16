@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { SERVICE_TYPES } from "@/lib/booking";
 import BookingPriceBreakdown from "@/components/booking/BookingPriceBreakdown";
+import ReviewBookingButton from "@/components/booking/ReviewBookingButton";
 import { formatInTimezone, serviceLocationText, timezoneLabel } from "@/lib/bookingTime";
 
 export default function SitterBookingsClient({ bookings: initial, sitterTimezone, sitterLocation }) {
@@ -18,7 +19,7 @@ export default function SitterBookingsClient({ bookings: initial, sitterTimezone
     setBusyId(id);
     setError("");
     const supabase = createClient();
-    const { error: err } = await supabase.from("bookings").update({ status }).eq("id", id);
+    const { error: err } = await supabase.from("bookings").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
     setBusyId("");
     if (err) { setError(err.message); return; }
     setBookings((list) => list.map((b) => (b.id === id ? { ...b, status } : b)));
@@ -88,6 +89,9 @@ export default function SitterBookingsClient({ bookings: initial, sitterTimezone
                 <p className="mt-1 text-xs text-[#7a5c4e]">Confirm you received payment. The day will show as booked on your calendar.</p>
               </div>
             ) : null}
+            <div className="mt-3">
+              <ReviewBookingButton bookingId={b.id} label="Review pets" />
+            </div>
           </article>
         );
       })}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import BookingPriceBreakdown from "@/components/booking/BookingPriceBreakdown";
+import ReviewBookingButton from "@/components/booking/ReviewBookingButton";
 import { formatInTimezone, serviceLocationText, timezoneLabel } from "@/lib/bookingTime";
 
 function hoursUntilUTC(startsAtISO) {
@@ -49,7 +50,7 @@ export default function AccountBookingsClient({ bookings = [], displayTimezone =
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not start payment");
       if (paymentMethod === "card") {
-        if (!data.url) throw new Error("Stripe did not return a checkout URL.");
+        if (!data.url) throw new Error("Missing checkout URL");
         window.location.href = data.url;
         return;
       }
@@ -62,7 +63,6 @@ export default function AccountBookingsClient({ bookings = [], displayTimezone =
   }
 
   async function cancelBooking(bookingId) {
-    if (!confirm("Cancel this booking?")) return;
     setError("");
     setBusyId(bookingId);
     try {
@@ -72,7 +72,6 @@ export default function AccountBookingsClient({ bookings = [], displayTimezone =
       window.location.reload();
     } catch (err) {
       setError(err.message || "Could not cancel");
-    } finally {
       setBusyId("");
     }
   }
@@ -84,8 +83,7 @@ export default function AccountBookingsClient({ bookings = [], displayTimezone =
       <ul className="mt-4 space-y-3">
         {bookings.length === 0 ? <li className="text-sm text-[#7a5c4e]">No bookings yet.</li> : bookings.map((b) => {
           const slots = b.booking_slots || [];
-          const firstSlot = slots[0];
-          const startsAtISO = firstSlot?.starts_at;
+          const startsAtISO = slots[0]?.starts_at;
           const hoursUntilStart = hoursUntilUTC(startsAtISO);
           const showPay = b.status === "accepted" && b.payment_status !== "authorized" && b.payment_status !== "paid";
           const canPay = hoursUntilStart === null || hoursUntilStart >= 48;
@@ -120,6 +118,9 @@ export default function AccountBookingsClient({ bookings = [], displayTimezone =
                 </div> : null}
               </div>)}
               {canCancel ? <div className="mt-2">{isLateCancel && hasPayment ? <p className="text-xs text-amber-700">Late cancel: 50% will be charged, remainder refunded.</p> : null}<button type="button" disabled={busyId === b.id} onClick={() => cancelBooking(b.id)} className="rounded-full border border-[#e8d5c4] bg-white px-4 py-1.5 text-xs font-semibold disabled:opacity-60">Cancel booking</button></div> : null}
+              <div className="mt-2">
+                <ReviewBookingButton bookingId={b.id} label="Review sitter" />
+              </div>
             </li>
           );
         })}
