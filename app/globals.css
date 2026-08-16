@@ -6,7 +6,7 @@
   --foreground: #3d2a14;
   --brand: #e39b2e;
   --brand-dark: #c47a18;
-  --brand-selected: #6b3a0a;
+  --brand-selected: #949392;
   --cream: #fff9ed;
   --muted: #8a6a32;
   --chip: #fde8b8;
@@ -63,7 +63,6 @@ body {
 .paw-bg [class*="hover:bg-[#9a4519]"]:hover { background-color: #c47a18 !important; }
 .paw-bg [class*="hover:text-[#c45c26]"]:hover { color: #c77e10 !important; }
 
-/* Default brand buttons stay honey; selected / pressed / current page go much darker */
 .paw-bg [class*="bg-[#c45c26]"],
 .paw-bg [class*="bg-[#e39b2e]"] { background-color: #e39b2e !important; }
 
@@ -77,7 +76,7 @@ body {
 .paw-bg .sitters-toolbar button[class*="bg-[#c45c26]"],
 .paw-bg [data-page="shop"] button[class*="bg-[#c45c26]"],
 .paw-bg [data-page="blog"] button[class*="bg-[#c45c26]"] {
-  background-color: #6b3a0a !important;
+  background-color: #949392 !important;
   color: #ffffff !important;
 }
 
