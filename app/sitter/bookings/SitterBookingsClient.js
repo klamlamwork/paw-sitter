@@ -43,7 +43,7 @@ export default function SitterBookingsClient({ bookings: initial, sitterTimezone
   return (
     <div className="mt-8 space-y-4">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      <p className="text-xs text-[#7a5c4e]">Your times use your dashboard timezone: <strong>{sitterTz}</strong>. Customer times use the customer’s current account timezone.</p>
+      <p className="text-xs text-[#ffffff]">Your times use your dashboard timezone: <strong>{sitterTz}</strong>. Customer times use the customer’s current account timezone.</p>
       {bookings.map((b) => {
         const label = SERVICE_TYPES[b.service_type]?.label || b.service_type;
         const slots = b.booking_slots || [];
