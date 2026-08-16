@@ -4,7 +4,7 @@ import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import SitterCalendarClient from "./SitterCalendarClient";
 
-export const metadata = { title: "Availability calendar | Paw Sitter" };
+export const metadata = { title: "Calendar | Paw Sitter" };
 
 function toDateKeyFromIso(iso) {
   const d = new Date(iso);
@@ -73,11 +73,11 @@ export default async function SitterCalendarPage() {
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-[#3b2a22]">Availability calendar</h1>
+          <h1 className="text-3xl font-bold text-[#3b2a22]">Sitter Calendar</h1>
           <p className="mt-2 text-sm text-[#7a5c4e]">
-            Past months are hidden. Past days are greyed out. Paid bookings show as{" "}
-            <strong>N booked</strong>. Defaults come from your{" "}
-            <Link href="/sitter/dashboard" className="font-semibold text-[#c45c26] hover:underline">
+            Past months are hidden. Past days are greyed out. Paid bookings show as {" "}
+            <strong>booked</strong>. Defaults come from your{" "}
+            <Link href="/sitter/dashboard" className="font-semibold text-[#ffffff] hover:underline">
               dashboard
             </Link>
             .
