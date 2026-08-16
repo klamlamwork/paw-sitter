@@ -7,7 +7,7 @@ export default function Header() {
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
         <Link href="/" className="flex min-w-0 items-center gap-2">
           <img src="/logo.svg" alt="Paw Sitter" width={36} height={36} className="h-9 w-9 shrink-0 rounded-full object-cover" />
-          <span className="truncate text-base font-bold text-[#3d2a14] sm:text-lg">Paw Sitter</span>
+          <span className="text-lg font-bold text-[#3d2a14]">Paw<span className="text-[#e39b2e]">Sitter</span></span>
         </Link>
         <nav className="flex shrink-0 items-center gap-2 sm:gap-4">
           <Link href="/sitters" className="hidden text-sm font-medium text-[#5a4018] hover:text-[#e39b2e] sm:inline">Sitters</Link>
