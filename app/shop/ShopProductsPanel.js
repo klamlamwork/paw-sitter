@@ -126,7 +126,6 @@ export default function ShopProductsPanel({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-[#7a5c4e]">
           {filtered.length} product{filtered.length === 1 ? "" : "s"}
-          {selectedCats.size + selectedLon.size > 0 ? <span className="text-[#a08070]"> · matching all selected filters</span> : null}
         </p>
         <label className="flex items-center gap-2 text-xs font-semibold text-[#5c4033]">
           Sort by
