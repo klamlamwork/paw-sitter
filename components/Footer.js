@@ -9,7 +9,7 @@ export default function Footer() {
         <div>
           <div className="mb-3 flex items-center gap-2">
             <Image src="/logo.svg" alt="" width={36} height={36} className="h-9 w-9" />
-            <span className="text-lg font-bold text-[#3d2a14]">Paw <span className="text-[#e39b2e]">Sitter</span></span>
+            <span className="text-lg font-bold text-[#3d2a14]">Paw<span className="text-[#e39b2e]">Sitter</span></span>
           </div>
           <p className="max-w-xs text-sm leading-relaxed text-black">Warm, reliable pet sitting for dogs and cats. Walks, feeding, and peace of mind while you are away.</p>
         </div>
@@ -26,7 +26,7 @@ export default function Footer() {
           <p className="mt-1 text-sm text-black"><span className="text-black">Email:</span>{" "}<a href="mailto:hello@pawsitter.example" className="font-medium text-black hover:underline">hello@pawsitter.example</a></p>
         </div>
       </div>
-      <div className="border-t border-[#efd09a] py-4 text-center text-xs text-black">© {year} Paw Sitter. All rights reserved.</div>
+      <div className="border-t border-[#efd09a] py-4 text-center text-xs text-black">© {year} PawSitter. All rights reserved.</div>
     </footer>
   );
 }
