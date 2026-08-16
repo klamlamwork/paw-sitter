@@ -6,6 +6,7 @@
   --foreground: #3d2a14;
   --brand: #e39b2e;
   --brand-dark: #c47a18;
+  --brand-selected: #6b3a0a;
   --cream: #fff9ed;
   --muted: #8a6a32;
   --chip: #fde8b8;
@@ -59,9 +60,26 @@ body {
 .paw-bg [class*="text-[#7a5c4e]"] { color: #8a6a32 !important; }
 .paw-bg [class*="text-[#c45c26]"],
 .paw-bg [class*="text-[#e39b2e]"] { color: #c77e10 !important; }
-.paw-bg [class*="bg-[#c45c26]"] { background-color: #e39b2e !important; }
 .paw-bg [class*="hover:bg-[#9a4519]"]:hover { background-color: #c47a18 !important; }
 .paw-bg [class*="hover:text-[#c45c26]"]:hover { color: #c77e10 !important; }
+
+/* Default brand buttons stay honey; selected / pressed / current page go much darker */
+.paw-bg [class*="bg-[#c45c26]"],
+.paw-bg [class*="bg-[#e39b2e]"] { background-color: #e39b2e !important; }
+
+.paw-bg button[aria-pressed="true"],
+.paw-bg button[aria-current="page"],
+.paw-bg a[aria-current="page"],
+.paw-bg [aria-pressed="true"][class*="bg-[#c45c26]"],
+.paw-bg [aria-pressed="true"][class*="bg-[#e39b2e]"],
+.paw-bg nav[aria-label="Pagination"] button[class*="bg-[#c45c26]"],
+.paw-bg nav[aria-label="Pagination"] button[class*="bg-[#e39b2e]"],
+.paw-bg .sitters-toolbar button[class*="bg-[#c45c26]"],
+.paw-bg [data-page="shop"] button[class*="bg-[#c45c26]"],
+.paw-bg [data-page="blog"] button[class*="bg-[#c45c26]"] {
+  background-color: #6b3a0a !important;
+  color: #ffffff !important;
+}
 
 .paw-bg a.text-sm.font-semibold[class*="hover:underline"] { color: #ffffff !important; }
 .paw-bg p.mb-3.inline-block.uppercase { display: none !important; }
@@ -70,7 +88,6 @@ body {
 
 .paw-bg h1 { color: #000000 !important; }
 
-/* Intro line under every page H1 — more specific than the muted-text remap */
 .paw-bg h1 + p,
 .paw-bg h1 + p.mt-1,
 .paw-bg h1 + p.mt-2,
