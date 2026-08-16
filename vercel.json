@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/admin/settle-escrow?payout=1",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/* * * *"
     }
   ]
 }
