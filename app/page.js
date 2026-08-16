@@ -11,13 +11,11 @@ export default function HomePage() {
             Local pet care you can trust
           </p>
           <h1 className="text-3xl font-bold leading-tight text-[#3b2a22] sm:text-4xl lg:text-5xl">
-            Happy pets.{" "}
+            Happy, Healthy PAWS.{" "}
             <span className="text-[#c45c26]">Calm owners.</span>
           </h1>
           <p className="mt-4 max-w-lg text-base leading-relaxed text-[#7a5c4e] sm:text-lg">
-            Paw Sitter offers dog walking, cat visits, feeding, and house
-            sitting — with photo updates so you always know your furry family
-            is safe and loved.
+            PawSitter offers Nutrition and Longevity Advises — with Researched Products and Sitter Services that best fit your paw kids, in the most affordable ways.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link
