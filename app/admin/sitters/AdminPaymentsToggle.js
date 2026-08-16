@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 
 const METHODS = [
   { key: "card_enabled", label: "Card (Stripe)", detail: "Redirect customers to Stripe Checkout." },
@@ -19,23 +18,28 @@ export default function AdminPaymentsToggle({ initial }) {
   const [error, setError] = useState("");
 
   async function save(key, enabled) {
+    const prev = methods;
+    const next = { ...methods, [key]: enabled };
+    setMethods(next);
     setSaving(true);
     setError("");
     try {
-      if (!initial?.id) throw new Error("No payments settings row found.");
-      const next = { ...methods, [key]: enabled };
-      const supabase = createClient();
-      const { error: err } = await supabase
-        .from("sitter_payments")
-        .update({
-          ...next,
-          stripe_enabled: next.card_enabled,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", initial.id);
-      if (err) throw err;
-      setMethods(next);
+      const res = await fetch("/api/admin/sitter-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Could not save payment settings");
+      if (data.settings) {
+        setMethods({
+          card_enabled: data.settings.card_enabled,
+          etransfer_enabled: data.settings.etransfer_enabled,
+          pay_later_enabled: data.settings.pay_later_enabled,
+        });
+      }
     } catch (err) {
+      setMethods(prev);
       setError(err.message || "Could not save payment settings");
     } finally {
       setSaving(false);
@@ -51,7 +55,7 @@ export default function AdminPaymentsToggle({ initial }) {
           <label key={method.key} className="flex items-start gap-3 rounded-xl border border-[#e8d5c4] bg-white p-3">
             <input
               type="checkbox"
-              checked={methods[method.key]}
+              checked={!!methods[method.key]}
               disabled={saving}
               onChange={(e) => save(method.key, e.target.checked)}
               className="mt-0.5 h-4 w-4"
