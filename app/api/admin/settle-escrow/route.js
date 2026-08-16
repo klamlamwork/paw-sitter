@@ -8,8 +8,12 @@ async function authorize(request) {
   const auth = request.headers.get("authorization") || "";
   const secret = process.env.CRON_SECRET || process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (secret && auth === `Bearer ${secret}`) return true;
-  const profile = await requireRole("admin");
-  return !!profile;
+  try {
+    const profile = await requireRole("admin");
+    return !!profile;
+  } catch {
+    return false;
+  }
 }
 
 export async function GET(request) {
