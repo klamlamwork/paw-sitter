@@ -76,7 +76,7 @@ create policy booking_messages_insert on public.booking_messages
 
 insert into storage.buckets (id, name, public)
 values ('inbox-photos', 'inbox-photos', true)
-<on conflict (id) do nothing;
+on conflict (id) do nothing;
 
 drop policy if exists inbox_photos_public_read on storage.objects;
 create policy inbox_photos_public_read on storage.objects
