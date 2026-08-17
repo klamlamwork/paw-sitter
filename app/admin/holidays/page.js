@@ -1,19 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { requireRole } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { getProfile } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import HolidayAdminClient from "./HolidayAdminClient";
 
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Holidays | Paw Sitter" };
 
 export default async function AdminHolidaysPage() {
-  try {
-    await requireRole("admin");
-  } catch {
-    redirect("/login?next=/admin/holidays");
-  }
-  const admin = createAdminClient();
-  const { data } = await admin.from("holiday_dates").select("holiday_date, name").order("holiday_date");
+  const profile = await getProfile();
+  if (!profile) redirect("/login?next=/admin/holidays");
+  if (profile.role !== "admin") redirect("/account");
+
+  const supabase = await createClient();
+  const { data } = await supabase.from("holiday_dates").select("holiday_date, name").order("holiday_date");
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
       <Link href="/admin/sitters" className="text-sm font-semibold text-[#c45c26] hover:underline">&larr; Admin</Link>
