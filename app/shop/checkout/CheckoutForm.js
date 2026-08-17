@@ -52,7 +52,10 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
         body: JSON.stringify({ code: promo, context: "shop", items: cartItems || [], userId: user?.id }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Could not apply promo");
+      if (!res.ok) {
+        const msg = [data.error, data.debug ? `(${JSON.stringify(data.debug)})` : ""].join(" ");
+        throw new Error(msg || "Could not apply promo");
+      }
       setPromoCode(data.code);
     } catch (err) {
       setPromoCode(null);

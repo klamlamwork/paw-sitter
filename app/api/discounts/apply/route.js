@@ -17,24 +17,16 @@ export async function POST(request) {
       const items = body?.items || [];
       const shippingCents = Number(body?.shippingCents) || 0;
       const result = await quoteShopCode(raw, user.id, items);
-      if (!result.ok) return NextResponse.json({ error: result.reason }, { status: 400 });
-      return NextResponse.json({
-        code: publicCode(result.code, result.quote),
-        discount_cents: result.quote.discountCents,
-        funded_by_platform: result.quote.fundedByPlatform,
-      });
+      if (!result.ok) return NextResponse.json({ error: result.reason, debug: result.debug }, { status: 400 });
+      return NextResponse.json({ code: publicCode(result.code, result.quote), discount_cents: result.quote.discountCents, funded_by_platform: result.quote.fundedByPlatform });
     }
 
     if (context === "booking") {
       const booking = body?.booking;
       if (!booking) return NextResponse.json({ error: "Missing booking." }, { status: 400 });
       const result = await quoteBookingCode(raw, user, booking);
-      if (!result.ok) return NextResponse.json({ error: result.reason }, { status: 400 });
-      return NextResponse.json({
-        code: publicCode(result.code, result.quote),
-        discount_cents: result.quote.discountCents,
-        funded_by_platform: result.quote.fundedByPlatform,
-      });
+      if (!result.ok) return NextResponse.json({ error: result.reason, debug: result.debug }, { status: 400 });
+      return NextResponse.json({ code: publicCode(result.code, result.quote), discount_cents: result.quote.discountCents, funded_by_platform: result.quote.fundedByPlatform });
     }
 
     return NextResponse.json({ error: "Invalid context." }, { status: 400 });
