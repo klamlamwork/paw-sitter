@@ -37,7 +37,6 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
     setForm((f) => ({ ...f, [k]: v }));
   }
 
-  // Group items by shop and initialize one method per shop
   useEffect(() => {
     const byShop = new Map();
     for (const it of items || []) {
@@ -52,7 +51,6 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
     setShopMethods(initial);
   }, [items]);
 
-  // Quote shipping whenever address or methods change
   useEffect(() => {
     let cancelled = false;
     async function runQuote() {
@@ -222,7 +220,7 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
         <div className="mt-3 space-y-1 border-t border-[#e8d5c4] pt-2">
           <div className="flex items-center justify-between"><span>Subtotal</span><span>{money(subtotalCents)}</span></div>
           {discount ? <div className="flex items-center justify-between text-green-700"><span>Discount ({promoCode?.label})</span><span>-{money(discount)}</span></div> : null}
-          {totalShippingCents ? <div className="flex items-center justify-between"><span>Shipping</span><span>{money(totalShippingCents)}</span></div> : null}
+          <div className="flex items-center justify-between"><span>Shipping</span><span>{money(totalShippingCents)}</span></div>
           <div className="flex items-center justify-between font-semibold"><span>Total</span><span>{money(total)}</span></div>
         </div>
       </div>
@@ -261,7 +259,7 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
               <div key={shopId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e8d5c4] p-2 text-sm">
                 <div>
                   <p className="font-semibold">Shop {shopId.slice(0, 8)}</p>
-                  {blocked ? <p className="text-xs text-red-600">Unavailable — {quote?.reason || "Region not supported"}</p> : <p className="text-xs text-[#7a5c4e]">{quote?.label || "Standard"} {quote?.cents ? `(${money(quote.cents)})` : ""}</p>}
+                  {blocked ? <p className="text-xs text-red-600">Unavailable — {quote?.reason || "Region not supported"}</p> : <p className="text-xs text-[#7a5c4e]">{quote?.label || "Standard"} {quote?.cents !== undefined ? `(${money(quote.cents)})` : ""}</p>}
                 </div>
                 <select
                   className="rounded-lg border border-[#e8d5c4] px-2 py-1 text-sm"

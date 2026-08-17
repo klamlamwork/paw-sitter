@@ -17,10 +17,14 @@ export async function POST(request) {
     }
 
     const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    const cartIdRes = await supabase.rpc("ensure_user_cart", { p_user_id: user.id });
+    const cartId = cartIdRes.data || cartIdRes.error ? null : cartIdRes.data;
+
     const { data: cartItems, error: cartErr } = await supabase
       .from("shop_cart_items")
       .select("id, product_id, variant_id, shop_id, qty, price_cents, currency")
-      .eq("user_id", profile.id);
+      .eq("cart_id", cartId);
     if (cartErr) throw cartErr;
     if (!cartItems?.length) return NextResponse.json({ error: "Cart empty" }, { status: 400 });
 
@@ -37,9 +41,11 @@ export async function POST(request) {
     for (const [shopId, items] of bySeller.entries()) {
       const method = selections[shopId] || "standard";
       const settings = await fetchShopShippingSettings(shopId);
+
+      // Fallback defaults if no settings exist
       if (!settings) {
-        // No settings → free shipping fallback
-        quotes.push({ shopId, method, cents: 0, label: "Shipping", blocked: false });
+        const fallback = { cents: 0, label: "Standard · Free" };
+        quotes.push({ shopId, method, ...fallback, blocked: false });
         continue;
       }
 
