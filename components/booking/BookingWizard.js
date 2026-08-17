@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { sortPreferredFirst } from "./preferredSitter";
 import { SERVICE_TYPES } from "@/lib/booking";
+import { sitterCoversAddress } from "@/lib/sitterMatch";
 import { estimateBookingPrice, normalizeServiceType } from "@/lib/bookingPricing";
 import GooglePlacesAutocomplete from "./GooglePlacesAutocomplete";
 import DatesStep from "./DatesStep";
@@ -12,20 +13,23 @@ import BookingPriceBreakdown from "./BookingPriceBreakdown";
 
 export default function BookingWizard({
   customerId,
-  customerProfile,
-  sitters,
-  services,
-  weekly,
-  overrides,
-  busyBySitter,
-  dayAvailability,
+  sitters = [],
+  services = [],
   holidayDates = [],
   preferredSitterId = "",
 }) {
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [address, setAddress] = useState({ formatted_address: "", lat: null, lng: null, city: "", state: "", postal_code: "", country: "" });
+  const [address, setAddress] = useState({
+    formatted_address: "",
+    lat: null,
+    lng: null,
+    city: "",
+    state: "",
+    postal_code: "",
+    country: "",
+  });
   const [datesPayload, setDatesPayload] = useState([]);
   const [selectedPetIds, setSelectedPetIds] = useState([]);
   const [customerMessage, setCustomerMessage] = useState("");
@@ -45,15 +49,19 @@ export default function BookingWizard({
 
   function findSvc(sitterId) {
     const wanted = normalizeServiceType(form.service_type);
-    return (sitterServicesMap[sitterId] || []).find((x) => normalizeServiceType(x.service_type) === wanted && x.enabled);
+    return (sitterServicesMap[sitterId] || []).find(
+      (x) => normalizeServiceType(x.service_type) === wanted && x.enabled
+    );
   }
 
+  const hasAddress = !!(address.formatted_address || address.city || address.lat != null);
+
   const availableSitters = (() => {
-    if (!address.city || !form.service_type || datesPayload.length === 0) return [];
+    if (!form.service_type || datesPayload.length === 0) return [];
     const list = (sitters || []).filter((sitter) => {
-      if (!findSvc(sitter.id)) return false;
-      if (sitter.service_city !== address.city) return false;
-      return true;
+      const svc = findSvc(sitter.id);
+      if (!svc) return false;
+      return sitterCoversAddress(sitter, svc, address);
     });
     return sortPreferredFirst(list, preferredSitterId);
   })();
@@ -65,7 +73,10 @@ export default function BookingWizard({
     return estimateBookingPrice({
       serviceType: form.service_type,
       dates: datesPayload,
-      durationMinutes: form.service_type === "house_sit" || form.service_type === "boarding" ? null : Number(form.drop_in_duration) || 30,
+      durationMinutes:
+        form.service_type === "house_sit" || form.service_type === "boarding"
+          ? null
+          : Number(form.drop_in_duration) || 30,
       petCount: selectedPetIds.length,
       rateRegular: Number(svc.rate_regular) || 0,
       rateHoliday: Number(svc.rate_holiday) || 0,
@@ -77,8 +88,10 @@ export default function BookingWizard({
 
   const estimatedTotal = price?.total || 0;
   const overnight = form.service_type === "house_sit" || form.service_type === "boarding";
-  const timedService = form.service_type === "drop_in" || form.service_type === "walking" || form.service_type === "dog_walking";
-  const houseSitDatesValid = !overnight || (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime);
+  const timedService =
+    form.service_type === "drop_in" || form.service_type === "walking" || form.service_type === "dog_walking";
+  const houseSitDatesValid =
+    !overnight || (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime);
   const visitTimesValid = overnight || datesPayload.some((d) => (d.times || []).length > 0);
 
   async function submitBooking() {
@@ -104,9 +117,7 @@ export default function BookingWizard({
           service_address_state: address.state,
           service_address_postal_code: address.postal_code,
           service_address_country: address.country,
-          customer_message: customerMessage || null,
-          customer_notes: "",
-          pet_notes: "",
+          customer_notes: customerMessage || "",
         })
         .select("id")
         .single();
@@ -117,13 +128,17 @@ export default function BookingWizard({
         if (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime) {
           const start = new Date(datesPayload[0].date);
           const end = new Date(datesPayload[datesPayload.length - 1].date);
-          end.setDate(end.getDate() + 1);
           const [sh, sm] = (datesPayload.startTime || "12:00").split(":").map(Number);
           const [eh, em] = (datesPayload.endTime || "12:00").split(":").map(Number);
           start.setHours(sh, sm, 0, 0);
           end.setHours(eh, em, 0, 0);
           const durationMinutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60000));
-          slots.push({ starts_at: start.toISOString(), ends_at: end.toISOString(), duration_minutes: durationMinutes, service_type: normalizeServiceType(form.service_type) });
+          slots.push({
+            starts_at: start.toISOString(),
+            ends_at: end.toISOString(),
+            duration_minutes: durationMinutes,
+            service_type: normalizeServiceType(form.service_type),
+          });
         }
       } else {
         const dur = Number(form.drop_in_duration) || 30;
@@ -135,15 +150,24 @@ export default function BookingWizard({
             startsAt.setHours(hh, mm, 0, 0);
             const endsAt = new Date(startsAt);
             endsAt.setMinutes(endsAt.getMinutes() + dur);
-            slots.push({ starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), duration_minutes: dur, service_type: normalizeServiceType(form.service_type) });
+            slots.push({
+              starts_at: startsAt.toISOString(),
+              ends_at: endsAt.toISOString(),
+              duration_minutes: dur,
+              service_type: normalizeServiceType(form.service_type),
+            });
           }
         }
       }
       if (!slots.length) throw new Error("Select at least one service time.");
-      const { error: sErr } = await supabase.from("booking_slots").insert(slots.map((s) => ({ booking_id: booking.id, ...s })));
+      const { error: sErr } = await supabase
+        .from("booking_slots")
+        .insert(slots.map((s) => ({ booking_id: booking.id, ...s })));
       if (sErr) throw sErr;
       if (selectedPetIds.length) {
-        const { error: pErr } = await supabase.from("booking_pets").insert(selectedPetIds.map((pet_id) => ({ booking_id: booking.id, pet_id })));
+        const { error: pErr } = await supabase
+          .from("booking_pets")
+          .insert(selectedPetIds.map((pet_id) => ({ booking_id: booking.id, pet_id })));
         if (pErr) throw pErr;
       }
       window.location.href = `/booking?placed=1&booking=${booking.id}`;
@@ -157,46 +181,134 @@ export default function BookingWizard({
   return (
     <form className="mt-6 space-y-4">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {step === 1 && <>
-        <h2 className="text-xl font-semibold">Step 1 — Where & service</h2>
-        <label className="block text-sm"><span className="font-medium">Where</span>
-          <GooglePlacesAutocomplete value={address} onChange={setAddress} placeholder="Type your address" />
-          {address.formatted_address && <p className="mt-1 text-xs text-[#7a5c4e]">{address.formatted_address}</p>}
-        </label>
-        <label className="block text-sm"><span className="font-medium">What service</span>
-          <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" value={form.service_type} onChange={(e) => { setForm({ ...form, service_type: e.target.value }); setDatesPayload([]); }}>
-            {Object.values(SERVICE_TYPES).map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
-          </select>
-        </label>
-        {timedService && <label className="block text-sm"><span className="font-medium">How long</span>
-          <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" value={form.drop_in_duration} onChange={(e) => setForm({ ...form, drop_in_duration: Number(e.target.value) })}>
-            <option value={30}>30 minutes (base rate)</option><option value={60}>60 minutes (base + 60-min add-on)</option>
-          </select>
-        </label>}
-        <button type="button" onClick={() => setStep(2)} disabled={!address.city} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button>
-      </>}
-      {step === 2 && <>
-        <h2 className="text-xl font-semibold">Step 2 — Date(s)</h2>
-        {overnight && <p className="text-sm text-[#7a5c4e]">Choose start date and end date. You are charged per night (end date is checkout).</p>}
-        {timedService && <p className="text-sm text-[#7a5c4e]">Select each visit day, then add a start time. Each time is one visit at the 30-minute base rate.</p>}
-        <DatesStep value={datesPayload} onChange={setDatesPayload} serviceType={form.service_type} />
-        <div className="flex gap-2"><button type="button" onClick={() => setStep(1)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(3)} disabled={!datesPayload.length || !houseSitDatesValid || !visitTimesValid} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">Next</button></div>
-      </>}
-      {step === 3 && <>
-        <h2 className="text-xl font-semibold">Step 3 — Your pets</h2>
-        <p className="text-sm text-[#7a5c4e]">The first pet is included. Each extra pet adds the sitter’s additional cat/dog rate.</p>
-        <PetsStep customerId={customerId} selectedPetIds={selectedPetIds} onChange={setSelectedPetIds} />
-        <label className="block text-sm"><span className="font-medium">Message (optional)</span>
-          <textarea className="mt-1 min-h-[80px] w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" placeholder="Share any details the sitter should know" value={customerMessage} onChange={(e) => setCustomerMessage(e.target.value)} />
-        </label>
-        <div className="flex gap-2"><button type="button" onClick={() => setStep(2)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={() => setStep(4)} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white">Next</button></div>
-      </>}
-      {step === 4 && <>
-        <h2 className="text-xl font-semibold">Step 4 — Choose sitter</h2>
-        {availableSitters.length === 0 ? <p className="text-sm text-[#7a5c4e]">No sitters match. Adjust address or dates.</p> : <div className="grid gap-2 sm:grid-cols-2">{availableSitters.map((s) => <label key={s.id} className="flex items-center gap-2 rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-3 py-2 text-sm"><input type="radio" name="sitter_id" checked={form.sitter_id === s.id} onChange={() => setForm({ ...form, sitter_id: s.id })} /><span>{s.display_name}</span></label>)}</div>}
-        {price ? <BookingPriceBreakdown breakdown={price} /> : null}
-        <div className="flex gap-2"><button type="button" onClick={() => setStep(3)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">Back</button><button type="button" onClick={submitBooking} disabled={submitting || !form.sitter_id || estimatedTotal <= 0} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">{submitting ? "Working…" : "Submit booking request"}</button></div>
-      </>}
+      {step === 1 && (
+        <>
+          <h2 className="text-xl font-semibold">Step 1 — Where & service</h2>
+          <label className="block text-sm">
+            <span className="font-medium">Where</span>
+            <GooglePlacesAutocomplete value={address} onChange={setAddress} placeholder="Type your address" />
+            {address.formatted_address ? <p className="mt-1 text-xs text-[#7a5c4e]">{address.formatted_address}</p> : null}
+          </label>
+          <label className="block text-sm">
+            <span className="font-medium">What service</span>
+            <select
+              className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
+              value={form.service_type}
+              onChange={(e) => {
+                setForm({ ...form, service_type: e.target.value });
+                setDatesPayload([]);
+              }}
+            >
+              {Object.values(SERVICE_TYPES).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {timedService ? (
+            <label className="block text-sm">
+              <span className="font-medium">How long</span>
+              <select
+                className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
+                value={form.drop_in_duration}
+                onChange={(e) => setForm({ ...form, drop_in_duration: Number(e.target.value) })}
+              >
+                <option value={30}>30 minutes (base rate)</option>
+                <option value={60}>60 minutes (base + 60-min add-on)</option>
+              </select>
+            </label>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setStep(2)}
+            disabled={!hasAddress}
+            className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            Next
+          </button>
+        </>
+      )}
+      {step === 2 && (
+        <>
+          <h2 className="text-xl font-semibold">Step 2 — Date(s)</h2>
+          {overnight ? (
+            <p className="text-sm text-[#7a5c4e]">Choose start date and end date. You are charged per night (end date is checkout).</p>
+          ) : null}
+          {timedService ? (
+            <p className="text-sm text-[#7a5c4e]">Select each visit day, then add a start time. Each time is one visit at the 30-minute base rate.</p>
+          ) : null}
+          <DatesStep value={datesPayload} onChange={setDatesPayload} serviceType={form.service_type} />
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setStep(1)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep(3)}
+              disabled={!datesPayload.length || !houseSitDatesValid || !visitTimesValid}
+              className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              Next
+            </button>
+          </div>
+        </>
+      )}
+      {step === 3 && (
+        <>
+          <h2 className="text-xl font-semibold">Step 3 — Your pets</h2>
+          <p className="text-sm text-[#7a5c4e]">The first pet is included. Each extra pet adds the sitter’s additional cat/dog rate.</p>
+          <PetsStep customerId={customerId} selectedPetIds={selectedPetIds} onChange={setSelectedPetIds} />
+          <label className="block text-sm">
+            <span className="font-medium">Message (optional)</span>
+            <textarea
+              className="mt-1 min-h-[80px] w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
+              placeholder="Share any details the sitter should know"
+              value={customerMessage}
+              onChange={(e) => setCustomerMessage(e.target.value)}
+            />
+          </label>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setStep(2)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">
+              Back
+            </button>
+            <button type="button" onClick={() => setStep(4)} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white">
+              Next
+            </button>
+          </div>
+        </>
+      )}
+      {step === 4 && (
+        <>
+          <h2 className="text-xl font-semibold">Step 4 — Choose sitter</h2>
+          {availableSitters.length === 0 ? (
+            <p className="text-sm text-[#7a5c4e]">No sitters match. Confirm the service is enabled and the sitter radius is Anywhere or covers this address.</p>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {availableSitters.map((s) => (
+                <label key={s.id} className="flex items-center gap-2 rounded-xl border border-[#e8d5c4] bg-[#fff8f0] px-3 py-2 text-sm">
+                  <input type="radio" name="sitter_id" checked={form.sitter_id === s.id} onChange={() => setForm({ ...form, sitter_id: s.id })} />
+                  <span>{s.display_name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          {price ? <BookingPriceBreakdown breakdown={price} /> : null}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setStep(3)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={submitBooking}
+              disabled={submitting || !form.sitter_id || estimatedTotal <= 0}
+              className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {submitting ? "Working…" : "Submit booking request"}
+            </button>
+          </div>
+        </>
+      )}
     </form>
   );
 }
