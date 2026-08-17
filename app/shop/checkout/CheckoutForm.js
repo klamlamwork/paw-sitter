@@ -145,6 +145,7 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
       if (!bySeller.size) throw new Error("No valid seller in cart.");
 
       for (const [sellerShopId, sellerItems] of bySeller.entries()) {
+        const method = shopMethods[sellerShopId] || "standard";
         const { data: order, error: orderErr } = await supabase
           .from("shop_orders")
           .insert({
@@ -162,9 +163,9 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
             shipping_state: form.state || "",
             shipping_postal_code: form.postal_code || "",
             shipping_country: form.country || "Canada",
-            shipping_method: shopMethods[sellerShopId] || "standard",
+            shipping_method: method,
             shipping_cents: 0,
-            shipping_label: "",
+            shipping_label: method === "pickup" ? "Pickup" : "Standard",
             discount_code: promoCode?.code || null,
             discount_code_id: promoCode?.id || null,
             discount_cents: promoCode?.discount_cents || 0,

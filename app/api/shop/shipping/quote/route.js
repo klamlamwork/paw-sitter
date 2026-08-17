@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { ensureUserCart } from "@/lib/shopCart";
 import { resolveShippingScope, resolveShippingRate, fetchShopShippingSettings } from "@/lib/shopShipping";
 
 export const dynamic = "force-dynamic";
@@ -18,8 +19,7 @@ export async function POST(request) {
 
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    const cartIdRes = await supabase.rpc("ensure_user_cart", { p_user_id: user.id });
-    const cartId = cartIdRes.data || cartIdRes.error ? null : cartIdRes.data;
+    const cartId = await ensureUserCart(supabase, user.id);
 
     const { data: cartItems, error: cartErr } = await supabase
       .from("shop_cart_items")
@@ -44,8 +44,9 @@ export async function POST(request) {
 
       // Fallback defaults if no settings exist
       if (!settings) {
-        const fallback = { cents: 0, label: "Standard · Free" };
+        const fallback = { cents: 800, label: "Standard · 3–7 business days" };
         quotes.push({ shopId, method, ...fallback, blocked: false });
+        totalShippingCents += fallback.cents;
         continue;
       }
 
