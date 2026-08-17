@@ -3,7 +3,7 @@ import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import Stripe from "stripe";
-import { computeCartTotals, money } from "@/lib/discounts";
+import { computeDiscountCents, money } from "@/lib/discounts";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,7 @@ export async function POST(request) {
     const supabase = await createClient();
     const admin = createAdminClient();
 
-    // Resolve products/variants and compute totals (post‑discount)
+    // Resolve products/variants
     const resolved = [];
     for (const it of items) {
       const { data: product } = await supabase
@@ -55,7 +55,12 @@ export async function POST(request) {
 
     if (!resolved.length) return NextResponse.json({ error: "Items unavailable" }, { status: 400 });
 
-    const { subtotalCents, discountCents, totalCents, discountObj } = computeCartTotals(resolved, discount_code);
+    const subtotalCents = resolved.reduce((s, r) => s + r.unit_cents * r.qty, 0);
+    const currency = resolved[0].currency || "CAD";
+
+    // Compute discount (platform or vendor funded) and post‑discount total
+    const { discountCents, fundedByPlatform } = computeDiscountCents(resolved, discount_code);
+    const totalCents = Math.max(0, subtotalCents - discountCents);
     if (totalCents <= 0) return NextResponse.json({ error: "Invalid total" }, { status: 400 });
 
     // Group by seller and create one order per seller, all linked to same Stripe session
@@ -79,12 +84,12 @@ export async function POST(request) {
       mode: "payment",
       payment_method_types: ["card"],
       line_items: lineItems,
-      currency: resolved[0].currency.toLowerCase(),
+      currency: currency.toLowerCase(),
       metadata: {
         profile_id: profile.id,
         discount_code: discount_code || "",
         discount_cents: String(discountCents),
-        funded_by_platform: discountObj?.fundedByPlatform ? "1" : "0",
+        funded_by_platform: fundedByPlatform ? "1" : "0",
       },
       success_url: `${request.headers.get("origin")}/shop/orders?placed=1&paid=1`,
       cancel_url: `${request.headers.get("origin")}/shop/cart`,
@@ -108,7 +113,7 @@ export async function POST(request) {
           stripe_session_id: session.id,
           discount_cents: sellerDiscount,
           discount_code: discount_code || null,
-          discount_funded_by: discountObj?.fundedByPlatform ? "platform" : discountCents ? "vendor" : null,
+          discount_funded_by: fundedByPlatform ? "platform" : discountCents ? "vendor" : null,
           updated_at: new Date().toISOString(),
         })
         .select("id")
