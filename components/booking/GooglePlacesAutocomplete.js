@@ -2,6 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 
+function cityFromComponents(components) {
+  const order = ["locality", "postal_town", "sublocality_level_1", "sublocality", "administrative_area_level_3", "administrative_area_level_2"];
+  for (const key of order) {
+    const hit = (components || []).find((c) => (c.types || []).includes(key));
+    if (hit?.long_name) return hit.long_name;
+  }
+  return "";
+}
+
 export default function GooglePlacesAutocomplete({ value, onChange, placeholder = "Enter address" }) {
   const inputRef = useRef(null);
   const autocompleteRef = useRef(null);
@@ -35,18 +44,20 @@ export default function GooglePlacesAutocomplete({ value, onChange, placeholder 
         formatted_address: place.formatted_address || "",
         lat: place.geometry.location.lat(),
         lng: place.geometry.location.lng(),
-        city: "",
+        city: cityFromComponents(place.address_components),
         state: "",
         postal_code: "",
         country: "",
       };
       (place.address_components || []).forEach((c) => {
         const t = c.types || [];
-        if (t.includes("locality")) result.city = c.long_name;
         if (t.includes("administrative_area_level_1")) result.state = c.short_name;
         if (t.includes("postal_code")) result.postal_code = c.long_name;
         if (t.includes("country")) result.country = c.long_name;
       });
+      if (!result.city && result.formatted_address) {
+        result.city = result.formatted_address.split(",")[0].trim();
+      }
       onChange(result);
     });
 
