@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { ensureUserCart } from "@/lib/shopCart";
 import { quoteShopCode, recordRedemption, publicCode } from "@/lib/discounts";
+import { deductShopOrderStock } from "@/lib/shopInventory";
 
 export const dynamic = "force-dynamic";
 

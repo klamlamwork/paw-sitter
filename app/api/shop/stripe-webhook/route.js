@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { deductShopOrderStock } from "@/lib/shopInventory";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,6 +42,16 @@ export async function POST(request) {
       .eq("stripe_session_id", session.id);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const orderIds = (session.metadata?.order_ids || "").split(",").filter(Boolean);
+    for (const orderId of orderIds) {
+      try {
+        await deductShopOrderStock(orderId);
+      } catch (stockErr) {
+        // Log but don't fail the webhook; stock can be reconciled manually
+        console.error(`Stock deduction failed for order ${orderId}:`, stockErr.message);
+      }
     }
   }
 
