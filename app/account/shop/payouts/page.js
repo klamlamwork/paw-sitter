@@ -1,41 +1,37 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { connectStatus } from "@/lib/stripeConnect";
-import PayoutConnectButton from "@/components/PayoutConnectButton";
+import { money } from "@/lib/discounts";
 
-export const metadata = { title: "Shop payouts | Paw Sitter" };
+export const metadata = { title: "Shop Payouts | Paw Sitter" };
 
 export default async function ShopPayoutsPage() {
-  const profile = await getProfile();
-  if (!profile) redirect("/login?next=/account/shop/payouts");
   const supabase = await createClient();
-  const { data: shop } = await supabase.from("shop_shops").select("id, name").eq("owner_profile_id", profile.id).order("created_at").limit(1).maybeSingle();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login?next=/account/shop/payouts");
+  const { data: shop } = await supabase.from("shop_shops").select("id, owner_profile_id").eq("owner_profile_id", user.id).maybeSingle();
   if (!shop) redirect("/account/shop");
-  const status = await connectStatus({ kind: "shop", shopId: shop.id });
-  const admin = createAdminClient();
-  const { data: entries } = await admin.from("escrow_entries").select("*").eq("provider_type", "shop").eq("provider_id", shop.id).order("created_at", { ascending: false }).limit(30);
+  const admin = supabase;
+  const { data: ledger } = await admin.from("discount_ledger").select("*").eq("vendor_type", "shop").eq("vendor_id", shop.id).order("created_at", { ascending: false }).limit(100);
+  const platformAbsorbed = (ledger || []).reduce((sum, row) => sum + (row.platform_absorbed_cents || 0), 0);
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <Link href="/account/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">&larr; Shop portal</Link>
-      <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Shop payouts</h1>
-      <p className="mt-2 text-sm text-[#7a5c4e]">Connect your shop bank account. Paid orders stay in Stripe escrow and release 14 days after you mark them delivered. Payouts are sent weekly.</p>
-      <div className="mt-6 rounded-2xl border border-[#e8d5c4] bg-white p-4">
-        <p className="text-sm">{shop.name}: <strong>{status.payouts_enabled ? "Ready for payouts" : status.connected ? "Finish bank setup" : "Not connected"}</strong></p>
-        <div className="mt-3"><PayoutConnectButton kind="shop" /></div>
+    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+      <h1 className="text-3xl font-bold text-[#3b2a22]">Shop Payouts</h1>
+      <div className="mt-4 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] p-4 text-sm">
+        <p className="font-semibold">Platform-funded promo cost</p>
+        <p className="mt-1 text-[#7a5c4e]">This is the total discount the platform absorbed on your orders (reduces our fee, not your payout).</p>
+        <p className="mt-2 text-lg font-bold text-[#3b2a22]">{money(platformAbsorbed)}</p>
       </div>
-      <h2 className="mt-8 text-lg font-semibold">Escrow ledger</h2>
-      <ul className="mt-3 space-y-2">
-        {(entries || []).map((e) => (
-          <li key={e.id} className="rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm">
-            <span className="font-semibold capitalize">{e.status.replace("_", " ")}</span>
-            {" · gross $"}{(e.gross_cents / 100).toFixed(2)}{" · you $"}{(e.net_cents / 100).toFixed(2)}
-            {e.release_at ? <span className="block text-xs text-[#7a5c4e]">Release {new Date(e.release_at).toLocaleString()}</span> : null}
+      <h2 className="mt-6 text-lg font-semibold text-[#3b2a22]">Recent ledger</h2>
+      <ul className="mt-3 space-y-2 text-sm">
+        {(ledger || []).slice(0, 20).map((row) => (
+          <li key={row.id} className="flex items-center justify-between rounded-xl border border-[#e8d5c4] bg-white p-3">
+            <div>
+              <p className="font-semibold">{row.code_id}</p>
+              <p className="text-xs text-[#7a5c4e]">Gross {money(row.gross_cents)} • Discount {money(row.discount_cents)} • Platform absorbed {money(row.platform_absorbed_cents)}</p>
+            </div>
+            <span className="text-xs text-[#7a5c4e]">{new Date(row.created_at).toLocaleDateString()}</span>
           </li>
         ))}
-        {!entries?.length ? <li className="text-sm text-[#7a5c4e]">No paid shop orders in escrow yet.</li> : null}
       </ul>
     </div>
   );
