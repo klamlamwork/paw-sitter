@@ -25,7 +25,10 @@ export default function SellerOrdersClient({ initialOrders }) {
     const supabase = createClient();
     const { error: err } = await supabase.from("shop_orders").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
     setBusyId("");
-    if (err) { setError(err.message); return; }
+    if (err) {
+      setError(err.message);
+      return;
+    }
     setOrders((list) => list.map((o) => (o.id === id ? { ...o, status } : o)));
   }
 
@@ -35,15 +38,18 @@ export default function SellerOrdersClient({ initialOrders }) {
     <div className="mt-6 space-y-4">
       {error ? <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
       {orders.map((order) => {
-        const total = (order.items || []).reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 0), 0);
+        const subtotal = (order.items || []).reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 0), 0);
+        const discount = order.discount_cents || 0;
+        const total = Math.max(0, subtotal - discount);
         const currency = order.items?.[0]?.currency || "CAD";
         const actions = NEXT[order.status] || [];
         return (
-          <article key={order.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4 text-sm">
+          <article key={order.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
                 <p className="font-semibold text-[#3b2a22]">{order.shop?.name || "Your shop"}</p>
                 <p className="text-xs text-[#7a5c4e]">{new Date(order.created_at).toLocaleString()}</p>
+                <p className="text-xs text-[#7a5c4e]">{order.payment_method || "Payment"} · {order.payment_status || "unpaid"}</p>
               </div>
               <span className="rounded-full bg-[#f3e0d0] px-2 py-0.5 text-xs font-semibold uppercase text-[#c45c26]">{order.status}</span>
             </div>
@@ -54,12 +60,19 @@ export default function SellerOrdersClient({ initialOrders }) {
             <ul className="mt-3 space-y-1">
               {(order.items || []).map((item) => (
                 <li key={item.id} className="flex justify-between gap-3">
-                  <span>{item.product?.slug ? <Link href={`/shop/p/${item.product.slug}`} className="hover:underline">{item.product.name}</Link> : item.product?.name || "Product"}<span className="text-[#7a5c4e]"> × {item.qty}</span></span>
+                  <span>
+                    {item.product?.slug ? <Link href={`/shop/p/${item.product.slug}`} className="hover:underline">{item.product.name}</Link> : item.product?.name || "Product"}
+                    <span className="text-[#7a5c4e]"> × {item.qty}</span>
+                  </span>
                   <span className="text-[#c45c26]">{formatShopPrice((item.price_cents || 0) * (item.qty || 0), item.currency)}</span>
                 </li>
               ))}
             </ul>
-            <p className="mt-2 font-bold text-[#3b2a22]">Total {formatShopPrice(total, currency)}</p>
+            <div className="mt-2 space-y-0.5 text-sm">
+              <p className="text-[#7a5c4e]">Subtotal {formatShopPrice(subtotal, currency)}</p>
+              {discount ? <p className="text-green-700">Discount{order.discount_code ? ` (${order.discount_code})` : ""} −{formatShopPrice(discount, currency)}</p> : null}
+              <p className="font-bold text-[#3b2a22]">Total {formatShopPrice(total, currency)}</p>
+            </div>
             {actions.length ? (
               <div className="mt-3 flex flex-wrap gap-2">
                 {actions.map((a) => (

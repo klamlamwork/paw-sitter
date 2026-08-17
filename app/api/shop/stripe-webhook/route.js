@@ -29,30 +29,32 @@ export async function POST(request) {
     const admin = createAdminClient();
     const discountCents = Number(session.metadata?.discount_cents) || 0;
     const fundedByPlatform = session.metadata?.funded_by_platform === "1";
-    const { error } = await admin
+    const { data: paidOrders, error } = await admin
       .from("shop_orders")
       .update({
         payment_status: "paid",
         paid_at: new Date().toISOString(),
         stripe_payment_intent: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent || null,
         discount_cents: discountCents,
-        discount_funded_by: fundedByPlatform ? "platform" : (discountCents ? "vendor" : null),
+        discount_funded_by: fundedByPlatform ? "platform" : discountCents ? "vendor" : null,
         updated_at: new Date().toISOString(),
       })
-      .eq("stripe_session_id", session.id);
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+      .eq("stripe_session_id", session.id)
+      .select("id");
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const orderIds = (session.metadata?.order_ids || "").split(",").filter(Boolean);
+    const fromMeta = (session.metadata?.order_ids || "").split(",").filter(Boolean);
+    const orderIds = [...new Set([...(paidOrders || []).map((o) => o.id), ...fromMeta])];
+    const notes = [];
     for (const orderId of orderIds) {
       try {
         await deductShopOrderStock(orderId);
       } catch (stockErr) {
-        // Log but don't fail the webhook; stock can be reconciled manually
+        notes.push(`${orderId}: ${stockErr.message}`);
         console.error(`Stock deduction failed for order ${orderId}:`, stockErr.message);
       }
     }
+    return NextResponse.json({ received: true, deducted: orderIds, notes });
   }
 
   return NextResponse.json({ received: true });
