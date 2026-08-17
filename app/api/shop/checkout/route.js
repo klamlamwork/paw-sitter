@@ -1,145 +1,172 @@
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import Stripe from "stripe";
-import { computeDiscountCents, money } from "@/lib/discounts";
+import { createClient } from "@/lib/supabase/server";
+import { ensureUserCart } from "@/lib/shopCart";
+import { quoteShopCode, recordRedemption, publicCode } from "@/lib/discounts";
 
 export const dynamic = "force-dynamic";
 
-const key = process.env.STRIPE_SECRET_KEY;
-const stripe = key ? new Stripe(key) : null;
-
 export async function POST(request) {
   try {
-    if (!stripe) return NextResponse.json({ error: "Stripe not configured" }, { status: 503 });
-    const profile = await getProfile();
-    if (!profile) return NextResponse.json({ error: "Sign in to checkout" }, { status: 401 });
-
+    if (!process.env.STRIPE_SECRET_KEY) {
+      return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 503 });
+    }
     const body = await request.json();
-    const { items = [], discount_code = "" } = body;
-    if (!items.length) return NextResponse.json({ error: "Cart empty" }, { status: 400 });
-
+    const address = body?.address || {};
+    const promoRaw = body?.promo_code;
     const supabase = await createClient();
-    const admin = createAdminClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ error: "Sign in to pay." }, { status: 401 });
 
-    // Resolve products/variants
-    const resolved = [];
-    for (const it of items) {
-      const { data: product } = await supabase
-        .from("shop_products")
-        .select("id, primary_shop_id, brand_shop_id, price_cents, currency, hide_price")
-        .eq("id", it.product_id)
-        .maybeSingle();
-      if (!product) continue;
-      let variant = null;
-      if (it.variant_id) {
-        const { data: v } = await supabase
-          .from("shop_product_variants")
-          .select("id, price_cents, is_active")
-          .eq("id", it.variant_id)
-          .maybeSingle();
-        variant = v;
+    const cartId = await ensureUserCart(supabase, user.id);
+    const { data: cartItems, error: cartErr } = await supabase
+      .from("shop_cart_items")
+      .select("id, product_id, variant_id, shop_id, qty, price_cents, currency, product:shop_products(name)")
+      .eq("cart_id", cartId);
+    if (cartErr) throw cartErr;
+    if (!cartItems?.length) return NextResponse.json({ error: "Your cart is empty." }, { status: 400 });
+
+    let discountCents = 0;
+    let fundedByPlatform = false;
+    let codeRow = null;
+    let breakdown = [];
+    if (promoRaw) {
+      const quoteResult = await quoteShopCode(promoRaw, user.id, cartItems);
+      if (!quoteResult.ok) return NextResponse.json({ error: quoteResult.reason }, { status: 400 });
+      discountCents = quoteResult.quote.discountCents;
+      fundedByPlatform = quoteResult.quote.fundedByPlatform;
+      codeRow = quoteResult.code;
+      breakdown = (quoteResult.quote.breakdown || []).map((r) => ({
+        vendorType: r.vendorType,
+        vendorId: r.vendorId,
+        gross: r.gross,
+        discount: r.discount,
+      }));
+    }
+
+    const subtotalCents = cartItems.reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 1), 0);
+    discountCents = Math.min(discountCents, subtotalCents);
+
+    const bySeller = new Map();
+    for (const item of cartItems) {
+      if (!item.shop_id) continue;
+      if (!item.price_cents || item.price_cents < 50) {
+        return NextResponse.json({ error: "Every card item needs a price of at least $0.50." }, { status: 400 });
       }
-      if (variant && !variant.is_active) continue;
-      const baseCents = variant?.price_cents ?? product.price_cents ?? 0;
-      resolved.push({
-        product_id: product.id,
-        variant_id: it.variant_id || null,
-        qty: Math.max(1, it.qty || 1),
-        unit_cents: baseCents,
-        currency: product.currency || "CAD",
-        seller_shop_id: product.primary_shop_id || product.brand_shop_id,
-      });
+      if (!bySeller.has(item.shop_id)) bySeller.set(item.shop_id, []);
+      bySeller.get(item.shop_id).push(item);
     }
-
-    if (!resolved.length) return NextResponse.json({ error: "Items unavailable" }, { status: 400 });
-
-    const subtotalCents = resolved.reduce((s, r) => s + r.unit_cents * r.qty, 0);
-    const currency = resolved[0].currency || "CAD";
-
-    // Compute discount (platform or vendor funded) and post‑discount total
-    const { discountCents, fundedByPlatform } = computeDiscountCents(resolved, discount_code);
-    const totalCents = Math.max(0, subtotalCents - discountCents);
-    if (totalCents <= 0) return NextResponse.json({ error: "Invalid total" }, { status: 400 });
-
-    // Group by seller and create one order per seller, all linked to same Stripe session
-    const bySeller = {};
-    for (const r of resolved) {
-      const key = r.seller_shop_id || "unknown";
-      if (!bySeller[key]) bySeller[key] = [];
-      bySeller[key].push(r);
-    }
-
-    const lineItems = resolved.map((r) => ({
-      price_data: {
-        currency: r.currency,
-        product_data: { name: `Order item ${r.product_id}` },
-        unit_amount: r.unit_cents,
-      },
-      quantity: r.qty,
-    }));
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_method_types: ["card"],
-      line_items: lineItems,
-      currency: currency.toLowerCase(),
-      metadata: {
-        profile_id: profile.id,
-        discount_code: discount_code || "",
-        discount_cents: String(discountCents),
-        funded_by_platform: fundedByPlatform ? "1" : "0",
-      },
-      success_url: `${request.headers.get("origin")}/shop/orders?placed=1&paid=1`,
-      cancel_url: `${request.headers.get("origin")}/shop/cart`,
-    });
+    if (!bySeller.size) return NextResponse.json({ error: "No valid seller in cart." }, { status: 400 });
 
     const orderIds = [];
-    for (const [sellerShopId, sellerItems] of Object.entries(bySeller)) {
-      const sellerSubtotal = sellerItems.reduce((s, r) => s + r.unit_cents * r.qty, 0);
-      const sellerDiscount = discountCents > 0
-        ? Math.min(sellerSubtotal, Math.round((sellerSubtotal / subtotalCents) * discountCents))
-        : 0;
-
-      const { data: order, error: orderErr } = await admin
+    for (const [sellerShopId, items] of bySeller.entries()) {
+      const sellerSubtotal = items.reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 1), 0);
+      const sellerDiscount =
+        discountCents > 0 && subtotalCents > 0
+          ? Math.min(sellerSubtotal, Math.round((sellerSubtotal / subtotalCents) * discountCents))
+          : 0;
+      const { data: order, error: orderErr } = await supabase
         .from("shop_orders")
         .insert({
-          user_id: profile.id,
+          user_id: user.id,
           seller_shop_id: sellerShopId,
           status: "pending",
-          payment_status: "pending",
           payment_method: "card",
-          stripe_session_id: session.id,
+          payment_status: "pending",
+          shipping_name: address.name || "",
+          shipping_email: address.email || user.email || "",
+          shipping_phone: address.phone || "",
+          shipping_line1: address.line1 || "",
+          shipping_line2: address.line2 || "",
+          shipping_city: address.city || "",
+          shipping_state: address.state || "",
+          shipping_postal_code: address.postal_code || "",
+          shipping_country: address.country || "Canada",
+          discount_code: codeRow?.code || null,
+          discount_code_id: codeRow?.id || null,
           discount_cents: sellerDiscount,
-          discount_code: discount_code || null,
-          discount_funded_by: fundedByPlatform ? "platform" : discountCents ? "vendor" : null,
-          updated_at: new Date().toISOString(),
+          discount_funded_by: fundedByPlatform ? "platform" : codeRow ? "vendor" : null,
         })
         .select("id")
         .single();
       if (orderErr) throw orderErr;
       orderIds.push(order.id);
-
-      const orderItems = sellerItems.map((r) => ({
-        order_id: order.id,
-        product_id: r.product_id,
-        variant_id: r.variant_id,
-        qty: r.qty,
-        price_cents: r.unit_cents,
-        currency: r.currency,
-      }));
-      const { error: itemsErr } = await admin.from("shop_order_items").insert(orderItems);
+      const { error: itemsErr } = await supabase.from("shop_order_items").insert(
+        items.map((i) => ({
+          order_id: order.id,
+          product_id: i.product_id,
+          variant_id: i.variant_id || null,
+          seller_shop_id: sellerShopId,
+          qty: i.qty,
+          price_cents: i.price_cents,
+          currency: i.currency || "CAD",
+        }))
+      );
       if (itemsErr) throw itemsErr;
     }
 
-    await stripe.checkout.sessions.update(session.id, {
-      metadata: { order_ids: orderIds.join(",") },
-    });
+    const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const currency = (cartItems[0].currency || "CAD").toLowerCase();
+    const sessionPayload = {
+      mode: "payment",
+      customer_email: address.email || user.email || undefined,
+      success_url: `${origin}/shop/orders?placed=1&paid=1`,
+      cancel_url: `${origin}/shop/checkout?canceled=1`,
+      metadata: {
+        user_id: user.id,
+        order_ids: orderIds.join(","),
+        discount_cents: String(discountCents),
+        funded_by_platform: fundedByPlatform ? "1" : "0",
+        discount_code: codeRow?.code || "",
+      },
+      line_items: cartItems.map((item) => ({
+        quantity: item.qty || 1,
+        price_data: {
+          currency,
+          unit_amount: item.price_cents,
+          product_data: { name: item.product?.name || "Shop item" },
+        },
+      })),
+    };
+    if (discountCents > 0) {
+      const coupon = await stripe.coupons.create({
+        amount_off: discountCents,
+        currency,
+        duration: "once",
+        name: codeRow?.code || "Discount",
+      });
+      sessionPayload.discounts = [{ coupon: coupon.id }];
+    }
+    const session = await stripe.checkout.sessions.create(sessionPayload);
 
-    return NextResponse.json({ sessionId: session.id, url: session.url, total: money(totalCents) });
+    const { error: stampErr } = await supabase
+      .from("shop_orders")
+      .update({ stripe_session_id: session.id, updated_at: new Date().toISOString() })
+      .in("id", orderIds);
+    if (stampErr) throw stampErr;
+
+    await supabase.from("shop_cart_items").delete().eq("cart_id", cartId);
+
+    if (codeRow && discountCents) {
+      await recordRedemption({
+        code: codeRow,
+        userId: user.id,
+        orderId: orderIds[0],
+        discountCents,
+        fundedByPlatform,
+        breakdown,
+      });
+    }
+
+    return NextResponse.json({
+      url: session.url,
+      discount_cents: discountCents,
+      code: codeRow ? publicCode(codeRow, { discountCents, breakdown }) : null,
+    });
   } catch (err) {
-    console.error("Checkout error:", err);
-    return NextResponse.json({ error: err.message || "Checkout failed" }, { status: 500 });
+    return NextResponse.json({ error: err.message || "Could not start card checkout" }, { status: 500 });
   }
 }
