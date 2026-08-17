@@ -1,55 +1,30 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import CheckoutForm from "./CheckoutForm";
 
-export const dynamic = "force-dynamic";
-
-export const metadata = {
-  title: "Checkout | Paw Sitter Shop",
-  description: "Shipping details for your Paw Sitter shop order.",
-};
+export const metadata = { title: "Checkout | Paw Sitter" };
 
 export default async function CheckoutPage() {
-  const profile = await getProfile();
-  if (!profile) redirect("/login?next=/shop/checkout");
-
   const supabase = await createClient();
-  const { data: address } = await supabase
-    .from("user_addresses")
-    .select("*")
-    .eq("user_id", profile.id)
-    .eq("is_default", true)
-    .maybeSingle();
-
-  const defaultAddress = {
-    name: address?.name || profile.full_name || "",
-    email: address?.email || profile.email || "",
-    phone: address?.phone || "",
-    line1: address?.line1 || "",
-    line2: address?.line2 || "",
-    city: address?.city || profile.city || "",
-    state: address?.state || "",
-    postal_code: address?.postal_code || "",
-    country: address?.country || profile.country || "Canada",
-    label: address?.label || "",
-  };
-
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login?next=/shop/checkout");
+  const { data: profile } = await supabase.from("profiles").select("default_address").eq("id", user.id).maybeSingle();
+  const { data: saved } = await supabase.from("shop_addresses").select("*").eq("user_id", user.id).eq("is_default", true).maybeSingle();
+  const defaultAddress = saved || profile?.default_address || null;
+  const { data: cartItems } = await supabase.from("shop_cart_items").select("id, product_id, variant_id, shop_id, qty, price_cents, currency, product:shop_products(name)").eq("cart_id", user.id);
+  const subtotal = (cartItems || []).reduce((sum, i) => sum + (i.price_cents || 0) * (i.qty || 1), 0);
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
-      <Link href="/shop/cart" className="text-sm font-semibold text-[#c45c26] hover:underline">
-        &larr; Back to cart
-      </Link>
-      <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Checkout</h1>
-      <p className="mt-1 text-sm text-[#7a5c4e]">
-        Confirm shipping details. Payment is next.
-      </p>
-      <CheckoutForm
-        userId={profile.id}
-        defaultAddress={defaultAddress}
-        hasSavedAddress={Boolean(address)}
-      />
+    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+      <h1 className="text-3xl font-bold text-[#3b2a22]">Checkout</h1>
+      <div className="mt-4 rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] p-4 text-sm">
+        <p className="font-semibold">Order summary</p>
+        <div className="mt-2 flex items-center justify-between">
+          <span>Subtotal</span>
+          <span>${(subtotal / 100).toFixed(2)}</span>
+        </div>
+        <p className="mt-1 text-xs text-[#7a5c4e]">Shipping and taxes calculated after payment method.</p>
+      </div>
+      <CheckoutForm userId={user.id} defaultAddress={defaultAddress} hasSavedAddress={!!saved} />
     </div>
   );
 }

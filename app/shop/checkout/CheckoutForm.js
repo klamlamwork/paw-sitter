@@ -28,6 +28,16 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
   const [promo, setPromo] = useState("");
   const [promoCode, setPromoCode] = useState(null);
   const [promoApplying, setPromoApplying] = useState(false);
+  const [cartSummary, setCartSummary] = useState({ subtotal: 0 });
+
+  async function loadCartSummary() {
+    const supabase = createClient();
+    const { data: items } = await supabase.from("shop_cart_items").select("qty, price_cents").eq("cart_id", userId);
+    const subtotal = (items || []).reduce((sum, i) => sum + (i.price_cents || 0) * (i.qty || 1), 0);
+    setCartSummary({ subtotal });
+  }
+
+  useState(() => { loadCartSummary(); });
 
   async function applyPromo() {
     setError("");
@@ -108,6 +118,10 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
             shipping_state: form.state || "",
             shipping_postal_code: form.postal_code || "",
             shipping_country: form.country || "Canada",
+            discount_code: promoCode?.code || null,
+            discount_code_id: promoCode?.id || null,
+            discount_cents: promoCode?.discount_cents || 0,
+            discount_funded_by: promoCode?.funded_by_platform ? "platform" : (promoCode ? "vendor" : null),
           })
           .select("id")
           .single();
@@ -140,7 +154,9 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
     setForm((f) => ({ ...f, [k]: v }));
   }
 
-  const subtotal = 0; // placeholder; your cart page already shows totals
+  const subtotal = cartSummary.subtotal;
+  const discount = promoCode?.discount_cents || 0;
+  const total = Math.max(0, subtotal - discount);
 
   return (
     <form onSubmit={submit} className="mx-auto max-w-2xl space-y-4 px-4 py-6">
@@ -165,6 +181,15 @@ export default function CheckoutForm({ userId, defaultAddress, hasSavedAddress }
           <input placeholder="Enter code" className="w-40 rounded-lg border border-[#e8d5c4] px-2 py-1 text-sm" value={promo} onChange={(e) => setPromo(e.target.value)} />
           <button type="button" disabled={promoApplying} onClick={applyPromo} className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-60">Apply</button>
           {promoCode ? <span className="text-xs text-green-700">Applied: {promoCode.label} ({money(promoCode.discount_cents)})</span> : null}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-[#e8d5c4] p-3 text-sm">
+        <p className="font-semibold">Checkout details</p>
+        <div className="mt-2 space-y-1">
+          <div className="flex items-center justify-between"><span>Subtotal</span><span>{money(subtotal)}</span></div>
+          {discount ? <div className="flex items-center justify-between text-green-700"><span>Discount</span><span>-{money(discount)}</span></div> : null}
+          <div className="flex items-center justify-between font-semibold"><span>Total</span><span>{money(total)}</span></div>
         </div>
       </div>
 
