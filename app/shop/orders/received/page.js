@@ -2,9 +2,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { money } from "@/lib/discounts";
 
-export const metadata = { title: "My Orders | Paw Sitter" };
+export const metadata = { title: "Order Received | Paw Sitter" };
 
-export default async function OrdersPage() {
+export default async function OrderReceivedPage({ searchParams }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/shop/orders");
@@ -13,11 +13,16 @@ export default async function OrdersPage() {
     .from("shop_orders")
     .select("id, seller_shop_id, status, payment_status, discount_cents, created_at, items:shop_order_items(qty, price_cents)")
     .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const placed = searchParams?.placed === "1";
+  const paid = searchParams?.paid === "1";
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold text-[#3b2a22]">My Orders</h1>
+    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+      <h1 className="text-3xl font-bold text-[#3b2a22]">{paid ? "Payment successful" : placed ? "Order placed" : "Order received"}</h1>
+      {paid ? <p className="mt-2 text-sm text-green-700">Your payment was confirmed. Thank you!</p> : null}
       <ul className="mt-6 space-y-3 text-sm">
         {(orders || []).map((o) => {
           const subtotal = (o.items || []).reduce((s, i) => s + (i.price_cents || 0) * (i.qty || 1), 0);
@@ -39,6 +44,7 @@ export default async function OrdersPage() {
           );
         })}
       </ul>
+      <a href="/shop" className="mt-6 inline-block rounded-full bg-[#c45c26] px-6 py-2 text-sm font-semibold text-white">Continue shopping</a>
     </div>
   );
 }
