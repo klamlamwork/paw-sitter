@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { ensureUserCart } from "@/lib/shopCart";
 import { quoteShopCode, recordRedemption, publicCode } from "@/lib/discounts";
+import { resolveShippingScope, resolveShippingRate, fetchShopShippingSettings } from "@/lib/shopShipping";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export async function POST(request) {
     const body = await request.json();
     const address = body?.address || {};
     const promoRaw = body?.promo_code;
+    const shippingSelections = body?.shipping_selections || {};
     const supabase = await createClient();
     const {
       data: { user },
@@ -61,12 +63,47 @@ export async function POST(request) {
     if (!bySeller.size) return NextResponse.json({ error: "No valid seller in cart." }, { status: 400 });
 
     const orderIds = [];
-    for (const [sellerShopId, items] of bySeller.entries()) {
-      const sellerSubtotal = items.reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 1), 0);
-      const sellerDiscount =
-        discountCents > 0 && subtotalCents > 0
-          ? Math.min(sellerSubtotal, Math.round((sellerSubtotal / subtotalCents) * discountCents))
-          : 0;
+    let totalShippingCents = 0;
+    const shippingLines = [];
+
+    for (const [sellerShopId, sellerItems] of bySeller.entries()) {
+      const method = shippingSelections[sellerShopId] || "standard";
+      const settings = await fetchShopShippingSettings(sellerShopId);
+
+      let shippingCents = 0;
+      let shippingLabel = "Shipping";
+      let pickupLocation = null;
+      let pickupReadyBy = null;
+
+      if (settings) {
+        const scopeResult = resolveShippingScope({
+          address,
+          shopProvince: settings.fulfillment_province,
+          allowNational: settings.allow_national,
+          nationalRegions: settings.national_regions || [],
+          shipToUs: settings.ship_to_us,
+          excludeRegions: settings.exclude_regions || [],
+        });
+
+        if (scopeResult.scope === "blocked") {
+          return NextResponse.json({ error: `Shipping unavailable to your region for shop ${sellerShopId}.` }, { status: 400 });
+        }
+
+        const sellerSubtotal = sellerItems.reduce((s, i) => s + (i.price_cents || 0) * (i.qty || 1), 0);
+        const rate = resolveShippingRate({ settings, method, scope: scopeResult.scope, subtotalCents: sellerSubtotal });
+        if (!rate) {
+          return NextResponse.json({ error: `Shipping unavailable for shop ${sellerShopId}.` }, { status: 400 });
+        }
+        shippingCents = rate.cents;
+        shippingLabel = rate.label || "Shipping";
+        if (method === "pickup" && settings.pickup_ready_hours) {
+          pickupLocation = "Pickup location";
+          pickupReadyBy = new Date(Date.now() + settings.pickup_ready_hours * 3600000).toISOString();
+        }
+      }
+
+      totalShippingCents += shippingCents;
+
       const { data: order, error: orderErr } = await supabase
         .from("shop_orders")
         .insert({
@@ -84,17 +121,23 @@ export async function POST(request) {
           shipping_state: address.state || "",
           shipping_postal_code: address.postal_code || "",
           shipping_country: address.country || "Canada",
+          shipping_method: method,
+          shipping_cents: shippingCents,
+          shipping_label: shippingLabel,
+          pickup_location: pickupLocation,
+          pickup_ready_by: pickupReadyBy,
           discount_code: codeRow?.code || null,
           discount_code_id: codeRow?.id || null,
-          discount_cents: sellerDiscount,
+          discount_cents: 0,
           discount_funded_by: fundedByPlatform ? "platform" : codeRow ? "vendor" : null,
         })
         .select("id")
         .single();
       if (orderErr) throw orderErr;
       orderIds.push(order.id);
+
       const { error: itemsErr } = await supabase.from("shop_order_items").insert(
-        items.map((i) => ({
+        sellerItems.map((i) => ({
           order_id: order.id,
           product_id: i.product_id,
           variant_id: i.variant_id || null,
@@ -105,11 +148,28 @@ export async function POST(request) {
         }))
       );
       if (itemsErr) throw itemsErr;
+
+      if (shippingCents > 0) {
+        shippingLines.push({
+          amount_total: shippingCents,
+          display_name: `Shipping (${method})`,
+        });
+      }
     }
 
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const currency = (cartItems[0].currency || "CAD").toLowerCase();
+
+    const lineItems = cartItems.map((item) => ({
+      price_data: {
+        currency,
+        product_data: { name: item.product?.name || "Shop item" },
+        unit_amount: item.price_cents,
+      },
+      quantity: item.qty || 1,
+    }));
+
     const sessionPayload = {
       mode: "payment",
       customer_email: address.email || user.email || undefined,
@@ -122,15 +182,9 @@ export async function POST(request) {
         funded_by_platform: fundedByPlatform ? "1" : "0",
         discount_code: codeRow?.code || "",
       },
-      line_items: cartItems.map((item) => ({
-        quantity: item.qty || 1,
-        price_data: {
-          currency,
-          unit_amount: item.price_cents,
-          product_data: { name: item.product?.name || "Shop item" },
-        },
-      })),
+      line_items: lineItems,
     };
+
     if (discountCents > 0) {
       const coupon = await stripe.coupons.create({
         amount_off: discountCents,
@@ -140,6 +194,17 @@ export async function POST(request) {
       });
       sessionPayload.discounts = [{ coupon: coupon.id }];
     }
+
+    if (totalShippingCents > 0) {
+      sessionPayload.shipping_options = [{
+        shipping_rate_data: {
+          type: "fixed_amount",
+          fixed_amount: { amount: totalShippingCents, currency },
+          display_name: "Shipping",
+        },
+      }];
+    }
+
     const session = await stripe.checkout.sessions.create(sessionPayload);
 
     const { error: stampErr } = await supabase
@@ -165,8 +230,10 @@ export async function POST(request) {
       url: session.url,
       discount_cents: discountCents,
       code: codeRow ? publicCode(codeRow, { discountCents, breakdown }) : null,
+      shipping_cents: totalShippingCents,
     });
   } catch (err) {
-    return NextResponse.json({ error: err.message || "Could not start card checkout" }, { status: 500 });
+    console.error("Checkout error:", err);
+    return NextResponse.json({ error: err.message || "Checkout failed" }, { status: 500 });
   }
 }
