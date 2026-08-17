@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
 import { runEscrowSettlement } from "@/lib/escrow";
+import { syncPaidTipsToEscrow } from "@/lib/tips";
 
 export const dynamic = "force-dynamic";
 
@@ -20,8 +21,13 @@ export async function GET(request) {
   if (!(await authorize(request))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const payOut = new URL(request.url).searchParams.get("payout") === "1";
+    const tips = await syncPaidTipsToEscrow();
     const result = await runEscrowSettlement({ payOut });
-    return NextResponse.json(result);
+    return NextResponse.json({
+      ...result,
+      created: [...(result.created || []), ...(tips.created || [])],
+      notes: [...(result.notes || []), ...(tips.notes || [])],
+    });
   } catch (err) {
     return NextResponse.json({ error: err.message || "Settlement failed" }, { status: 500 });
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { recordTipEscrow } from "@/lib/tips";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,6 +20,25 @@ async function markBookingPaid(admin, bookingId, paymentIntent) {
     })
     .eq("id", bookingId);
   if (error) throw error;
+}
+
+async function markTipPaid(admin, session) {
+  const tipId = session?.metadata?.tip_id;
+  if (!tipId && session?.metadata?.kind !== "tip") return false;
+  const id = tipId || null;
+  const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent || null;
+  const now = new Date().toISOString();
+  let query = admin.from("booking_tips").update({
+    status: "paid",
+    paid_at: now,
+    stripe_payment_intent: pi,
+    updated_at: now,
+  });
+  query = id ? query.eq("id", id) : query.eq("stripe_session_id", session.id);
+  const { data: tip, error } = await query.select("*").maybeSingle();
+  if (error) throw error;
+  if (tip) await recordTipEscrow(tip);
+  return true;
 }
 
 export async function POST(request) {
@@ -44,7 +64,9 @@ export async function POST(request) {
 
     if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
       const session = event.data.object;
-      if (session.payment_status === "paid" || event.type === "checkout.session.completed") {
+      if (session.metadata?.kind === "tip" || session.metadata?.tip_id) {
+        await markTipPaid(admin, session);
+      } else if (session.payment_status === "paid" || event.type === "checkout.session.completed") {
         const bookingId = session.metadata?.booking_id;
         const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent || null;
         await markBookingPaid(admin, bookingId, pi);
@@ -53,8 +75,19 @@ export async function POST(request) {
 
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object;
-      const bookingId = pi.metadata?.booking_id;
-      await markBookingPaid(admin, bookingId, pi.id);
+      if (pi.metadata?.kind === "tip" && pi.metadata?.tip_id) {
+        const now = new Date().toISOString();
+        const { data: tip, error } = await admin.from("booking_tips").update({
+          status: "paid",
+          paid_at: now,
+          stripe_payment_intent: pi.id,
+          updated_at: now,
+        }).eq("id", pi.metadata.tip_id).select("*").maybeSingle();
+        if (error) throw error;
+        if (tip) await recordTipEscrow(tip);
+      } else {
+        await markBookingPaid(admin, pi.metadata?.booking_id, pi.id);
+      }
     }
 
     return NextResponse.json({ received: true });

@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import SitterCancelBooking from "./SitterCancelBooking";
+import TipBookingButton from "./TipBookingButton";
 
 export default function ReviewBookingButton({ bookingId, label = "Write a review" }) {
   const [state, setState] = useState(null);
   const showSitterCancel = label === "Review pets";
+  const showTip = label === "Review sitter";
 
   useEffect(() => {
     let cancelled = false;
@@ -29,10 +31,11 @@ export default function ReviewBookingButton({ bookingId, label = "Write a review
     </a>
   ) : null;
 
-  if (!showSitterCancel && !reviewLink) return null;
+  if (!showSitterCancel && !showTip && !reviewLink) return null;
 
   return (
     <div className="mt-3 space-y-2">
+      {showTip ? <TipBookingButton bookingId={bookingId} /> : null}
       {showSitterCancel ? <SitterCancelBooking bookingId={bookingId} /> : null}
       {reviewLink}
     </div>
