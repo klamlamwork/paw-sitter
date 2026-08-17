@@ -23,8 +23,14 @@ export async function GET(request) {
 export async function POST(request) {
   if (!(await authorize(request))) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const admin = createAdminClient();
-  const { data: orders, error } = await admin.from("shop_orders").select("id").eq("payment_status", "paid");
+
+  // Deduct for all paid orders that haven't been deducted yet
+  const { data: orders, error } = await admin
+    .from("shop_orders")
+    .select("id, payment_status")
+    .eq("payment_status", "paid");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
   const done = [];
   const notes = [];
   for (const o of orders || []) {
