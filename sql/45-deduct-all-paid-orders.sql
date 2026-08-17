@@ -47,7 +47,7 @@ batch_deductions as (
     order_item_id,
     variant_id,
     batch_id,
-    least(needed, qty_on_hand) as take
+    least(needed, qty_on_hand) as take_qty
   from fefo_batches
   where rn = 1
 ),
@@ -57,8 +57,8 @@ remaining_after_batch as (
     bd.order_item_id,
     bd.variant_id,
     bd.batch_id,
-    bd.take,
-    (select qty from shop_order_items where id = bd.order_item_id) - bd.take as remaining
+    bd.take_qty,
+    (select qty from shop_order_items where id = bd.order_item_id) - bd.take_qty as remaining
   from batch_deductions bd
 ),
 variant_fallback as (
@@ -67,7 +67,7 @@ variant_fallback as (
     rab.order_item_id,
     rab.variant_id,
     rab.batch_id,
-    rab.take,
+    rab.take_qty,
     rab.remaining,
     v.stock_qty as variant_stock,
     least(rab.remaining, v.stock_qty) as take_from_variant
@@ -76,7 +76,7 @@ variant_fallback as (
   where rab.remaining > 0 and v.track_stock is not false
 ),
 final_moves as (
-  select order_id, order_item_id, variant_id, batch_id, take as qty from batch_deductions
+  select order_id, order_item_id, variant_id, batch_id, take_qty as qty from batch_deductions
   union all
   select order_id, order_item_id, variant_id, null as batch_id, take_from_variant as qty
   from variant_fallback
@@ -90,17 +90,17 @@ inserted_moves as (
 ),
 update_batches as (
   update shop_product_batches b
-  set qty_on_hand = b.qty_on_hand - d.take,
-      status = case when b.qty_on_hand - d.take <= 0 then 'depleted' else b.status end,
+  set qty_on_hand = b.qty_on_hand - d.qty,
+      status = case when b.qty_on_hand - d.qty <= 0 then 'depleted' else b.status end,
       updated_at = now()
-  from (select batch_id, take from final_moves where batch_id is not null) d
+  from (select batch_id, qty from final_moves where batch_id is not null) d
   where b.id = d.batch_id
 ),
 update_variants as (
   update shop_product_variants v
-  set stock_qty = v.stock_qty - d.take_from_variant,
+  set stock_qty = v.stock_qty - d.qty,
       updated_at = now()
-  from (select variant_id, take_from_variant from variant_fallback where take_from_variant > 0) d
+  from (select variant_id, qty from final_moves where batch_id is null) d
   where v.id = d.variant_id
 )
 select 'done' as status;
