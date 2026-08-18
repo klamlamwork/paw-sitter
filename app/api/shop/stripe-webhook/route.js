@@ -3,9 +3,25 @@ import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deductShopOrderStock } from "@/lib/shopInventory";
 import { onShopOrderPaid, onShopOrderRefunded } from "@/lib/pawPointsHooks";
+import { onBookingPaid } from "@/lib/pawPointsHooks";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+async function markBookingPaid(admin, bookingId, paymentIntent) {
+  if (!bookingId) return false;
+  const { error } = await admin.from("bookings").update({
+    payment_method: "card",
+    payment_status: "paid",
+    payment_received: true,
+    payment_received_at: new Date().toISOString(),
+    stripe_payment_intent: paymentIntent || null,
+    updated_at: new Date().toISOString(),
+  }).eq("id", bookingId);
+  if (error) throw error;
+  try { await onBookingPaid(bookingId); } catch (e) { console.error(e.message); }
+  return true;
+}
 
 export async function POST(request) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -26,8 +42,15 @@ export async function POST(request) {
 
   const admin = createAdminClient();
 
-  if (event.type === "checkout.session.completed") {
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
     const session = event.data.object;
+    const bookingId = session.metadata?.booking_id;
+    const pi = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent || null;
+    if (bookingId) {
+      await markBookingPaid(admin, bookingId, pi);
+      return NextResponse.json({ received: true, booking: bookingId });
+    }
+
     const discountCents = Number(session.metadata?.discount_cents) || 0;
     const fundedByPlatform = session.metadata?.funded_by_platform === "1";
     const { data: paidOrders, error } = await admin
@@ -35,7 +58,7 @@ export async function POST(request) {
       .update({
         payment_status: "paid",
         paid_at: new Date().toISOString(),
-        stripe_payment_intent: typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent || null,
+        stripe_payment_intent: pi,
         discount_cents: discountCents,
         discount_funded_by: fundedByPlatform ? "platform" : discountCents ? "vendor" : null,
         updated_at: new Date().toISOString(),
