@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/client";
 import { formatShopPrice } from "@/lib/shop";
 
 const NEXT = {
@@ -22,11 +21,15 @@ export default function SellerOrdersClient({ initialOrders }) {
   async function setStatus(id, status) {
     setBusyId(id);
     setError("");
-    const supabase = createClient();
-    const { error: err } = await supabase.from("shop_orders").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+    const res = await fetch("/api/shop/orders/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    });
+    const data = await res.json();
     setBusyId("");
-    if (err) {
-      setError(err.message);
+    if (!res.ok) {
+      setError(data.error || "Could not update");
       return;
     }
     setOrders((list) => list.map((o) => (o.id === id ? { ...o, status } : o)));
@@ -56,7 +59,7 @@ export default function SellerOrdersClient({ initialOrders }) {
             <p className="mt-3 text-xs text-[#7a5c4e]">Ship to</p>
             <p className="text-sm text-[#3b2a22]">{order.shipping_name}{order.shipping_phone ? ` · ${order.shipping_phone}` : ""}</p>
             <p className="text-sm text-[#5c4033]">{[order.shipping_line1, order.shipping_line2, order.shipping_city, order.shipping_state, order.shipping_postal_code, order.shipping_country].filter(Boolean).join(", ")}</p>
-            {order.shipping_email ? <p className="text-xs text-[#7a5c4e]">{order.shipping_email}</p> : null}
+            {order.shipping_label ? <p className="mt-1 text-xs text-[#7a5c4e]">{order.shipping_label} · {formatShopPrice(order.shipping_cents || 0, currency)}</p> : null}
             <ul className="mt-3 space-y-1">
               {(order.items || []).map((item) => (
                 <li key={item.id} className="flex justify-between gap-3">
@@ -70,7 +73,7 @@ export default function SellerOrdersClient({ initialOrders }) {
             </ul>
             <div className="mt-2 space-y-0.5 text-sm">
               <p className="text-[#7a5c4e]">Subtotal {formatShopPrice(subtotal, currency)}</p>
-              {discount ? <p className="text-green-700">Discount{order.discount_code ? ` (${order.discount_code})` : ""} −{formatShopPrice(discount, currency)}</p> : null}
+              {discount ? <p className="text-green-700">Discount −{formatShopPrice(discount, currency)}</p> : null}
               <p className="font-bold text-[#3b2a22]">Total {formatShopPrice(total, currency)}</p>
             </div>
             {actions.length ? (
