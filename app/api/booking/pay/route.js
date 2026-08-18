@@ -102,10 +102,10 @@ export async function POST(request) {
         },
       }],
     });
-    const { error: stampErr } = await supabase.from("bookings").update({
+
+    const stamp = {
       payment_method: "card",
       payment_status: "pending",
-      stripe_session_id: session.id,
       discount_code: codeRow?.code || null,
       discount_code_id: codeRow?.id || null,
       discount_cents: discountCents,
@@ -113,7 +113,8 @@ export async function POST(request) {
       paw_points_redeemed: points.points || 0,
       paw_points_cents: points.cents || 0,
       updated_at: new Date().toISOString(),
-    }).eq("id", booking_id);
+    };
+    const { error: stampErr } = await supabase.from("bookings").update(stamp).eq("id", booking_id);
     if (stampErr) throw stampErr;
     if (codeRow && discountCents) {
       await recordRedemption({ code: codeRow, userId: user.id, bookingId: booking_id, discountCents, fundedByPlatform, breakdown });
