@@ -78,7 +78,7 @@ export async function POST(request) {
       requestedPoints,
     });
     if (requestedPoints >= 100 && !(points.cents > 0)) {
-      return NextResponse.json({ error: `Could not apply ${requestedPoints} Paw Points. Need at least 100 available points, max 40% of the booking.` }, { status: 400 });
+      return NextResponse.json({ error: points.reason || `Could not apply Paw Points on this booking (min 100, max 40% = ${points.capPoints || 0} pts).` }, { status: 400 });
     }
 
     const chargeCents = Math.max(50, totalCents - discountCents - (points.cents || 0));
