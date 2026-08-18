@@ -15,7 +15,9 @@ function hoursUntilUTC(startsAtISO) {
 
 export async function POST(request) {
   try {
-    const { booking_id, payment_method = "card", promo_code, paw_points } = await request.json();
+    const body = await request.json();
+    const { booking_id, payment_method = "card", promo_code } = body;
+    const requestedPoints = Math.floor(Number(body.paw_points ?? body.points ?? 0) || 0);
     if (!booking_id || !["card", "etransfer", "later"].includes(payment_method)) {
       return NextResponse.json({ error: "Invalid payment request." }, { status: 400 });
     }
@@ -73,15 +75,15 @@ export async function POST(request) {
       userId: user.id,
       bookingId: booking_id,
       merchandiseCents: Math.max(0, totalCents - discountCents),
-      requestedPoints: paw_points,
+      requestedPoints,
     });
+    if (requestedPoints >= 100 && !(points.cents > 0)) {
+      return NextResponse.json({ error: `Could not apply ${requestedPoints} Paw Points. Need at least 100 available points, max 40% of the booking.` }, { status: 400 });
+    }
 
     const chargeCents = Math.max(50, totalCents - discountCents - (points.cents || 0));
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const labelBits = [];
-    if (discountCents) labelBits.push("promo applied");
-    if (points.points) labelBits.push(`${points.points} Paw Points`);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer_email: user.email || undefined,
@@ -104,7 +106,7 @@ export async function POST(request) {
           unit_amount: chargeCents,
           product_data: {
             name: booking.service_type === "house_sit" ? "House sit" : "Sitter booking",
-            description: labelBits.length ? `After ${labelBits.join(" + ")}` : undefined,
+            description: points.points ? `After ${points.points} Paw Points (−$${(points.cents / 100).toFixed(2)})` : undefined,
           },
         },
       }],
