@@ -43,15 +43,24 @@ export default function AccountBookingsClient({ bookings = [] }) {
     return () => { cancelled = true; };
   }, []);
 
+  function pointsFor(bookingId) {
+    const typed = document.getElementById(`paw-${bookingId}`)?.value;
+    const fromState = pawByBooking[bookingId]?.points;
+    return Math.floor(Number(typed ?? fromState) || 0);
+  }
+
   async function startPay(bookingId, paymentMethod) {
     setError("");
     setBusyId(bookingId);
     try {
-      const paw = pawByBooking[bookingId] || {};
       const res = await fetch("/api/booking/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ booking_id: bookingId, payment_method: paymentMethod, paw_points: paw.points || 0 }),
+        body: JSON.stringify({
+          booking_id: bookingId,
+          payment_method: paymentMethod,
+          paw_points: pointsFor(bookingId),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not start payment");
@@ -107,6 +116,8 @@ export default function AccountBookingsClient({ bookings = [] }) {
                 <button type="button" onClick={() => setOpenId(open ? "" : b.id)} disabled={!methods} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{methods ? (open ? "Hide payment options" : "Pay now") : "Loading payment options…"}</button>
                 {open && methods ? <div className="mt-2 space-y-2 rounded-xl border border-[#e8d5c4] bg-white p-3">
                   <PawPointsCheckout
+                    inputId={`paw-${b.id}`}
+                    sourceKey="sitter_booking"
                     orderCents={orderCents}
                     items={[{ net_cents: orderCents, qty: 1, source_key: "sitter_booking" }]}
                     onChange={(p) => setPawByBooking((m) => ({ ...m, [b.id]: p }))}
