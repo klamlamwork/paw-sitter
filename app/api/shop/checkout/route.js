@@ -3,7 +3,11 @@ import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { ensureUserCart } from "@/lib/shopCart";
 import { quoteShopCode, recordRedemption, publicCode } from "@/lib/discounts";
-import { resolveShippingScope, resolveShippingRate, fetchShopShippingSettings } from "@/lib/shopShipping";
+import {
+  defaultShippingSettings,
+  resolveShippingRate,
+  resolveShippingScope,
+} from "@/lib/shopShipping";
 
 export const dynamic = "force-dynamic";
 
@@ -62,47 +66,33 @@ export async function POST(request) {
     }
     if (!bySeller.size) return NextResponse.json({ error: "No valid seller in cart." }, { status: 400 });
 
+    const shopIds = [...bySeller.keys()];
+    const { data: settingRows } = await supabase.from("shop_shipping_settings").select("*").in("shop_id", shopIds);
+    const settingsByShop = Object.fromEntries((settingRows || []).map((row) => [row.shop_id, row]));
+
     const orderIds = [];
     let totalShippingCents = 0;
-    const shippingLines = [];
 
     for (const [sellerShopId, sellerItems] of bySeller.entries()) {
       const method = shippingSelections[sellerShopId] || "standard";
-      const settings = await fetchShopShippingSettings(sellerShopId);
-
-      let shippingCents = 0;
-      let shippingLabel = "Shipping";
-      let pickupLocation = null;
-      let pickupReadyBy = null;
-
-      if (settings) {
-        const scopeResult = resolveShippingScope({
-          address,
-          shopProvince: settings.fulfillment_province,
-          allowNational: settings.allow_national,
-          nationalRegions: settings.national_regions || [],
-          shipToUs: settings.ship_to_us,
-          excludeRegions: settings.exclude_regions || [],
-        });
-
-        if (scopeResult.scope === "blocked") {
-          return NextResponse.json({ error: `Shipping unavailable to your region for shop ${sellerShopId}.` }, { status: 400 });
-        }
-
-        const sellerSubtotal = sellerItems.reduce((s, i) => s + (i.price_cents || 0) * (i.qty || 1), 0);
-        const rate = resolveShippingRate({ settings, method, scope: scopeResult.scope, subtotalCents: sellerSubtotal });
-        if (!rate) {
-          return NextResponse.json({ error: `Shipping unavailable for shop ${sellerShopId}.` }, { status: 400 });
-        }
-        shippingCents = rate.cents;
-        shippingLabel = rate.label || "Shipping";
-        if (method === "pickup" && settings.pickup_ready_hours) {
-          pickupLocation = "Pickup location";
-          pickupReadyBy = new Date(Date.now() + settings.pickup_ready_hours * 3600000).toISOString();
-        }
+      const settings = settingsByShop[sellerShopId] || defaultShippingSettings();
+      const scopeResult = resolveShippingScope({
+        address,
+        shopProvince: settings.fulfillment_province,
+        allowNational: settings.allow_national !== false,
+        nationalRegions: settings.national_regions || [],
+        shipToUs: !!settings.ship_to_us,
+        excludeRegions: settings.exclude_regions || [],
+      });
+      if (scopeResult.scope === "blocked") {
+        return NextResponse.json({ error: scopeResult.reason || "Shipping unavailable to your region." }, { status: 400 });
       }
-
-      totalShippingCents += shippingCents;
+      const sellerSubtotal = sellerItems.reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 1), 0);
+      const rate = resolveShippingRate({ settings, method, scope: scopeResult.scope, subtotalCents: sellerSubtotal });
+      if (!rate) {
+        return NextResponse.json({ error: "That shipping method is not available for this shop." }, { status: 400 });
+      }
+      totalShippingCents += rate.cents;
 
       const { data: order, error: orderErr } = await supabase
         .from("shop_orders")
@@ -122,10 +112,12 @@ export async function POST(request) {
           shipping_postal_code: address.postal_code || "",
           shipping_country: address.country || "Canada",
           shipping_method: method,
-          shipping_cents: shippingCents,
-          shipping_label: shippingLabel,
-          pickup_location: pickupLocation,
-          pickup_ready_by: pickupReadyBy,
+          shipping_cents: rate.cents,
+          shipping_label: rate.label,
+          pickup_location: method === "pickup" ? "Shop pickup" : null,
+          pickup_ready_by: method === "pickup" && settings.pickup_ready_hours
+            ? new Date(Date.now() + settings.pickup_ready_hours * 3600000).toISOString()
+            : null,
           discount_code: codeRow?.code || null,
           discount_code_id: codeRow?.id || null,
           discount_cents: 0,
@@ -148,28 +140,11 @@ export async function POST(request) {
         }))
       );
       if (itemsErr) throw itemsErr;
-
-      if (shippingCents > 0) {
-        shippingLines.push({
-          amount_total: shippingCents,
-          display_name: `Shipping (${method})`,
-        });
-      }
     }
 
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const currency = (cartItems[0].currency || "CAD").toLowerCase();
-
-    const lineItems = cartItems.map((item) => ({
-      price_data: {
-        currency,
-        product_data: { name: item.product?.name || "Shop item" },
-        unit_amount: item.price_cents,
-      },
-      quantity: item.qty || 1,
-    }));
-
     const sessionPayload = {
       mode: "payment",
       customer_email: address.email || user.email || undefined,
@@ -182,9 +157,15 @@ export async function POST(request) {
         funded_by_platform: fundedByPlatform ? "1" : "0",
         discount_code: codeRow?.code || "",
       },
-      line_items: lineItems,
+      line_items: cartItems.map((item) => ({
+        quantity: item.qty || 1,
+        price_data: {
+          currency,
+          unit_amount: item.price_cents,
+          product_data: { name: item.product?.name || "Shop item" },
+        },
+      })),
     };
-
     if (discountCents > 0) {
       const coupon = await stripe.coupons.create({
         amount_off: discountCents,
@@ -194,7 +175,6 @@ export async function POST(request) {
       });
       sessionPayload.discounts = [{ coupon: coupon.id }];
     }
-
     if (totalShippingCents > 0) {
       sessionPayload.shipping_options = [{
         shipping_rate_data: {
@@ -204,7 +184,6 @@ export async function POST(request) {
         },
       }];
     }
-
     const session = await stripe.checkout.sessions.create(sessionPayload);
 
     const { error: stampErr } = await supabase
@@ -212,9 +191,7 @@ export async function POST(request) {
       .update({ stripe_session_id: session.id, updated_at: new Date().toISOString() })
       .in("id", orderIds);
     if (stampErr) throw stampErr;
-
     await supabase.from("shop_cart_items").delete().eq("cart_id", cartId);
-
     if (codeRow && discountCents) {
       await recordRedemption({
         code: codeRow,
@@ -225,15 +202,13 @@ export async function POST(request) {
         breakdown,
       });
     }
-
     return NextResponse.json({
       url: session.url,
       discount_cents: discountCents,
-      code: codeRow ? publicCode(codeRow, { discountCents, breakdown }) : null,
       shipping_cents: totalShippingCents,
+      code: codeRow ? publicCode(codeRow, { discountCents, breakdown }) : null,
     });
   } catch (err) {
-    console.error("Checkout error:", err);
-    return NextResponse.json({ error: err.message || "Checkout failed" }, { status: 500 });
+    return NextResponse.json({ error: err.message || "Could not start card checkout" }, { status: 500 });
   }
 }
