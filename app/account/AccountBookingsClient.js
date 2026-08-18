@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isBookingPaid, dollarsToCents } from "@/lib/money";
 import PawPointsCheckout from "@/components/shop/PawPointsCheckout";
+import ConfirmBookingPaid from "./ConfirmBookingPaid";
 
 function hoursUntilUTC(startsAtISO) {
   if (!startsAtISO) return null;
@@ -87,6 +88,7 @@ export default function AccountBookingsClient({ bookings = [] }) {
 
   return (
     <>
+      <ConfirmBookingPaid />
       {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
       <ul className="mt-4 space-y-3">
         {bookings.length === 0 ? <li className="text-sm text-[#7a5c4e]">No bookings yet.</li> : bookings.map((b) => {
