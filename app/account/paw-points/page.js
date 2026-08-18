@@ -4,6 +4,19 @@ import { getBalance } from "@/lib/pawPoints";
 
 export const metadata = { title: "Paw Points | Paw Sitter" };
 
+const LABELS = {
+  earn_order: "Earnings - Shop order",
+  earn_booking: "Earnings - Service booking",
+  earn_kol: "Earnings - KOL",
+  redeem: "Redeemed at checkout",
+  admin_grant: "Admin grant",
+  admin_adjust: "Admin adjustment",
+  expire: "Expired",
+  clawback: "Clawback",
+  cash_offset: "Refund offset",
+  activate: "Moved to available",
+};
+
 export default async function AccountPawPointsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -27,9 +40,8 @@ export default async function AccountPawPointsPage() {
       <ul className="mt-6 space-y-2 text-sm">
         {(rows || []).map((r) => (
           <li key={r.id} className="rounded-xl border border-[#e8d5c4] bg-white px-3 py-2">
-            <div className="flex justify-between"><span className="font-semibold">{r.reason}</span><span className={r.delta >= 0 ? "text-green-700" : "text-red-700"}>{r.delta >= 0 ? "+" : ""}{r.delta}</span></div>
+            <div className="flex justify-between"><span className="font-semibold">{r.remark || LABELS[r.reason] || r.reason}</span><span className={r.delta >= 0 ? "text-green-700" : "text-red-700"}>{r.delta >= 0 ? "+" : ""}{r.delta}</span></div>
             <p className="text-xs text-[#7a5c4e]">{r.status} · {new Date(r.created_at).toLocaleString()}{r.expires_at ? ` · expires ${new Date(r.expires_at).toLocaleDateString()}` : ""}</p>
-            {r.remark ? <p className="text-xs">{r.remark}</p> : null}
           </li>
         ))}
       </ul>
