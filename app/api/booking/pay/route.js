@@ -79,6 +79,9 @@ export async function POST(request) {
     const chargeCents = Math.max(50, totalCents - discountCents - (points.cents || 0));
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const labelBits = [];
+    if (discountCents) labelBits.push("promo applied");
+    if (points.points) labelBits.push(`${points.points} Paw Points`);
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer_email: user.email || undefined,
@@ -91,6 +94,7 @@ export async function POST(request) {
         service_type: booking.service_type || "",
         discount_cents: String(discountCents),
         paw_points: String(points.points || 0),
+        paw_points_cents: String(points.cents || 0),
         funded_by_platform: fundedByPlatform ? "1" : "0",
       },
       line_items: [{
@@ -98,7 +102,10 @@ export async function POST(request) {
         price_data: {
           currency: "cad",
           unit_amount: chargeCents,
-          product_data: { name: booking.service_type === "house_sit" ? "House sit" : "Sitter booking" },
+          product_data: {
+            name: booking.service_type === "house_sit" ? "House sit" : "Sitter booking",
+            description: labelBits.length ? `After ${labelBits.join(" + ")}` : undefined,
+          },
         },
       }],
     });

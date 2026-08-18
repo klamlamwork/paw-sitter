@@ -5,6 +5,7 @@ import { ensureUserCart } from "@/lib/shopCart";
 import { quoteShopCode, recordRedemption } from "@/lib/discounts";
 import { defaultShippingSettings, resolveShippingRate, resolveShippingScope } from "@/lib/shopShipping";
 import { applyCheckoutPoints } from "@/lib/pawPointsCheckout";
+import { netLineItems } from "@/lib/stripeNet";
 
 export const dynamic = "force-dynamic";
 
@@ -133,11 +134,26 @@ export async function POST(request) {
       }).eq("id", orderIds[0]);
     }
 
+    const netMerch = Math.max(0, subtotalCents - discountCents - (points.cents || 0));
+    const currency = (cartItems[0].currency || "CAD").toLowerCase();
+    const lineItems = netLineItems(cartItems, netMerch, currency);
+    if (totalShippingCents > 0) {
+      lineItems.push({
+        quantity: 1,
+        price_data: {
+          currency,
+          unit_amount: totalShippingCents,
+          product_data: { name: "Shipping" },
+        },
+      });
+    }
+    if (!lineItems.length) {
+      return NextResponse.json({ error: "Nothing left to charge." }, { status: 400 });
+    }
+
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const currency = (cartItems[0].currency || "CAD").toLowerCase();
-    const off = discountCents + (points.cents || 0);
-    const sessionPayload = {
+    const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer_email: address.email || user.email || undefined,
       success_url: `${origin}/shop/orders?placed=1&paid=1`,
@@ -147,38 +163,17 @@ export async function POST(request) {
         order_ids: orderIds.join(","),
         discount_cents: String(discountCents),
         paw_points: String(points.points || 0),
+        paw_points_cents: String(points.cents || 0),
         funded_by_platform: fundedByPlatform ? "1" : "0",
       },
-      line_items: cartItems.map((item) => ({
-        quantity: item.qty || 1,
-        price_data: { currency, unit_amount: item.price_cents, product_data: { name: item.product?.name || "Shop item" } },
-      })),
-    };
-    if (off > 0) {
-      const coupon = await stripe.coupons.create({
-        amount_off: off,
-        currency,
-        duration: "once",
-        name: points.points ? "Promo + Paw Points" : (codeRow?.code || "Discount"),
-      });
-      sessionPayload.discounts = [{ coupon: coupon.id }];
-    }
-    if (totalShippingCents > 0) {
-      sessionPayload.shipping_options = [{
-        shipping_rate_data: {
-          type: "fixed_amount",
-          fixed_amount: { amount: totalShippingCents, currency },
-          display_name: "Shipping",
-        },
-      }];
-    }
-    const session = await stripe.checkout.sessions.create(sessionPayload);
+      line_items: lineItems,
+    });
     await supabase.from("shop_orders").update({ stripe_session_id: session.id, updated_at: new Date().toISOString() }).in("id", orderIds);
     await supabase.from("shop_cart_items").delete().eq("cart_id", cartId);
     if (codeRow && discountCents) {
       await recordRedemption({ code: codeRow, userId: user.id, orderId: orderIds[0], discountCents, fundedByPlatform, breakdown });
     }
-    return NextResponse.json({ url: session.url, paw_points: points.points });
+    return NextResponse.json({ url: session.url, paw_points: points.points, amount_cents: netMerch + totalShippingCents });
   } catch (err) {
     return NextResponse.json({ error: err.message || "Could not start card checkout" }, { status: 500 });
   }
