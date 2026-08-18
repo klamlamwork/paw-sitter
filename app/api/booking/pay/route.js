@@ -71,13 +71,10 @@ export async function POST(request) {
     if (totalCents < 50) return NextResponse.json({ error: "Invalid amount." }, { status: 400 });
     const points = await applyCheckoutPoints({
       userId: user.id,
-      orderIds: [booking_id],
+      bookingId: booking_id,
       merchandiseCents: Math.max(0, totalCents - discountCents),
       requestedPoints: paw_points,
     });
-    if (points.points) {
-      await admin.from("paw_point_ledger").update({ booking_id, order_id: null }).eq("order_id", booking_id).eq("reason", "redeem");
-    }
 
     const chargeCents = Math.max(50, totalCents - discountCents - (points.cents || 0));
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
@@ -121,7 +118,7 @@ export async function POST(request) {
     if (codeRow && discountCents) {
       await recordRedemption({ code: codeRow, userId: user.id, bookingId: booking_id, discountCents, fundedByPlatform, breakdown });
     }
-    return NextResponse.json({ url: session.url, amount_cents: chargeCents, discount_cents: discountCents, paw_points: points.points, code: codeRow ? publicCode(codeRow, { discountCents, breakdown }) : null });
+    return NextResponse.json({ url: session.url, amount_cents: chargeCents, paw_points: points.points, code: codeRow ? publicCode(codeRow, { discountCents, breakdown }) : null });
   } catch (err) {
     return NextResponse.json({ error: err.message || "Could not start card checkout" }, { status: 500 });
   }
