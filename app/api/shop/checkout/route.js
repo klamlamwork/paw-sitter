@@ -2,12 +2,9 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 import { ensureUserCart } from "@/lib/shopCart";
-import { quoteShopCode, recordRedemption, publicCode } from "@/lib/discounts";
-import {
-  defaultShippingSettings,
-  resolveShippingRate,
-  resolveShippingScope,
-} from "@/lib/shopShipping";
+import { quoteShopCode, recordRedemption } from "@/lib/discounts";
+import { defaultShippingSettings, resolveShippingRate, resolveShippingScope } from "@/lib/shopShipping";
+import { applyCheckoutPoints } from "@/lib/pawPointsCheckout";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +17,9 @@ export async function POST(request) {
     const address = body?.address || {};
     const promoRaw = body?.promo_code;
     const shippingSelections = body?.shipping_selections || {};
+    const requestedPoints = Math.floor(Number(body?.paw_points) || 0);
     const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Sign in to pay." }, { status: 401 });
 
     const cartId = await ensureUserCart(supabase, user.id);
@@ -44,12 +40,7 @@ export async function POST(request) {
       discountCents = quoteResult.quote.discountCents;
       fundedByPlatform = quoteResult.quote.fundedByPlatform;
       codeRow = quoteResult.code;
-      breakdown = (quoteResult.quote.breakdown || []).map((r) => ({
-        vendorType: r.vendorType,
-        vendorId: r.vendorId,
-        gross: r.gross,
-        discount: r.discount,
-      }));
+      breakdown = quoteResult.quote.breakdown || [];
     }
 
     const subtotalCents = cartItems.reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 1), 0);
@@ -72,7 +63,6 @@ export async function POST(request) {
 
     const orderIds = [];
     let totalShippingCents = 0;
-
     for (const [sellerShopId, sellerItems] of bySeller.entries()) {
       const method = shippingSelections[sellerShopId] || "standard";
       const settings = settingsByShop[sellerShopId] || defaultShippingSettings();
@@ -85,49 +75,37 @@ export async function POST(request) {
         excludeRegions: settings.exclude_regions || [],
       });
       if (scopeResult.scope === "blocked") {
-        return NextResponse.json({ error: scopeResult.reason || "Shipping unavailable to your region." }, { status: 400 });
+        return NextResponse.json({ error: scopeResult.reason || "Shipping unavailable." }, { status: 400 });
       }
       const sellerSubtotal = sellerItems.reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 1), 0);
       const rate = resolveShippingRate({ settings, method, scope: scopeResult.scope, subtotalCents: sellerSubtotal });
-      if (!rate) {
-        return NextResponse.json({ error: "That shipping method is not available for this shop." }, { status: 400 });
-      }
+      if (!rate) return NextResponse.json({ error: "That shipping method is not available." }, { status: 400 });
       totalShippingCents += rate.cents;
-
-      const { data: order, error: orderErr } = await supabase
-        .from("shop_orders")
-        .insert({
-          user_id: user.id,
-          seller_shop_id: sellerShopId,
-          status: "pending",
-          payment_method: "card",
-          payment_status: "pending",
-          shipping_name: address.name || "",
-          shipping_email: address.email || user.email || "",
-          shipping_phone: address.phone || "",
-          shipping_line1: address.line1 || "",
-          shipping_line2: address.line2 || "",
-          shipping_city: address.city || "",
-          shipping_state: address.state || "",
-          shipping_postal_code: address.postal_code || "",
-          shipping_country: address.country || "Canada",
-          shipping_method: method,
-          shipping_cents: rate.cents,
-          shipping_label: rate.label,
-          pickup_location: method === "pickup" ? "Shop pickup" : null,
-          pickup_ready_by: method === "pickup" && settings.pickup_ready_hours
-            ? new Date(Date.now() + settings.pickup_ready_hours * 3600000).toISOString()
-            : null,
-          discount_code: codeRow?.code || null,
-          discount_code_id: codeRow?.id || null,
-          discount_cents: 0,
-          discount_funded_by: fundedByPlatform ? "platform" : codeRow ? "vendor" : null,
-        })
-        .select("id")
-        .single();
+      const { data: order, error: orderErr } = await supabase.from("shop_orders").insert({
+        user_id: user.id,
+        seller_shop_id: sellerShopId,
+        status: "pending",
+        payment_method: "card",
+        payment_status: "pending",
+        shipping_name: address.name || "",
+        shipping_email: address.email || user.email || "",
+        shipping_phone: address.phone || "",
+        shipping_line1: address.line1 || "",
+        shipping_line2: address.line2 || "",
+        shipping_city: address.city || "",
+        shipping_state: address.state || "",
+        shipping_postal_code: address.postal_code || "",
+        shipping_country: address.country || "Canada",
+        shipping_method: method,
+        shipping_cents: rate.cents,
+        shipping_label: rate.label,
+        discount_code: codeRow?.code || null,
+        discount_code_id: codeRow?.id || null,
+        discount_cents: 0,
+        discount_funded_by: fundedByPlatform ? "platform" : codeRow ? "vendor" : null,
+      }).select("id").single();
       if (orderErr) throw orderErr;
       orderIds.push(order.id);
-
       const { error: itemsErr } = await supabase.from("shop_order_items").insert(
         sellerItems.map((i) => ({
           order_id: order.id,
@@ -142,9 +120,23 @@ export async function POST(request) {
       if (itemsErr) throw itemsErr;
     }
 
+    const points = await applyCheckoutPoints({
+      userId: user.id,
+      orderIds,
+      merchandiseCents: Math.max(0, subtotalCents - discountCents),
+      requestedPoints,
+    });
+    if (points.points) {
+      await supabase.from("shop_orders").update({
+        paw_points_redeemed: points.points,
+        paw_points_cents: points.cents,
+      }).eq("id", orderIds[0]);
+    }
+
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const currency = (cartItems[0].currency || "CAD").toLowerCase();
+    const off = discountCents + (points.cents || 0);
     const sessionPayload = {
       mode: "payment",
       customer_email: address.email || user.email || undefined,
@@ -154,24 +146,20 @@ export async function POST(request) {
         user_id: user.id,
         order_ids: orderIds.join(","),
         discount_cents: String(discountCents),
+        paw_points: String(points.points || 0),
         funded_by_platform: fundedByPlatform ? "1" : "0",
-        discount_code: codeRow?.code || "",
       },
       line_items: cartItems.map((item) => ({
         quantity: item.qty || 1,
-        price_data: {
-          currency,
-          unit_amount: item.price_cents,
-          product_data: { name: item.product?.name || "Shop item" },
-        },
+        price_data: { currency, unit_amount: item.price_cents, product_data: { name: item.product?.name || "Shop item" } },
       })),
     };
-    if (discountCents > 0) {
+    if (off > 0) {
       const coupon = await stripe.coupons.create({
-        amount_off: discountCents,
+        amount_off: off,
         currency,
         duration: "once",
-        name: codeRow?.code || "Discount",
+        name: points.points ? "Promo + Paw Points" : (codeRow?.code || "Discount"),
       });
       sessionPayload.discounts = [{ coupon: coupon.id }];
     }
@@ -185,29 +173,12 @@ export async function POST(request) {
       }];
     }
     const session = await stripe.checkout.sessions.create(sessionPayload);
-
-    const { error: stampErr } = await supabase
-      .from("shop_orders")
-      .update({ stripe_session_id: session.id, updated_at: new Date().toISOString() })
-      .in("id", orderIds);
-    if (stampErr) throw stampErr;
+    await supabase.from("shop_orders").update({ stripe_session_id: session.id, updated_at: new Date().toISOString() }).in("id", orderIds);
     await supabase.from("shop_cart_items").delete().eq("cart_id", cartId);
     if (codeRow && discountCents) {
-      await recordRedemption({
-        code: codeRow,
-        userId: user.id,
-        orderId: orderIds[0],
-        discountCents,
-        fundedByPlatform,
-        breakdown,
-      });
+      await recordRedemption({ code: codeRow, userId: user.id, orderId: orderIds[0], discountCents, fundedByPlatform, breakdown });
     }
-    return NextResponse.json({
-      url: session.url,
-      discount_cents: discountCents,
-      shipping_cents: totalShippingCents,
-      code: codeRow ? publicCode(codeRow, { discountCents, breakdown }) : null,
-    });
+    return NextResponse.json({ url: session.url, paw_points: points.points });
   } catch (err) {
     return NextResponse.json({ error: err.message || "Could not start card checkout" }, { status: 500 });
   }
