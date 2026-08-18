@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { isBookingPaid } from "@/lib/money";
+import { isBookingPaid, dollarsToCents } from "@/lib/money";
+import PawPointsCheckout from "@/components/shop/PawPointsCheckout";
 
 function hoursUntilUTC(startsAtISO) {
   if (!startsAtISO) return null;
@@ -23,15 +24,13 @@ export default function AccountBookingsClient({ bookings = [] }) {
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [methods, setMethods] = useState(null);
+  const [pawByBooking, setPawByBooking] = useState({});
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("sitter_payments")
-        .select("stripe_enabled, card_enabled, etransfer_enabled, pay_later_enabled")
-        .limit(1);
+      const { data } = await supabase.from("sitter_payments").select("stripe_enabled, card_enabled, etransfer_enabled, pay_later_enabled").limit(1);
       if (!cancelled) {
         const settings = data?.[0];
         setMethods({
@@ -44,14 +43,15 @@ export default function AccountBookingsClient({ bookings = [] }) {
     return () => { cancelled = true; };
   }, []);
 
-  async function choosePayment(bookingId, paymentMethod) {
+  async function startPay(bookingId, paymentMethod) {
     setError("");
     setBusyId(bookingId);
     try {
+      const paw = pawByBooking[bookingId] || {};
       const res = await fetch("/api/booking/pay", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ booking_id: bookingId, payment_method }),
+        body: JSON.stringify({ booking_id: bookingId, payment_method: paymentMethod, paw_points: paw.points || 0 }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not start payment");
@@ -64,7 +64,6 @@ export default function AccountBookingsClient({ bookings = [] }) {
   }
 
   async function cancelBooking(bookingId) {
-    setError("");
     setBusyId(bookingId);
     try {
       const res = await fetch("/api/booking/cancel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ booking_id: bookingId }) });
@@ -92,6 +91,7 @@ export default function AccountBookingsClient({ bookings = [] }) {
           const hasPayment = paid || b.payment_status === "authorized" || b.payment_status === "paid";
           const open = openId === b.id;
           const noMethods = methods && !methods.card && !methods.etransfer && !methods.later;
+          const orderCents = dollarsToCents(b.estimated_total);
           return (
             <li key={b.id} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 px-4 py-3 text-sm">
               <div className="flex justify-between gap-2">
@@ -101,16 +101,19 @@ export default function AccountBookingsClient({ bookings = [] }) {
               <p className="mt-1 text-[#7a5c4e]">
                 Est. ${Number(b.estimated_total || 0).toFixed(2)} • Payment: <span className="font-medium capitalize">{b.payment_status || "pending"}</span>
                 {paid ? <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Paid</span> : null}
-                {b.payment_method ? <span className="capitalize"> ({b.payment_method})</span> : null}
               </p>
               {startsAtISO ? <p className="mt-1 text-xs text-[#7a5c4e]">Starts: {new Date(startsAtISO).toLocaleString()}</p> : null}
               {showPay && (!canPay ? <p className="mt-2 text-xs text-red-600">Payment must be made at least 48 hours before the booking starts.</p> : noMethods ? <p className="mt-2 text-xs text-[#7a5c4e]">Payment options are currently unavailable.</p> : <div className="mt-2">
                 <button type="button" onClick={() => setOpenId(open ? "" : b.id)} disabled={!methods} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{methods ? (open ? "Hide payment options" : "Pay now") : "Loading payment options…"}</button>
                 {open && methods ? <div className="mt-2 space-y-2 rounded-xl border border-[#e8d5c4] bg-white p-3">
-                  <p className="text-xs font-medium text-[#3b2a22]">How will you pay?</p>
-                  {methods.card ? <button type="button" disabled={busyId === b.id} onClick={() => choosePayment(b.id, "card")} className="block w-full rounded-lg border border-[#e8d5c4] px-3 py-2 text-left text-xs font-semibold disabled:opacity-60">{busyId === b.id ? "Working…" : "Pay with card (Stripe)"}</button> : null}
-                  {methods.etransfer ? <button type="button" disabled={busyId === b.id} onClick={() => choosePayment(b.id, "etransfer")} className="block w-full rounded-lg border border-[#e8d5c4] px-3 py-2 text-left text-xs font-semibold disabled:opacity-60">Interac e-Transfer (seller confirms when received)</button> : null}
-                  {methods.later ? <button type="button" disabled={busyId === b.id} onClick={() => choosePayment(b.id, "later")} className="block w-full rounded-lg border border-[#e8d5c4] px-3 py-2 text-left text-xs font-semibold disabled:opacity-60">Pay later</button> : null}
+                  <PawPointsCheckout
+                    orderCents={orderCents}
+                    items={[{ net_cents: orderCents, qty: 1, source_key: "sitter_booking" }]}
+                    onChange={(p) => setPawByBooking((m) => ({ ...m, [b.id]: p }))}
+                  />
+                  {methods.card ? <button type="button" disabled={busyId === b.id} onClick={() => startPay(b.id, "card")} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Pay with card</button> : null}
+                  {methods.etransfer ? <button type="button" disabled={busyId === b.id} onClick={() => startPay(b.id, "etransfer")} className="ml-2 rounded-full border border-[#c45c26] px-4 py-1.5 text-xs font-semibold text-[#c45c26] disabled:opacity-60">E-transfer</button> : null}
+                  {methods.later ? <button type="button" disabled={busyId === b.id} onClick={() => startPay(b.id, "later")} className="ml-2 rounded-full border border-[#e8d5c4] px-4 py-1.5 text-xs font-semibold disabled:opacity-60">Pay later</button> : null}
                 </div> : null}
               </div>)}
               {canCancel ? <div className="mt-2">{isLateCancel && hasPayment ? <p className="text-xs text-amber-700">Late cancel: 50% will be charged, remainder refunded.</p> : null}<button type="button" disabled={busyId === b.id} onClick={() => cancelBooking(b.id)} className="rounded-full border border-[#e8d5c4] bg-white px-4 py-1.5 text-xs font-semibold disabled:opacity-60">Cancel booking</button></div> : null}
