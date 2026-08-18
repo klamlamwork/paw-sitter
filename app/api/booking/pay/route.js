@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { dollarsToCents, isBookingPaid } from "@/lib/money";
 import { quoteBookingCode, recordRedemption, publicCode } from "@/lib/discounts";
 import { applyCheckoutPoints } from "@/lib/pawPointsCheckout";
+import { quoteBookingCustomerTotal } from "@/lib/pawServiceFee";
 
 export const dynamic = "force-dynamic";
 
@@ -69,22 +70,29 @@ export async function POST(request) {
       breakdown = quoteResult.quote.breakdown || [];
     }
 
-    const totalCents = dollarsToCents(booking.estimated_total);
-    if (totalCents < 50) return NextResponse.json({ error: "Invalid amount." }, { status: 400 });
+    const subtotalCents = dollarsToCents(booking.estimated_total);
+    if (subtotalCents < 50) return NextResponse.json({ error: "Invalid amount." }, { status: 400 });
+    const preFee = quoteBookingCustomerTotal({ subtotalCents, promoCents: discountCents, pointsCents: 0 });
     const points = await applyCheckoutPoints({
       userId: user.id,
       bookingId: booking_id,
-      merchandiseCents: Math.max(0, totalCents - discountCents),
+      merchandiseCents: subtotalCents + preFee.feeCents,
       requestedPoints,
+      maxDiscountCents: preFee.feeCents,
+    });
+    const quoted = quoteBookingCustomerTotal({
+      subtotalCents,
+      promoCents: discountCents,
+      pointsCents: points.cents || 0,
     });
     if (requestedPoints >= 100 && !(points.cents > 0)) {
-      return NextResponse.json({ error: points.reason || `Could not apply Paw Points on this booking (min 100, max 40% = ${points.capPoints || 0} pts).` }, { status: 400 });
+      return NextResponse.json({ error: points.reason || `Could not apply Paw Points on this booking (min 100, max ${points.capPoints || 0} pts against the Paw Service Fee).` }, { status: 400 });
     }
 
-    const chargeCents = Math.max(50, totalCents - discountCents - (points.cents || 0));
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const session = await stripe.checkout.sessions.create({
+    const { data: connect } = await admin.from("stripe_connect_accounts").select("stripe_account_id, payouts_enabled").eq("sitter_id", booking.sitter_id).maybeSingle();
+    const sessionPayload = {
       mode: "payment",
       customer_email: user.email || undefined,
       success_url: `${origin}/account?paid=1&booking=${booking_id}`,
@@ -97,20 +105,39 @@ export async function POST(request) {
         discount_cents: String(discountCents),
         paw_points: String(points.points || 0),
         paw_points_cents: String(points.cents || 0),
+        service_fee_cents: String(quoted.feeCents),
+        sitter_payout_cents: String(quoted.sitterPayoutCents),
         funded_by_platform: fundedByPlatform ? "1" : "0",
       },
-      line_items: [{
-        quantity: 1,
-        price_data: {
-          currency: "cad",
-          unit_amount: chargeCents,
-          product_data: {
-            name: booking.service_type === "house_sit" ? "House sit" : "Sitter booking",
-            description: points.points ? `After ${points.points} Paw Points (−$${(points.cents / 100).toFixed(2)})` : undefined,
+      line_items: [
+        {
+          quantity: 1,
+          price_data: {
+            currency: "cad",
+            unit_amount: quoted.subtotalCents,
+            product_data: { name: booking.service_type === "house_sit" ? "House sit" : "Sitter service" },
           },
         },
-      }],
-    });
+        {
+          quantity: 1,
+          price_data: {
+            currency: "cad",
+            unit_amount: Math.max(0, quoted.feeAfterDiscountCents),
+            product_data: {
+              name: "Paw Service Fee (10%)",
+              description: points.points ? `${points.points} Paw Points applied to this fee` : "Platform fee — not paid to the sitter",
+            },
+          },
+        },
+      ].filter((line) => line.price_data.unit_amount > 0),
+    };
+    if (connect?.stripe_account_id && quoted.applicationFeeCents >= 0 && quoted.sitterPayoutCents >= 50) {
+      sessionPayload.payment_intent_data = {
+        transfer_data: { destination: connect.stripe_account_id },
+        application_fee_amount: quoted.applicationFeeCents,
+      };
+    }
+    const session = await stripe.checkout.sessions.create(sessionPayload);
 
     const stamp = {
       payment_method: "card",
@@ -121,6 +148,8 @@ export async function POST(request) {
       discount_funded_by: fundedByPlatform ? "platform" : codeRow ? "vendor" : null,
       paw_points_redeemed: points.points || 0,
       paw_points_cents: points.cents || 0,
+      platform_fee_cents: quoted.applicationFeeCents,
+      sitter_payout_cents: quoted.sitterPayoutCents,
       updated_at: new Date().toISOString(),
     };
     const { error: stampErr } = await supabase.from("bookings").update(stamp).eq("id", booking_id);
@@ -128,7 +157,13 @@ export async function POST(request) {
     if (codeRow && discountCents) {
       await recordRedemption({ code: codeRow, userId: user.id, bookingId: booking_id, discountCents, fundedByPlatform, breakdown });
     }
-    return NextResponse.json({ url: session.url, amount_cents: chargeCents, paw_points: points.points, code: codeRow ? publicCode(codeRow, { discountCents, breakdown }) : null });
+    return NextResponse.json({
+      url: session.url,
+      amount_cents: quoted.customerPayCents,
+      fee_cents: quoted.feeCents,
+      paw_points: points.points,
+      code: codeRow ? publicCode(codeRow, { discountCents, breakdown }) : null,
+    });
   } catch (err) {
     return NextResponse.json({ error: err.message || "Could not start card checkout" }, { status: 500 });
   }
