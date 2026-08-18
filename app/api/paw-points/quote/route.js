@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { clampRedeem, earnPointsForItems, getBalance, loadPointConfig, pointsFromCents } from "@/lib/pawPoints";
+import { quoteBookingCustomerTotal } from "@/lib/pawServiceFee";
 
 export const dynamic = "force-dynamic";
 
@@ -23,12 +24,19 @@ export async function POST(request) {
   const want = Math.floor(Number(body.points) || 0);
   const { rates, settings } = await loadPointConfig();
   const balance = await getBalance(user.id);
-  const redeem = want ? clampRedeem(want, balance.available, orderCents) : { ok: true, points: 0, cents: 0 };
-  const cashCents = Math.max(0, orderCents - (redeem.cents || 0));
   const sourceKey = body.source_key || "other";
+  let maxDiscountCents;
+  let earnBase = orderCents;
+  if (sourceKey === "sitter_booking") {
+    const quoted = quoteBookingCustomerTotal({ subtotalCents: orderCents, promoCents: 0, pointsCents: 0 });
+    maxDiscountCents = quoted.feeCents;
+    earnBase = quoted.earnBaseCents;
+  }
+  const redeem = want ? clampRedeem(want, balance.available, sourceKey === "sitter_booking" ? orderCents + (maxDiscountCents || 0) : orderCents, { maxDiscountCents }) : { ok: true, points: 0, cents: 0 };
+  const cashCents = Math.max(0, orderCents - (sourceKey === "sitter_booking" ? 0 : (redeem.cents || 0)));
   let earn = 0;
   if (sourceKey === "sitter_booking") {
-    earn = pointsFromCents(cashCents, rates.sitter_booking?.points_per_dollar ?? settings.booking_points_per_dollar ?? 5);
+    earn = pointsFromCents(earnBase, rates.sitter_booking?.points_per_dollar ?? settings.booking_points_per_dollar ?? 5);
   } else {
     earn = earnPointsForItems(scaleItemsToCash(body.items || [], cashCents), rates, settings.default_product_points_per_dollar);
   }
@@ -36,7 +44,7 @@ export async function POST(request) {
     balance,
     redeem,
     earn_points: earn,
-    cash_cents: cashCents,
+    cash_cents: sourceKey === "sitter_booking" ? quoteBookingCustomerTotal({ subtotalCents: orderCents, pointsCents: redeem.cents || 0 }).customerPayCents : cashCents,
     settings: {
       min: settings.min_redeem_points,
       max_pct: settings.max_redeem_pct,
