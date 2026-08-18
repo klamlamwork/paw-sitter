@@ -2,7 +2,7 @@
 @import url("https://fonts.googleapis.com/css2?family=Parkinsans:wght@300..800&display=swap");
 
 :root {
-  --background: #d18f2a;
+  --background: #f0f5fc;
   --foreground: #3d2a14;
   --brand: #e39b2e;
   --brand-dark: #c47a18;
@@ -103,7 +103,7 @@ body {
 
 header,
 footer { background-color: #ffffff !important; font-size: 105% !important; }
-header a, header button, header span, footer a, footer p, footer span, footer li { font-weight: 500 !important; }
+header a, header button, header span, footer a, footer p, footer span, footer li { font-weight: 700 !important; }
 header .font-bold, header [class*="font-bold"], footer .font-bold, footer [class*="font-bold"] { font-weight: 800 !important; }
 header [class*="font-semibold"], footer [class*="font-semibold"] { font-weight: 700 !important; }
 footer p, footer [class*="text-[#7a5c4e]"] { color: #000000 !important; }
