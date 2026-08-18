@@ -6,7 +6,7 @@ function centsFromPoints(points) {
   return Math.floor(Math.max(0, Number(points) || 0) * 0.2);
 }
 
-export default function PawPointsCheckout({ orderCents = 0, items = [], sourceKey = "other", onChange }) {
+export default function PawPointsCheckout({ orderCents = 0, items = [], sourceKey = "other", inputId, onChange }) {
   const [balance, setBalance] = useState({ available: 0, pending: 0 });
   const [want, setWant] = useState(0);
   const [quote, setQuote] = useState(null);
@@ -36,11 +36,8 @@ export default function PawPointsCheckout({ orderCents = 0, items = [], sourceKe
         });
         const data = await res.json();
         setQuote(data);
-        if (data.redeem?.ok) {
-          emit(data.redeem.points, { earn: data.earn_points || 0 });
-        } else if (want > 0) {
-          emit(want, { earn: data.earn_points || 0 });
-        }
+        if (data.redeem?.ok) emit(data.redeem.points, { earn: data.earn_points || 0 });
+        else if (want > 0) emit(want, { earn: data.earn_points || 0 });
       } catch {
         emit(want);
       }
@@ -55,6 +52,8 @@ export default function PawPointsCheckout({ orderCents = 0, items = [], sourceKe
       {quote?.earn_points ? <p className="mt-1 text-xs text-green-700">Earn {quote.earn_points} points on the cash portion (after completion).</p> : null}
       <div className="mt-2 flex items-center gap-2">
         <input
+          id={inputId}
+          data-paw-points="1"
           type="number"
           min="0"
           className="w-28 rounded-lg border border-[#e8d5c4] px-2 py-1"
