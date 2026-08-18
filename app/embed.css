@@ -11,3 +11,54 @@ html.embed-mode .paw-bg {
 html.embed-mode main {
   padding-bottom: 2rem;
 }
+
+:root {
+  --background: #ffffff;
+  --foreground: #000000;
+}
+
+html,
+body,
+.paw-bg {
+  background-color: #ffffff !important;
+  background-image: none !important;
+  color: #000000 !important;
+}
+
+.paw-bg h1 + p,
+.paw-bg h1 + p.mt-1,
+.paw-bg h1 + p.mt-2,
+.paw-bg h1 + p.mt-3,
+.paw-bg p.max-w-lg,
+.paw-bg p.mt-2.text-sm {
+  color: #000000 !important;
+}
+
+header,
+footer {
+  background-color: #c77e10 !important;
+  color: #ffffff !important;
+  border-color: #a8680d !important;
+}
+
+header a,
+header button,
+header span,
+header p,
+header nav,
+footer a,
+footer button,
+footer p,
+footer span,
+footer li,
+footer h2 {
+  color: #ffffff !important;
+}
+
+header .bg-white,
+header [class*="bg-white"],
+header .bg-white a,
+header .bg-white span,
+header .bg-white button {
+  color: #000000 !important;
+}
