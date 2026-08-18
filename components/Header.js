@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AuthButtons from "@/components/AuthButtons";
 
+// Header with chat icon for Inbox
 export default function Header() {
   return (
     <header className="sticky top-0 z-40 border-b border-[#e8d5c4]/80 bg-white/95 backdrop-blur">
@@ -36,6 +37,7 @@ export default function Header() {
           >
             Shop
           </Link>
+          {/* Chat icon for Inbox */}
           <Link
             href="/inbox"
             aria-label="Inbox"
