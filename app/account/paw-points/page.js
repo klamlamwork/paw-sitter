@@ -33,9 +33,9 @@ export default async function AccountPawPointsPage() {
       <h1 className="text-3xl font-bold text-[#3b2a22]">Paw Points</h1>
       <p className="mt-2 text-sm text-[#7a5c4e]">500 points = $1.00. Available after delivery or completed booking.</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Available</p><p className="text-2xl font-bold">{balance.available}</p></div>
-        <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Pending</p><p className="text-2xl font-bold">{balance.pending}</p></div>
-        <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Reserved</p><p className="text-2xl font-bold">{balance.reserved}</p></div>
+        <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Available</p><p className="text-2xl font-bold">{Math.max(0, balance.available)}</p></div>
+        <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Pending</p><p className="text-2xl font-bold">{Math.max(0, balance.pending)}</p></div>
+        <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Reserved</p><p className="text-2xl font-bold">{Math.max(0, balance.reserved)}</p></div>
       </div>
       <ul className="mt-6 space-y-2 text-sm">
         {(rows || []).map((r) => (
