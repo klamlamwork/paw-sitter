@@ -12,23 +12,23 @@ export default function HomePage() {
           </p>
           <h1 className="text-3xl font-bold leading-tight text-[#3b2a22] sm:text-4xl lg:text-5xl">
             Happy, Healthy PAWS.{" "}
-            <span className="text-[#c45c26]">Calm owners.</span>
+            <span className="text-[#b5710b]">Joyjul PARENTS.</span>
           </h1>
           <p className="mt-4 max-w-lg text-base leading-relaxed text-[#7a5c4e] sm:text-lg">
-            PawSitter offers Nutrition and Longevity Advises — with Researched Products and Sitter Services that best fit your paw kids, in the most affordable ways.
+            Joyful PAWS offers Nutrition and Longevity Advises — with Researched Products and Sitter Services that best fit your paw kids, in the most affordable ways.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Link
               href="/booking"
-              className="inline-flex items-center justify-center rounded-full bg-[#c45c26] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#9a4519]"
+              className="inline-flex items-center justify-center rounded-full bg-[#b5710b] px-6 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#9a4519]"
             >
-              Request a booking
+              Book Service
             </Link>
             <Link
               href="/services"
-              className="inline-flex items-center justify-center rounded-full border border-[#e8d5c4] bg-[#fff8f0] px-6 py-3 text-sm font-semibold text-[#5c4033] transition hover:border-[#c45c26] hover:text-[#c45c26]"
+              className="inline-flex items-center justify-center rounded-full border border-[#e8d5c4] bg-[#fff8f0] px-6 py-3 text-sm font-semibold text-[#b5710b] transition hover:border-[#c45c26] hover:text-[#c45c26]"
             >
-              View services
+              Shop, Get Rewards!
             </Link>
           </div>
         </div>
@@ -44,15 +44,15 @@ export default function HomePage() {
                 className="h-28 w-28"
                 priority
               />
-              <h2 className="mt-4 text-2xl font-bold text-[#3b2a22]">Paw Sitter</h2>
+              <h2 className="mt-4 text-2xl font-bold text-[#3b2a22]">Get Cash Back Rewards taking best care of your PAW kids!</h2>
               <p className="mt-2 text-sm text-[#7a5c4e]">
-                Placeholder logo — warm, friendly care for every paw.
+                Get the longevity products and services best fit your kids.
               </p>
               <ul className="mt-6 w-full space-y-2 text-left text-sm text-[#5c4033]">
-                <li className="rounded-xl bg-[#faf3eb] px-4 py-2">Dog walking</li>
-                <li className="rounded-xl bg-[#faf3eb] px-4 py-2">Cat &amp; dog feeding</li>
-                <li className="rounded-xl bg-[#faf3eb] px-4 py-2">House sitting</li>
-                <li className="rounded-xl bg-[#faf3eb] px-4 py-2">Photo check-ins</li>
+                <li className="rounded-xl bg-[#faf3eb] px-4 py-2">Strictly Reviewed Products</li>
+                <li className="rounded-xl bg-[#faf3eb] px-4 py-2">Services by Professionally Trained Partners</li>
+                <li className="rounded-xl bg-[#faf3eb] px-4 py-2">Tailored Nutrition Advise</li>
+                <li className="rounded-xl bg-[#faf3eb] px-4 py-2">Drop-in Physical Check-ups</li>
               </ul>
             </div>
           </div>
@@ -63,15 +63,15 @@ export default function HomePage() {
       <section className="mt-16 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {[
           {
-            title: "Reliable visits",
+            title: "Get Services/Products",
             text: "On-time walks and feeding with a calm, pet-first approach.",
           },
           {
-            title: "Updates for you",
+            title: "Write Reviews",
             text: "Photos and notes so you feel close to home while away.",
           },
           {
-            title: "Simple booking",
+            title: "Get Rewarded",
             text: "Request dates online — no payment gateway needed for v1.",
           },
         ].map((card) => (
