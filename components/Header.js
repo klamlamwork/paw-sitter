@@ -1,72 +1,90 @@
-import Link from "next/link";
-import AuthButtons from "@/components/AuthButtons";
+"use client";
 
-// Header with chat icon for Inbox
-export default function Header() {
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import AuthNav from "./AuthNav";
+
+function BarsIcon({ className = "h-5 w-5" }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-[#e8d5c4]/80 bg-white/95 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-        <Link href="/" className="flex min-w-0 items-center gap-2">
-          <img
-            src="/logo.svg"
-            alt="Paw Sitter"
-            width={36}
-            height={36}
-            className="h-9 w-9 shrink-0 rounded-full object-cover"
-          />
-          <span className="text-lg font-bold text-[#3d2a14]">
-            Joyful<span className="text-[#c8cccf]">PAWS</span>
-          </span>
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M3 6.75A.75.75 0 0 1 3.75 6h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 6.75ZM3 12a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75A.75.75 0 0 1 3 12Zm0 5.25a.75.75 0 0 1 .75-.75h16.5a.75.75 0 0 1 0 1.5H3.75a.75.75 0 0 1-.75-.75Z" />
+    </svg>
+  );
+}
+
+function XIcon({ className = "h-5 w-5" }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <path d="M5.47 5.47a.75.75 0 0 1 1.06 0L12 10.94l5.47-5.47a.75.75 0 1 1 1.06 1.06L13.06 12l5.47 5.47a.75.75 0 1 1-1.06 1.06L12 13.06l-5.47 5.47a.75.75 0 0 1-1.06-1.06L10.94 12 5.47 6.53a.75.75 0 0 1 0-1.06Z" />
+    </svg>
+  );
+}
+
+export default function Header({ profile }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    function onDoc(e) {
+      if (!rootRef.current?.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("touchstart", onDoc);
+    return () => { document.removeEventListener("mousedown", onDoc); document.removeEventListener("touchstart", onDoc); };
+  }, []);
+
+  return (
+    <header className="sticky top-0 z-40 border-b border-[#efd09a] bg-white" ref={rootRef}>
+      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+        <Link href="/" className="flex items-center gap-2">
+          <img src="/logo.png" alt="Paw Sitter" className="h-8 w-auto" />
+          <span className="text-lg font-bold text-[#5a4018]">Paw Sitter</span>
         </Link>
-        <nav className="flex shrink-0 items-center gap-2 sm:gap-4">
-          <Link
-            href="/sitters"
-            className="hidden text-sm font-medium text-[#5a4018] hover:text-[#c8cccf] sm:inline"
-          >
-            Sitters
-          </Link>
-          <Link
-            href="/blog"
-            className="hidden text-sm font-medium text-[#5a4018] hover:text-[#c8cccf] sm:inline"
-          >
-            Blog
-          </Link>
-          <Link
-            href="/shop"
-            className="text-sm font-medium text-[#5a4018] hover:text-[#c8cccf]"
-          >
-            Shop
-          </Link>
-          {/* Chat icon for Inbox */}
-          <Link
-            href="/inbox"
-            aria-label="Inbox"
-            title="Inbox"
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full text-[#5a4018] hover:bg-[#efd09a]/40 hover:text-[#3d2a14]"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-5 w-5"
-              aria-hidden="true"
-            >
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-            </svg>
-          </Link>
-          <Link
-            href="/booking"
-            className="border border-[#efd09a] bg-white px-3 py-1.5 text-xs font-semibold text-[#5a4018] sm:px-4 sm:py-2 sm:text-sm"
-          >
-            Book
-          </Link>
-          <AuthButtons />
+
+        {/* Desktop */}
+        <nav className="hidden items-center gap-6 sm:flex">
+          <Link href="/shop" className="text-sm font-medium text-[#5a4018] hover:text-[#e39b2e]">Shop</Link>
+          <Link href="/sitters" className="text-sm font-medium text-[#5a4018] hover:text-[#e39b2e]">Sitters</Link>
+          <Link href="/blog" className="text-sm font-medium text-[#5a4018] hover:text-[#e39b2e]">Blog</Link>
+          {profile ? (
+            <>
+              <Link href="/inbox" className="text-sm font-medium text-[#5a4018] hover:text-[#e39b2e]">Inbox</Link>
+              <AuthNav profile={profile} />
+            </>
+          ) : (
+            <Link href="/login" className="rounded-full bg-[#e39b2e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#c47a18]">Log in</Link>
+          )}
         </nav>
+
+        {/* Mobile */}
+        <div className="flex items-center gap-2 sm:hidden">
+          {profile ? (
+            <Link href="/inbox" className="rounded-full border border-[#efd09a] bg-white px-3 py-1.5 text-sm font-semibold text-[#5a4018]">Inbox</Link>
+          ) : null}
+          <button type="button" aria-expanded={open} aria-label="Toggle menu" onClick={() => setOpen((v) => !v)} className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-[#efd09a] bg-white text-[#5a4018] shadow-sm active:bg-[#fff9ed]">
+            {open ? <XIcon /> : <BarsIcon />}
+          </button>
+        </div>
       </div>
+
+      {/* Mobile drawer */}
+      {open ? (
+        <div className="border-t border-[#efd09a] bg-white px-4 pb-4 sm:hidden">
+          <nav className="flex flex-col gap-2">
+            <Link href="/shop" className="rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]">Shop</Link>
+            <Link href="/sitters" className="rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]">Sitters</Link>
+            <Link href="/blog" className="rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]">Blog</Link>
+            {profile ? (
+              <>
+                <Link href="/inbox" className="rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]">Inbox</Link>
+                <AuthNav profile={profile} />
+              </>
+            ) : (
+              <Link href="/login" className="rounded-full bg-[#e39b2e] px-4 py-2 text-sm font-semibold text-white hover:bg-[#c47a18]">Log in</Link>
+            )}
+          </nav>
+        </div>
+      ) : null}
     </header>
   );
 }
