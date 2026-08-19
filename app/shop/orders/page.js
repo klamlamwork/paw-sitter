@@ -4,6 +4,7 @@ import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatShopPrice } from "@/lib/shop";
+import { shopOrderLabel } from "@/lib/shopOrderNumber";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your shop orders | Paw Sitter" };
@@ -44,11 +45,19 @@ export default async function ShopOrdersPage({ searchParams }) {
             const discount = order.discount_cents || 0;
             const total = Math.max(0, subtotal - discount);
             const currency = order.items?.[0]?.currency || "CAD";
+            const orderNo = shopOrderLabel(order.id);
             return (
               <li key={order.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    {order.shop?.slug ? <Link href={`/shop/shops/${order.shop.slug}`} className="text-sm font-semibold text-[#c45c26] hover:underline">{order.shop.name}</Link> : <p className="text-sm font-semibold text-[#3b2a22]">{order.shop?.name || "Shop"}</p>}
+                    <p className="text-sm font-semibold text-[#3b2a22]">
+                      {order.shop?.slug ? (
+                        <Link href={`/shop/shops/${order.shop.slug}`} className="text-[#c45c26] hover:underline">{order.shop.name}</Link>
+                      ) : (
+                        order.shop?.name || "Shop"
+                      )}
+                      {orderNo ? <span className="font-semibold text-[#3b2a22]"> · {orderNo}</span> : null}
+                    </p>
                     <p className="mt-0.5 text-xs text-[#7a5c4e]">{new Date(order.created_at).toLocaleString()} · {order.shipping_city || ""}</p>
                     <p className="mt-0.5 text-xs text-[#7a5c4e]">{order.payment_status || "unpaid"}</p>
                   </div>

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getBalance } from "@/lib/pawPoints";
+import { bookingOrderLabel, shopOrderLabel } from "@/lib/shopOrderNumber";
 
 export const metadata = { title: "Paw Points | Paw Sitter" };
 
@@ -24,10 +25,11 @@ export default async function AccountPawPointsPage() {
   const balance = await getBalance(user.id);
   const { data: rows } = await supabase
     .from("paw_point_ledger")
-    .select("id, delta, status, reason, remark, expires_at, created_at")
+    .select("id, delta, status, reason, remark, expires_at, created_at, order_id, booking_id")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(50);
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Paw Points</h1>
@@ -38,12 +40,18 @@ export default async function AccountPawPointsPage() {
         <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Reserved</p><p className="text-2xl font-bold">{Math.max(0, balance.reserved)}</p></div>
       </div>
       <ul className="mt-6 space-y-2 text-sm">
-        {(rows || []).map((r) => (
-          <li key={r.id} className="rounded-xl border border-[#e8d5c4] bg-white px-3 py-2">
-            <div className="flex justify-between"><span className="font-semibold">{r.remark || LABELS[r.reason] || r.reason}</span><span className={r.delta >= 0 ? "text-green-700" : "text-red-700"}>{r.delta >= 0 ? "+" : ""}{r.delta}</span></div>
-            <p className="text-xs text-[#7a5c4e]">{r.status} · {new Date(r.created_at).toLocaleString()}{r.expires_at ? ` · expires ${new Date(r.expires_at).toLocaleDateString()}` : ""}</p>
-          </li>
-        ))}
+        {(rows || []).map((r) => {
+          const ref = r.order_id ? shopOrderLabel(r.order_id) : r.booking_id ? bookingOrderLabel(r.booking_id) : "";
+          return (
+            <li key={r.id} className="rounded-xl border border-[#e8d5c4] bg-white px-3 py-2">
+              <div className="flex justify-between gap-3">
+                <span className="font-semibold">{r.remark || LABELS[r.reason] || r.reason}{ref ? ` · ${ref}` : ""}</span>
+                <span className={r.delta >= 0 ? "text-green-700" : "text-red-700"}>{r.delta >= 0 ? "+" : ""}{r.delta}</span>
+              </div>
+              <p className="text-xs text-[#7a5c4e]">{r.status} · {new Date(r.created_at).toLocaleString()}{r.expires_at ? ` · expires ${new Date(r.expires_at).toLocaleDateString()}` : ""}</p>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
