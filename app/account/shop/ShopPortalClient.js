@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { slugifyShop } from "@/lib/shop";
 import { defaultInventoryMode } from "@/lib/shopInventory";
+import { saveOwnerProductContent } from "@/lib/shopProductPending";
 import BuyButtonsFields from "@/components/shop/BuyButtonsFields";
 import ProductGalleryEditor from "@/components/shop/ProductGalleryEditor";
 import LongevityChipsEditor from "@/components/shop/LongevityChipsEditor";
@@ -53,18 +54,22 @@ export default function ShopPortalClient({
     setError("");
     setOk("");
     setEditId(p.id);
+    const pending = p.status === "approved" && p.has_pending_edit ? p.pending_snapshot || {} : {};
     setEdit({
-      name: p.name || "",
-      short_description: p.short_description || "",
-      description: p.description || "",
-      price: p.price_cents != null ? String(p.price_cents / 100) : "",
+      name: pending.name || p.name || "",
+      short_description: pending.short_description || p.short_description || "",
+      description: pending.description || p.description || "",
+      price: (pending.price_cents ?? p.price_cents) != null ? String((pending.price_cents ?? p.price_cents) / 100) : "",
       stock_qty: String(p.stock_qty ?? 0),
-      product_type: p.product_type || "other",
-      inventory_mode: p.inventory_mode || "simple",
-      category_ids: p.edit_category_ids || (p.category_id ? [p.category_id] : []),
-      show_affiliate: !!p.show_affiliate,
-      show_add_to_cart: !!p.show_add_to_cart,
-      affiliate_url: p.affiliate_url || "",
+      product_type: pending.product_type || p.product_type || "other",
+      inventory_mode: pending.inventory_mode || p.inventory_mode || "simple",
+      category_ids: pending.category_ids || p.edit_category_ids || (p.category_id ? [p.category_id] : []),
+      show_affiliate: pending.show_affiliate ?? !!p.show_affiliate,
+      show_add_to_cart: pending.show_add_to_cart ?? !!p.show_add_to_cart,
+      affiliate_url: pending.affiliate_url || p.affiliate_url || "",
+      hide_price: pending.hide_price ?? !!p.hide_price,
+      media: pending.media || p.media || [],
+      chips: pending.longevity_items || p.longevity_items || [],
     });
   }
 
@@ -76,36 +81,23 @@ export default function ShopPortalClient({
     setBusy(true);
     setError("");
     setOk("");
-    const priceCents = edit.price === "" ? null : Math.round(Number(edit.price) * 100);
     const supabase = createClient();
-    const { error: err } = await supabase
-      .from("shop_products")
-      .update({
-        name: edit.name.trim(),
+    const result = await saveOwnerProductContent({
+      supabase,
+      product: p,
+      profileId,
+      form: {
+        ...edit,
         slug: slugifyShop(edit.name),
-        short_description: (edit.short_description || "").trim(),
-        description: (edit.description || "").trim(),
-        category_id: (edit.category_ids || [])[0] || null,
-        product_type: edit.product_type || "other",
         inventory_mode: edit.inventory_mode || defaultInventoryMode(edit.product_type),
-        price_cents: Number.isFinite(priceCents) ? priceCents : null,
-        stock_qty: Math.max(0, parseInt(edit.stock_qty, 10) || 0),
-        track_stock: true,
-        show_affiliate: !!edit.show_affiliate,
-        show_add_to_cart: !!edit.show_add_to_cart,
-        affiliate_url: edit.show_affiliate ? (edit.affiliate_url || "").trim() : "",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", p.id);
-    if (!err && (edit.category_ids || []).length) {
-      await supabase.from("shop_product_categories").delete().eq("product_id", p.id);
-      await supabase.from("shop_product_categories").insert(
-        edit.category_ids.map((category_id) => ({ product_id: p.id, category_id }))
-      );
-    }
+      },
+      media: edit.media || [],
+      longevityItems: edit.chips || [],
+      categoryIds: edit.category_ids || [],
+    });
     setBusy(false);
-    if (err) {
-      setError(err.message);
+    if (result.error) {
+      setError(result.error.message || "Could not save");
       return;
     }
     setProducts((list) =>
@@ -113,21 +105,30 @@ export default function ShopPortalClient({
         x.id === p.id
           ? {
               ...x,
-              name: edit.name.trim(),
-              short_description: edit.short_description,
-              description: edit.description,
-              price_cents: Number.isFinite(priceCents) ? priceCents : null,
-              stock_qty: Math.max(0, parseInt(edit.stock_qty, 10) || 0),
-              product_type: edit.product_type,
-              inventory_mode: edit.inventory_mode,
-              show_affiliate: !!edit.show_affiliate,
-              show_add_to_cart: !!edit.show_add_to_cart,
-              affiliate_url: edit.affiliate_url,
+              stock_qty: result.stockQty,
+              has_pending_edit: result.mode === "pending_approval",
+              pending_snapshot: result.mode === "pending_approval" ? result.snapshot : null,
+              ...(result.mode === "live_pending"
+                ? {
+                    name: edit.name.trim(),
+                    short_description: edit.short_description,
+                    description: edit.description,
+                    product_type: edit.product_type,
+                    inventory_mode: edit.inventory_mode,
+                    show_affiliate: !!edit.show_affiliate,
+                    show_add_to_cart: !!edit.show_add_to_cart,
+                    affiliate_url: edit.affiliate_url,
+                  }
+                : {}),
             }
           : x
       )
     );
-    setOk("Saved.");
+    setOk(
+      result.mode === "pending_approval"
+        ? "Update submitted for approval. Public page still shows the last approved content. Stock is live."
+        : "Saved. Product is still pending first approval."
+    );
     setEditId("");
     router.refresh();
   }
@@ -177,10 +178,11 @@ export default function ShopPortalClient({
         affiliate_url: buy.show_affiliate ? buy.affiliate_url.trim() : "",
         status: "pending",
         created_by: profileId,
+        has_pending_edit: false,
         updated_at: new Date().toISOString(),
       })
       .select(
-        "id, name, slug, status, primary_shop_id, short_description, description, price_cents, product_type, inventory_mode, stock_qty, category_id, show_affiliate, show_add_to_cart, affiliate_url, updated_at"
+        "id, name, slug, status, primary_shop_id, short_description, description, price_cents, product_type, inventory_mode, stock_qty, category_id, show_affiliate, show_add_to_cart, affiliate_url, has_pending_edit, updated_at"
       )
       .single();
 
@@ -333,6 +335,9 @@ export default function ShopPortalClient({
                     {p.inventory_mode === "batch_expiry" ? " · batch + expiry" : ""}
                     {p.stock_qty != null ? ` · stock ${p.stock_qty}` : ""}
                   </p>
+                  {p.has_pending_edit ? (
+                    <p className="mt-1 text-xs font-semibold text-amber-800">Update awaiting admin approval</p>
+                  ) : null}
                 </div>
                 <div className="flex items-center gap-2">
                   {p.status === "approved" ? (
@@ -350,6 +355,11 @@ export default function ShopPortalClient({
 
               {editId === p.id && edit ? (
                 <div className="mt-4 space-y-3 border-t border-[#e8d5c4] pt-4">
+                  <p className="text-xs text-[#7a5c4e]">
+                    {p.status === "approved"
+                      ? "Content changes need admin approval. Product varieties & stock update immediately."
+                      : "Not live yet — saves stay in pending review. Stock is live after approval."}
+                  </p>
                   <label className="block text-sm font-medium">
                     Name
                     <input className={inp} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
@@ -379,7 +389,11 @@ export default function ShopPortalClient({
                     Description
                     <textarea className={inp} rows={3} value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} />
                   </label>
-                  <ProductEditMediaLongevity productId={p.id} />
+                  <ProductEditMediaLongevity
+                    productId={p.id}
+                    persistLive={p.status !== "approved"}
+                    onChange={({ media, chips }) => setEdit((cur) => (cur ? { ...cur, media, chips } : cur))}
+                  />
                   <BuyButtonsFields
                     value={{
                       show_affiliate: edit.show_affiliate,
@@ -402,7 +416,11 @@ export default function ShopPortalClient({
                     onClick={() => saveEdit(p)}
                     className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60"
                   >
-                    {busy ? "Saving…" : "Save"}
+                    {busy
+                      ? "Saving…"
+                      : p.status === "approved"
+                        ? "Submit update for approval"
+                        : "Save"}
                   </button>
                 </div>
               ) : null}
