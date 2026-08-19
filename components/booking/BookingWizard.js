@@ -11,6 +11,8 @@ import DatesStep from "./DatesStep";
 import PetsStep from "./PetsStep";
 import BookingPriceBreakdown from "./BookingPriceBreakdown";
 
+const DEFAULT_BOOKING_MESSAGE = "Hello, I am interested in your service.";
+
 export default function BookingWizard({
   customerId,
   sitters = [],
@@ -32,19 +34,17 @@ export default function BookingWizard({
   });
   const [datesPayload, setDatesPayload] = useState([]);
   const [selectedPetIds, setSelectedPetIds] = useState([]);
-  const [customerMessage, setCustomerMessage] = useState("");
+  const [customerMessage, setCustomerMessage] = useState(DEFAULT_BOOKING_MESSAGE);
   const [form, setForm] = useState({
-    service_type: "house_sit",
+    service_type: Object.values(SERVICE_TYPES)[0]?.id || "drop_in",
     drop_in_duration: 30,
     sitter_id: preferredSitterId || "",
-    payment_method: "later",
   });
 
-  const holidaySet = new Set(holidayDates || []);
   const sitterServicesMap = {};
-  for (const s of services || []) {
-    if (!sitterServicesMap[s.sitter_id]) sitterServicesMap[s.sitter_id] = [];
-    sitterServicesMap[s.sitter_id].push(s);
+  for (const svc of services || []) {
+    if (!sitterServicesMap[svc.sitter_id]) sitterServicesMap[svc.sitter_id] = [];
+    sitterServicesMap[svc.sitter_id].push(svc);
   }
 
   function findSvc(sitterId) {
@@ -55,6 +55,7 @@ export default function BookingWizard({
   }
 
   const hasAddress = !!(address.formatted_address || address.city || address.lat != null);
+  const messageReady = !!customerMessage.trim();
 
   const availableSitters = (() => {
     if (!form.service_type || datesPayload.length === 0) return [];
@@ -66,25 +67,25 @@ export default function BookingWizard({
     return sortPreferredFirst(list, preferredSitterId);
   })();
 
-  const price = (() => {
-    if (!form.sitter_id) return null;
-    const svc = findSvc(form.sitter_id);
-    if (!svc) return null;
-    return estimateBookingPrice({
-      serviceType: form.service_type,
-      dates: datesPayload,
-      durationMinutes:
-        form.service_type === "house_sit" || form.service_type === "boarding"
-          ? null
-          : Number(form.drop_in_duration) || 30,
-      petCount: selectedPetIds.length,
-      rateRegular: Number(svc.rate_regular) || 0,
-      rateHoliday: Number(svc.rate_holiday) || 0,
-      extraPetRate: Number(svc.extra_pet_rate) || 0,
-      rate60: Number(svc.rate_60min) || 0,
-      holidaySet,
-    });
-  })();
+  const selectedSitter = availableSitters.find((s) => s.id === form.sitter_id) || null;
+  const svc = selectedSitter ? findSvc(selectedSitter.id) : null;
+  const holidaySet = new Set(holidayDates || []);
+  const price = svc
+    ? estimateBookingPrice({
+        serviceType: form.service_type,
+        dates: datesPayload,
+        durationMinutes:
+          form.service_type === "house_sit" || form.service_type === "boarding"
+            ? null
+            : Number(form.drop_in_duration) || 30,
+        petCount: selectedPetIds.length,
+        rateRegular: Number(svc.rate_regular) || 0,
+        rateHoliday: Number(svc.rate_holiday) || 0,
+        extraPetRate: Number(svc.rate_extra_pet) || 0,
+        rate60: Number(svc.rate_60) || 0,
+        holidaySet,
+      })
+    : null;
 
   const estimatedTotal = price?.total || 0;
   const overnight = form.service_type === "house_sit" || form.service_type === "boarding";
@@ -95,6 +96,11 @@ export default function BookingWizard({
   const visitTimesValid = overnight || datesPayload.some((d) => (d.times || []).length > 0);
 
   async function submitBooking() {
+    const intro = customerMessage.trim();
+    if (!intro) {
+      setError("Please write a message for the sitter.");
+      return;
+    }
     setError("");
     setSubmitting(true);
     try {
@@ -105,24 +111,20 @@ export default function BookingWizard({
           customer_id: customerId,
           sitter_id: form.sitter_id,
           service_type: normalizeServiceType(form.service_type),
-          status: "pending",
-          payment_method: "later",
-          payment_status: "pending",
           estimated_total: estimatedTotal,
           price_breakdown: price || null,
-          service_address: address.formatted_address,
-          service_address_lat: address.lat,
-          service_address_lng: address.lng,
+          status: "pending",
+          service_address: address.formatted_address || "",
           service_address_city: address.city,
           service_address_state: address.state,
           service_address_postal_code: address.postal_code,
           service_address_country: address.country,
-          customer_notes: customerMessage || "",
+          customer_message: intro,
+          customer_notes: intro,
         })
         .select("id")
         .single();
       if (bErr) throw bErr;
-
       const slots = [];
       if (overnight) {
         if (datesPayload.length >= 2 && datesPayload.startTime && datesPayload.endTime) {
@@ -143,10 +145,9 @@ export default function BookingWizard({
       } else {
         const dur = Number(form.drop_in_duration) || 30;
         for (const day of datesPayload) {
-          const base = new Date(day.date);
-          for (const t of day.times || []) {
-            const [hh, mm] = t.split(":").map(Number);
-            const startsAt = new Date(base);
+          for (const time of day.times || []) {
+            const startsAt = new Date(day.date);
+            const [hh, mm] = String(time).split(":").map(Number);
             startsAt.setHours(hh, mm, 0, 0);
             const endsAt = new Date(startsAt);
             endsAt.setMinutes(endsAt.getMinutes() + dur);
@@ -170,10 +171,18 @@ export default function BookingWizard({
           .insert(selectedPetIds.map((pet_id) => ({ booking_id: booking.id, pet_id })));
         if (pErr) throw pErr;
       }
+      try {
+        await fetch("/api/inbox/seed-booking", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ booking_id: booking.id }),
+        });
+      } catch {
+        /* Inbox is also created when either person opens /inbox */
+      }
       window.location.href = `/booking?placed=1&booking=${booking.id}`;
     } catch (err) {
-      setError(err.message || "Could not place booking");
-    } finally {
+      setError(err.message || "Could not submit booking");
       setSubmitting(false);
     }
   }
@@ -260,19 +269,21 @@ export default function BookingWizard({
           <p className="text-sm text-[#7a5c4e]">The first pet is included. Each extra pet adds the sitter’s additional cat/dog rate.</p>
           <PetsStep customerId={customerId} selectedPetIds={selectedPetIds} onChange={setSelectedPetIds} />
           <label className="block text-sm">
-            <span className="font-medium">Message (optional)</span>
+            <span className="font-medium">Message</span>
             <textarea
+              required
               className="mt-1 min-h-[80px] w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
-              placeholder="Share any details the sitter should know"
+              placeholder={DEFAULT_BOOKING_MESSAGE}
               value={customerMessage}
               onChange={(e) => setCustomerMessage(e.target.value)}
             />
           </label>
+          <p className="text-xs text-[#7a5c4e]">This starts the chat with your sitter in Inbox.</p>
           <div className="flex gap-2">
             <button type="button" onClick={() => setStep(2)} className="rounded-full border border-[#e8d5c4] bg-white px-5 py-2.5 text-sm font-semibold">
               Back
             </button>
-            <button type="button" onClick={() => setStep(4)} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white">
+            <button type="button" onClick={() => setStep(4)} disabled={!messageReady} className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
               Next
             </button>
           </div>
@@ -301,7 +312,7 @@ export default function BookingWizard({
             <button
               type="button"
               onClick={submitBooking}
-              disabled={submitting || !form.sitter_id || estimatedTotal <= 0}
+              disabled={submitting || !form.sitter_id || estimatedTotal <= 0 || !messageReady}
               className="rounded-full bg-[#c45c26] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
             >
               {submitting ? "Working…" : "Submit booking request"}
