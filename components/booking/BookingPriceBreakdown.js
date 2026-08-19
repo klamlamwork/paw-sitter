@@ -1,3 +1,13 @@
+import { quoteBookingCustomerTotal } from "@/lib/pawServiceFee";
+
+function moneyFromCents(cents) {
+  return `$${((Number(cents) || 0) / 100).toFixed(2)}`;
+}
+
+function dollarsToCents(amount) {
+  return Math.round((Number(amount) || 0) * 100);
+}
+
 export default function BookingPriceBreakdown({ breakdown, showKeep = false }) {
   if (!breakdown) return null;
   const unit = breakdown.unit_label || "visit";
@@ -17,6 +27,10 @@ export default function BookingPriceBreakdown({ breakdown, showKeep = false }) {
     rows.push([`60-minute add-on × ${units}`, breakdown.duration]);
   }
 
+  const quoted = quoteBookingCustomerTotal({
+    subtotalCents: dollarsToCents(breakdown.total),
+  });
+
   return (
     <div className="mt-2 rounded-xl border border-[#f0e0d2] bg-white px-3 py-2 text-xs text-[#5c4033]">
       {units === 0 ? <p className="text-[#7a5c4e]">Add dates and times to see the total.</p> : null}
@@ -27,16 +41,25 @@ export default function BookingPriceBreakdown({ breakdown, showKeep = false }) {
         </p>
       ))}
       <p className="mt-1 flex justify-between gap-3 font-semibold text-[#3b2a22]">
-        <span>Order total</span>
+        <span>Sitter rate</span>
         <span>${Number(breakdown.total || 0).toFixed(2)}</span>
       </p>
       {showKeep ? (
-        <p className="flex justify-between gap-3 text-[#c45c26]">
-          <span>You keep (90%)</span>
+        <p className="flex justify-between gap-3 text-[#7a5c4e]">
+          <span>You keep</span>
           <span>${Number(breakdown.sitter_keep || 0).toFixed(2)}</span>
         </p>
       ) : (
-        <p className="text-[#7a5c4e]">Platform fee 10% • Sitter 90%</p>
+        <>
+          <p className="mt-1 flex justify-between gap-3">
+            <span>Paw Service Fee</span>
+            <span>{moneyFromCents(quoted.feeCents)}</span>
+          </p>
+          <p className="mt-1 flex justify-between gap-3 font-semibold text-[#3b2a22]">
+            <span>You pay:</span>
+            <span>{moneyFromCents(quoted.customerPayCents)}</span>
+          </p>
+        </>
       )}
     </div>
   );
