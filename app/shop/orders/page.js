@@ -16,7 +16,7 @@ export default async function ShopOrdersPage({ searchParams }) {
   const supabase = await createClient();
   const { data: orders } = await supabase
     .from("shop_orders")
-    .select("id, status, payment_status, discount_cents, discount_code, created_at, shipping_city, seller_shop_id, shop:shop_shops!seller_shop_id(id, name, slug), items:shop_order_items(id, qty, price_cents, currency, product_id, product:shop_products(name, slug))")
+    .select("id, status, payment_status, discount_cents, discount_code, shipping_cents, shipping_label, shipping_method, created_at, shipping_city, seller_shop_id, shop:shop_shops!seller_shop_id(id, name, slug), items:shop_order_items(id, qty, price_cents, currency, product_id, product:shop_products(name, slug))")
     .eq("user_id", profile.id)
     .order("created_at", { ascending: false });
 
@@ -43,9 +43,11 @@ export default async function ShopOrdersPage({ searchParams }) {
           {orders.map((order) => {
             const subtotal = (order.items || []).reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 0), 0);
             const discount = order.discount_cents || 0;
-            const total = Math.max(0, subtotal - discount);
+            const shipping = Number(order.shipping_cents) || 0;
+            const total = Math.max(0, subtotal - discount) + shipping;
             const currency = order.items?.[0]?.currency || "CAD";
             const orderNo = shopOrderLabel(order.id);
+            const shipName = order.shipping_label || (order.shipping_method ? String(order.shipping_method)[0].toUpperCase() + String(order.shipping_method).slice(1) : "Shipping");
             return (
               <li key={order.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -81,6 +83,7 @@ export default async function ShopOrdersPage({ searchParams }) {
                 <div className="mt-3 space-y-0.5 text-sm">
                   <p className="text-[#7a5c4e]">Subtotal {formatShopPrice(subtotal, currency)}</p>
                   {discount ? <p className="text-green-700">Discount{order.discount_code ? ` (${order.discount_code})` : ""} −{formatShopPrice(discount, currency)}</p> : null}
+                  <p className="text-[#7a5c4e]">{shipName} {shipping ? formatShopPrice(shipping, currency) : "Free"}</p>
                   <p className="font-bold text-[#3b2a22]">Total {formatShopPrice(total, currency)}</p>
                 </div>
               </li>

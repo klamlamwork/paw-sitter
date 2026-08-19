@@ -43,9 +43,11 @@ export default function SellerOrdersClient({ initialOrders }) {
       {orders.map((order) => {
         const subtotal = (order.items || []).reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 0), 0);
         const discount = order.discount_cents || 0;
-        const total = Math.max(0, subtotal - discount);
+        const shipping = Number(order.shipping_cents) || 0;
+        const total = Math.max(0, subtotal - discount) + shipping;
         const currency = order.items?.[0]?.currency || "CAD";
         const actions = NEXT[order.status] || [];
+        const shipName = order.shipping_label || (order.shipping_method ? String(order.shipping_method)[0].toUpperCase() + String(order.shipping_method).slice(1) : "Shipping");
         return (
           <article key={order.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -59,7 +61,7 @@ export default function SellerOrdersClient({ initialOrders }) {
             <p className="mt-3 text-xs text-[#7a5c4e]">Ship to</p>
             <p className="text-sm text-[#3b2a22]">{order.shipping_name}{order.shipping_phone ? ` · ${order.shipping_phone}` : ""}</p>
             <p className="text-sm text-[#5c4033]">{[order.shipping_line1, order.shipping_line2, order.shipping_city, order.shipping_state, order.shipping_postal_code, order.shipping_country].filter(Boolean).join(", ")}</p>
-            {order.shipping_label ? <p className="mt-1 text-xs text-[#7a5c4e]">{order.shipping_label} · {formatShopPrice(order.shipping_cents || 0, currency)}</p> : null}
+            {order.shipping_email ? <p className="text-xs text-[#7a5c4e]">{order.shipping_email}</p> : null}
             <ul className="mt-3 space-y-1">
               {(order.items || []).map((item) => (
                 <li key={item.id} className="flex justify-between gap-3">
@@ -73,7 +75,8 @@ export default function SellerOrdersClient({ initialOrders }) {
             </ul>
             <div className="mt-2 space-y-0.5 text-sm">
               <p className="text-[#7a5c4e]">Subtotal {formatShopPrice(subtotal, currency)}</p>
-              {discount ? <p className="text-green-700">Discount −{formatShopPrice(discount, currency)}</p> : null}
+              {discount ? <p className="text-green-700">Discount{order.discount_code ? ` (${order.discount_code})` : ""} −{formatShopPrice(discount, currency)}</p> : null}
+              <p className="text-[#7a5c4e]">{shipName} {shipping ? formatShopPrice(shipping, currency) : "Free"}</p>
               <p className="font-bold text-[#3b2a22]">Total {formatShopPrice(total, currency)}</p>
             </div>
             {actions.length ? (
