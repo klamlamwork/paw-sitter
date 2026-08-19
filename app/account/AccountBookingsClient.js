@@ -6,6 +6,8 @@ import { isBookingPaid, dollarsToCents } from "@/lib/money";
 import { quoteBookingCustomerTotal } from "@/lib/pawServiceFee";
 import PawPointsCheckout from "@/components/shop/PawPointsCheckout";
 import ConfirmBookingPaid from "./ConfirmBookingPaid";
+import BookingPriceBreakdown from "@/components/booking/BookingPriceBreakdown";
+import { formatInTimezone, serviceLocationText, timezoneLabel } from "@/lib/bookingTime";
 
 function hoursUntilUTC(startsAtISO) {
   if (!startsAtISO) return null;
@@ -18,19 +20,24 @@ function money(cents) {
 
 function serviceLabel(type) {
   switch (type) {
-    case "house_sit": return "House sit";
-    case "day_care": return "Day care";
+    case "house_sit": return "House Sit";
+    case "boarding": return "Boarding";
+    case "walking":
+    case "dog_walking": return "Dog Walking";
+    case "drop_in": return "Drop-in";
+    case "day_care": return "Day Care";
     case "grooming": return "Grooming";
     default: return "Sitter booking";
   }
 }
 
-export default function AccountBookingsClient({ bookings = [] }) {
+export default function AccountBookingsClient({ bookings = [], displayTimezone = "" }) {
   const [openId, setOpenId] = useState("");
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
   const [methods, setMethods] = useState(null);
   const [pawByBooking, setPawByBooking] = useState({});
+  const tz = timezoneLabel(displayTimezone);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +104,9 @@ export default function AccountBookingsClient({ bookings = [] }) {
       {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
       <ul className="mt-4 space-y-3">
         {bookings.length === 0 ? <li className="text-sm text-[#7a5c4e]">No bookings yet.</li> : bookings.map((b) => {
-          const startsAtISO = (b.booking_slots || [])[0]?.starts_at;
+          const slots = b.booking_slots || [];
+          const startsAtISO = slots[0]?.starts_at;
+          const lastSlot = slots[slots.length - 1];
           const hoursUntilStart = hoursUntilUTC(startsAtISO);
           const paid = isBookingPaid(b);
           const showPay = b.status === "accepted" && !paid;
@@ -110,15 +119,37 @@ export default function AccountBookingsClient({ bookings = [] }) {
           const subtotalCents = dollarsToCents(b.estimated_total);
           const paw = pawByBooking[b.id] || {};
           const quoted = quoteBookingCustomerTotal({ subtotalCents, pointsCents: paw.cents || 0 });
+          const overnight = b.service_type === "house_sit" || b.service_type === "boarding";
           return (
             <li key={b.id} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 px-4 py-3 text-sm">
               <div className="flex justify-between gap-2">
-                <span className="font-semibold">{serviceLabel(b.service_type)} - {b.sitters?.display_name || "Sitter"}</span>
+                <span className="font-semibold">{serviceLabel(b.service_type)}</span>
                 <span className="rounded-full bg-[#f3e0d0] px-2 py-0.5 text-xs capitalize text-[#c45c26]">{b.status}</span>
               </div>
-              <p className="mt-1 text-[#7a5c4e]">Sitter rate {money(subtotalCents)} · Paw Service Fee {money(quoted.feeCents)} · You pay {money(quoted.customerPayCents)}</p>
-              <p className="mt-1 text-[#7a5c4e]">Payment: <span className="font-medium capitalize">{b.payment_status || "pending"}</span>{paid ? <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">Paid</span> : null}</p>
-              {startsAtISO ? <p className="mt-1 text-xs text-[#7a5c4e]">Starts: {new Date(startsAtISO).toLocaleString()}</p> : null}
+              <p className="mt-1 text-sm text-[#5c4033]">Service location: {serviceLocationText(b)}</p>
+              {slots.length ? (
+                overnight && startsAtISO && lastSlot?.ends_at ? (
+                  <p className="mt-1 text-sm text-[#5c4033]">
+                    <span className="font-semibold">Your time:</span> {formatInTimezone(startsAtISO, displayTimezone)} → {formatInTimezone(lastSlot.ends_at, displayTimezone)} <span className="text-[#7a5c4e]">({tz})</span>
+                  </p>
+                ) : (
+                  <div className="mt-1 space-y-1 text-sm text-[#5c4033]">
+                    {slots.map((s) => (
+                      <p key={s.id || s.starts_at}>
+                        <span className="font-semibold">Your time:</span> {formatInTimezone(s.starts_at, displayTimezone)}{s.ends_at ? ` → ${formatInTimezone(s.ends_at, displayTimezone)}` : ""} <span className="text-[#7a5c4e]">({tz})</span>
+                      </p>
+                    ))}
+                  </div>
+                )
+              ) : null}
+              {b.price_breakdown ? (
+                <BookingPriceBreakdown breakdown={b.price_breakdown} hideSitterRate customerTotalLabel="Order total" />
+              ) : (
+                <div className="mt-2 rounded-xl border border-[#f0e0d2] bg-white px-3 py-2 text-xs text-[#5c4033]">
+                  <p className="flex justify-between gap-3"><span>Paw Service Fee</span><span>{money(quoted.feeCents)}</span></p>
+                  <p className="mt-1 flex justify-between gap-3 font-semibold text-[#3b2a22]"><span>Order total</span><span>{money(quoted.customerPayCents)}</span></p>
+                </div>
+              )}
               {showPay && (!canPay ? <p className="mt-2 text-xs text-red-600">Payment must be made at least 48 hours before the booking starts.</p> : noMethods ? <p className="mt-2 text-xs text-[#7a5c4e]">Payment options are currently unavailable.</p> : <div className="mt-2">
                 <button type="button" onClick={() => setOpenId(open ? "" : b.id)} disabled={!methods} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{methods ? (open ? "Hide payment options" : "Pay now") : "Loading payment options…"}</button>
                 {open && methods ? <div className="mt-2 space-y-2 rounded-xl border border-[#e8d5c4] bg-white p-3">

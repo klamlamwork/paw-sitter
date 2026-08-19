@@ -8,7 +8,12 @@ function dollarsToCents(amount) {
   return Math.round((Number(amount) || 0) * 100);
 }
 
-export default function BookingPriceBreakdown({ breakdown, showKeep = false }) {
+export default function BookingPriceBreakdown({
+  breakdown,
+  showKeep = false,
+  hideSitterRate = false,
+  customerTotalLabel = "You pay:",
+}) {
   if (!breakdown) return null;
   const unit = breakdown.unit_label || "visit";
   const units = Number(breakdown.units) || 0;
@@ -40,10 +45,12 @@ export default function BookingPriceBreakdown({ breakdown, showKeep = false }) {
           <span>${Number(amount || 0).toFixed(2)}</span>
         </p>
       ))}
-      <p className="mt-1 flex justify-between gap-3 font-semibold text-[#3b2a22]">
-        <span>Sitter rate</span>
-        <span>${Number(breakdown.total || 0).toFixed(2)}</span>
-      </p>
+      {hideSitterRate ? null : (
+        <p className="mt-1 flex justify-between gap-3 font-semibold text-[#3b2a22]">
+          <span>Sitter rate</span>
+          <span>${Number(breakdown.total || 0).toFixed(2)}</span>
+        </p>
+      )}
       {showKeep ? (
         <p className="flex justify-between gap-3 text-[#7a5c4e]">
           <span>You keep</span>
@@ -56,7 +63,7 @@ export default function BookingPriceBreakdown({ breakdown, showKeep = false }) {
             <span>{moneyFromCents(quoted.feeCents)}</span>
           </p>
           <p className="mt-1 flex justify-between gap-3 font-semibold text-[#3b2a22]">
-            <span>You pay:</span>
+            <span>{customerTotalLabel}</span>
             <span>{moneyFromCents(quoted.customerPayCents)}</span>
           </p>
         </>
