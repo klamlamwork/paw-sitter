@@ -15,7 +15,7 @@ export default function Header() {
             className="h-9 w-9 shrink-0 rounded-full object-cover"
           />
           <span className="text-lg font-bold text-[#3d2a14]">
-            Paw<span className="text-[#c8cccf]">Sitter</span>
+            Joyful<span className="text-[#c8cccf]">PAWS</span>
           </span>
         </Link>
         <nav className="flex shrink-0 items-center gap-2 sm:gap-4">
