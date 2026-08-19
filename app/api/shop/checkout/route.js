@@ -1,3 +1,5 @@
+"use server";
+
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
@@ -14,6 +16,7 @@ export async function POST(request) {
     if (!process.env.STRIPE_SECRET_KEY) {
       return NextResponse.json({ error: "Stripe is not configured yet." }, { status: 503 });
     }
+
     const body = await request.json();
     const address = body?.address || {};
     const promoRaw = body?.promo_code;
@@ -51,7 +54,7 @@ export async function POST(request) {
     for (const item of cartItems) {
       if (!item.shop_id) continue;
       if (!item.price_cents || item.price_cents < 50) {
-        return NextResponse.json({ error: "Every card item needs a price of at least $0.50." }, { status: 400 });
+        return NextResponse.json({ error: "Every cart item needs a price of at least $0.50." }, { status: 400 });
       }
       if (!bySeller.has(item.shop_id)) bySeller.set(item.shop_id, []);
       bySeller.get(item.shop_id).push(item);
@@ -82,6 +85,7 @@ export async function POST(request) {
       const rate = resolveShippingRate({ settings, method, scope: scopeResult.scope, subtotalCents: sellerSubtotal });
       if (!rate) return NextResponse.json({ error: "That shipping method is not available." }, { status: 400 });
       totalShippingCents += rate.cents;
+
       const { data: order, error: orderErr } = await supabase.from("shop_orders").insert({
         user_id: user.id,
         seller_shop_id: sellerShopId,
@@ -100,6 +104,10 @@ export async function POST(request) {
         shipping_method: method,
         shipping_cents: rate.cents,
         shipping_label: rate.label,
+        pickup_location: method === "pickup" ? "Shop pickup" : null,
+        pickup_ready_by: method === "pickup" && settings.pickup_ready_hours
+          ? new Date(Date.now() + settings.pickup_ready_hours * 3600000).toISOString()
+          : null,
         discount_code: codeRow?.code || null,
         discount_code_id: codeRow?.id || null,
         discount_cents: 0,
@@ -107,6 +115,7 @@ export async function POST(request) {
       }).select("id").single();
       if (orderErr) throw orderErr;
       orderIds.push(order.id);
+
       const { error: itemsErr } = await supabase.from("shop_order_items").insert(
         sellerItems.map((i) => ({
           order_id: order.id,
@@ -147,9 +156,7 @@ export async function POST(request) {
         },
       });
     }
-    if (!lineItems.length) {
-      return NextResponse.json({ error: "Nothing left to charge." }, { status: 400 });
-    }
+    if (!lineItems.length) return NextResponse.json({ error: "Nothing left to charge." }, { status: 400 });
 
     const origin = (process.env.NEXT_PUBLIC_SITE_URL || request.headers.get("origin") || "http://localhost:3000").replace(/\/$/, "");
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
@@ -160,6 +167,7 @@ export async function POST(request) {
       cancel_url: `${origin}/shop/checkout?canceled=1`,
       metadata: {
         user_id: user.id,
+        cart_id: cartId,
         order_ids: orderIds.join(","),
         discount_cents: String(discountCents),
         paw_points: String(points.points || 0),
@@ -168,11 +176,17 @@ export async function POST(request) {
       },
       line_items: lineItems,
     });
-    await supabase.from("shop_orders").update({ stripe_session_id: session.id, updated_at: new Date().toISOString() }).in("id", orderIds);
-    await supabase.from("shop_cart_items").delete().eq("cart_id", cartId);
+
+    const { error: stampErr } = await supabase
+      .from("shop_orders")
+      .update({ stripe_session_id: session.id, updated_at: new Date().toISOString() })
+      .in("id", orderIds);
+    if (stampErr) throw stampErr;
+
     if (codeRow && discountCents) {
       await recordRedemption({ code: codeRow, userId: user.id, orderId: orderIds[0], discountCents, fundedByPlatform, breakdown });
     }
+
     return NextResponse.json({ url: session.url, paw_points: points.points, amount_cents: netMerch + totalShippingCents });
   } catch (err) {
     return NextResponse.json({ error: err.message || "Could not start card checkout" }, { status: 500 });
