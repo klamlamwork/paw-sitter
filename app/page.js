@@ -12,7 +12,7 @@ export default function HomePage() {
           </p>
           <h1 className="text-3xl font-bold leading-tight text-[#3b2a22] sm:text-4xl lg:text-5xl">
             Happy, Healthy PAWS.{" "}
-            <span className="text-[#b5710b]">Joyjul PARENTS.</span>
+            <span className="text-[#b5710b]">Joyful PARENTS.</span>
           </h1>
           <p className="mt-4 max-w-lg text-base leading-relaxed text-[#7a5c4e] sm:text-lg">
             Joyful PAWS offers Nutrition and Longevity Advises — with Researched Products and Sitter Services that best fit your paw kids, in the most affordable ways.
