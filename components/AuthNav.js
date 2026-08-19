@@ -65,6 +65,8 @@ export default function AuthNav({ profile }) {
           <button type="button" aria-expanded={moreOpen} aria-label="More menu" onClick={() => { setMoreOpen((v) => !v); setAvatarOpen(false); }} className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-[#efd09a] bg-white text-[#5a4018] shadow-sm active:bg-[#fff9ed]"><MoreIcon /></button>
           {moreOpen ? (
             <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-2xl border border-[#efd09a] bg-white p-2 shadow-lg">
+              <Link href="/shop" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Shop</Link>
+              <Link href="/booking" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Book Services</Link>
               <Link href="/sitters" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Sitters</Link>
               <Link href="/blog" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Blog</Link>
             </div>
@@ -116,6 +118,8 @@ export default function AuthNav({ profile }) {
           <button type="button" aria-expanded={moreOpen} aria-label="More menu" onClick={() => { setMoreOpen((v) => !v); setAvatarOpen(false); }} className="inline-flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border border-[#efd09a] bg-white text-[#5a4018] shadow-sm active:bg-[#fff9ed]"><MoreIcon /></button>
           {moreOpen ? (
             <div className="absolute right-0 top-full z-50 mt-2 w-48 rounded-2xl border border-[#efd09a] bg-white p-2 shadow-lg">
+              <Link href="/shop" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Shop</Link>
+              <Link href="/booking" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Book Services</Link>
               <Link href="/sitters" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Sitters</Link>
               <Link href="/blog" className="block rounded-lg px-3 py-2.5 text-sm font-medium text-[#5a4018] hover:bg-[#fff9ed]" onClick={() => setMoreOpen(false)}>Blog</Link>
             </div>
