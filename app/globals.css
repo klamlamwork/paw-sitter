@@ -124,3 +124,18 @@ footer p, footer [class*="text-[#7a5c4e]"] { color: #000000 !important; }
 header span.avatar-initial {
   color: #403f3f !important;
 }
+
+
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
