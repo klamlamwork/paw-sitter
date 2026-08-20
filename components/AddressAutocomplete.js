@@ -63,7 +63,7 @@ function parseComponents(components) {
 export default function AddressAutocomplete({
   value = {},
   onChange,
-  countryCode = "",
+  countryCode,
   label = "Street address (optional)",
   disabled = false,
 }) {
@@ -243,8 +243,8 @@ export default function AddressAutocomplete({
       postal_code: "",
       lat: null,
       lng: null,
-      clearCoords: true,
       formatted: "",
+      clearCoords: true,
     });
   }
 
@@ -266,7 +266,6 @@ export default function AddressAutocomplete({
       <label className="relative block text-xs text-[#7a5c4e]">
         Street / road + number
         <input
-          ref={inputRef}
           type="text"
           disabled={disabled}
           value={query}
