@@ -39,7 +39,7 @@ function formFromPet(pet) {
   };
 }
 
-function PetForm({ form, setForm, onSave, saving, submitLabel }) {
+function PetForm({ form, setForm, onSave, saving, submitLabel, currentPhotoUrl = "", fileKey = "photo" }) {
   function toggleMed(key) {
     setForm((f) => {
       const has = (f.medications || []).includes(key);
@@ -107,7 +107,17 @@ function PetForm({ form, setForm, onSave, saving, submitLabel }) {
       </div>
       <label className="text-sm">
         <span className="font-medium">Photo</span>
-        <input type="file" accept="image/*" className="mt-1 w-full text-sm" onChange={(e) => setForm({ ...form, photo_file: e.target.files?.[0] || null })} />
+        {currentPhotoUrl && !form.photo_file ? <img src={currentPhotoUrl} alt="" className="mt-1 h-20 w-20 rounded-lg object-cover" /> : null}
+        {form.photo_file ? (
+          <p className="mt-1 text-xs text-[#7a5c4e]">Selected: {form.photo_file.name}</p>
+        ) : null}
+        <input
+          key={fileKey}
+          type="file"
+          accept="image/*"
+          className="mt-1 w-full text-sm"
+          onChange={(e) => setForm((f) => ({ ...f, photo_file: e.target.files?.[0] || null }))}
+        />
       </label>
       <label className="text-sm">
         <span className="font-medium">Anything else a sitter should know?</span>
@@ -127,14 +137,16 @@ export default function MyPawKidsClient({ initialPets = [], profileId }) {
   const [editForm, setEditForm] = useState(EMPTY_FORM);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [photoKey, setPhotoKey] = useState(0);
 
   async function uploadPhoto(file, petId) {
-    const supabase = createClient();
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `${profileId}/${petId}-${Date.now()}.${ext}`;
-    const { error: uploadErr } = await supabase.storage.from("pet-photos").upload(path, file, { upsert: true });
-    if (uploadErr) throw uploadErr;
-    return supabase.storage.from("pet-photos").getPublicUrl(path).data?.publicUrl || "";
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("pet_id", petId);
+    const res = await fetch("/api/pets/photo", { method: "POST", body: fd });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not upload photo");
+    return data.photo_url || "";
   }
 
   function payloadFromForm(nextForm) {
@@ -162,13 +174,10 @@ export default function MyPawKidsClient({ initialPets = [], profileId }) {
       const { data, error: err } = await supabase.from("pets").insert(payload).select("id").single();
       if (err) throw err;
       let photoUrl = "";
-      if (form.photo_file) {
-        photoUrl = await uploadPhoto(form.photo_file, data.id);
-        const { error: photoErr } = await supabase.from("pets").update({ photo_url: photoUrl, updated_at: new Date().toISOString() }).eq("id", data.id);
-        if (photoErr) throw photoErr;
-      }
+      if (form.photo_file) photoUrl = await uploadPhoto(form.photo_file, data.id);
       setPets((list) => [{ id: data.id, ...payload, photo_url: photoUrl }, ...list]);
       setForm(EMPTY_FORM);
+      setPhotoKey((n) => n + 1);
     } catch (err) {
       setError(err.message || "Could not add pet");
     } finally {
@@ -221,7 +230,7 @@ export default function MyPawKidsClient({ initialPets = [], profileId }) {
       <div className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] p-4">
         <h3 className="text-sm font-semibold text-[#3b2a22]">Add a pet</h3>
         {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
-        <PetForm form={form} setForm={setForm} onSave={addPet} saving={saving} submitLabel="Add pet" />
+        <PetForm form={form} setForm={setForm} onSave={addPet} saving={saving} submitLabel="Add pet" fileKey={`add-${photoKey}`} />
       </div>
 
       <div className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] p-4">
@@ -251,7 +260,7 @@ export default function MyPawKidsClient({ initialPets = [], profileId }) {
                 {editingId === p.id ? (
                   <div className="mt-3 border-t border-[#e8d5c4] pt-3">
                     <h4 className="text-sm font-semibold text-[#3b2a22]">Edit {p.name}</h4>
-                    <PetForm form={editForm} setForm={setEditForm} onSave={() => saveEdit(p)} saving={saving} submitLabel="Save changes" />
+                    <PetForm form={editForm} setForm={setEditForm} onSave={() => saveEdit(p)} saving={saving} submitLabel="Save changes" currentPhotoUrl={p.photo_url || ""} fileKey={`edit-${p.id}-${photoKey}`} />
                   </div>
                 ) : null}
               </li>
