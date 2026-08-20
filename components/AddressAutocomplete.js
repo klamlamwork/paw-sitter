@@ -292,10 +292,8 @@ export default function AddressAutocomplete({
           onFocus={() => suggestions.length && setOpen(true)}
           placeholder={
             !cityName
-              ? "Please choose a city above first..."
-              : ready
-              ? `Start typing street in ${cityName}…`
-              : "Loading Google…"
+              ? "Please choose a city above first…"
+              : `Start typing street in ${cityName}…`
           }
           className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
           autoComplete="off"
