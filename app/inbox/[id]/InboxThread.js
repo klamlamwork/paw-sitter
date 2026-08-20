@@ -50,19 +50,25 @@ export default function InboxThread({
     return () => clearInterval(t);
   }, [conversationId]);
 
-  async function send(photoUrl) {
+  async function send(photoUrl, text) {
+    const nextBody = text === undefined ? body : text;
+    if (!String(nextBody || "").trim() && !photoUrl) return;
     setBusy(true);
     setError("");
     try {
       const res = await fetch("/api/inbox/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversation_id: conversationId, body, photo_url: photoUrl || "" }),
+        body: JSON.stringify({
+          conversation_id: conversationId,
+          body: nextBody,
+          photo_url: photoUrl || "",
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not send");
       setMessages((list) => [...list, data.message]);
-      setBody("");
+      if (text === undefined) setBody("");
     } catch (err) {
       setError(err.message || "Could not send");
     } finally {
@@ -71,25 +77,41 @@ export default function InboxThread({
   }
 
   async function onPhoto(e) {
-    const file = e.target.files?.[0];
+    const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith("image/"));
     e.target.value = "";
-    if (!file) return;
+    if (!files.length) return;
     setBusy(true);
     setError("");
     try {
       const supabase = createClient();
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `${profileId}/${conversationId}-${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from("inbox-photos").upload(path, file, { upsert: true });
-      if (upErr) throw upErr;
-      const { data } = supabase.storage.from("inbox-photos").getPublicUrl(path);
-      await send(data?.publicUrl || "");
+      const caption = body;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const ext = file.name.split(".").pop() || "jpg";
+        const path = `${profileId}/${conversationId}-${Date.now()}-${i}.${ext}`;
+        const { error: upErr } = await supabase.storage.from("inbox-photos").upload(path, file, { upsert: true });
+        if (upErr) throw upErr;
+        const { data } = supabase.storage.from("inbox-photos").getPublicUrl(path);
+        const res = await fetch("/api/inbox/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversation_id: conversationId,
+            body: i === 0 ? caption : "",
+            photo_url: data?.publicUrl || "",
+          }),
+        });
+        const payload = await res.json();
+        if (!res.ok) throw new Error(payload.error || "Could not send");
+        setMessages((list) => [...list, payload.message]);
+      }
+      setBody("");
     } catch (err) {
-      setError(err.message || "Could not attach photo");
+      setError(err.message || "Could not attach photos");
+    } finally {
       setBusy(false);
     }
   }
-
   return (
     <div className="mt-4">
       <div className="rounded-3xl border border-[#e8d5c4] bg-white">
@@ -152,7 +174,7 @@ export default function InboxThread({
           {error ? <p className="mb-2 text-xs text-red-600">{error}</p> : null}
           <div className="flex items-end gap-2">
             <textarea className="min-h-[44px] flex-1 border border-[#e8d5c4] px-3 py-2 text-sm" placeholder={`Message ${otherName}`} value={body} onChange={(e) => setBody(e.target.value)} />
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onPhoto} />
+            <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={onPhoto} />
             <button type="button" onClick={() => fileRef.current?.click()} className="rounded-full border border-[#e8d5c4] px-3 py-2 text-xs font-semibold" disabled={busy}>Photo</button>
             <button type="submit" disabled={busy} className="rounded-full bg-[#c45c26] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60">{busy ? "…" : "Send"}</button>
           </div>
