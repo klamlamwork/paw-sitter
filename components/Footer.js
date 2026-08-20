@@ -15,8 +15,9 @@ export default function Footer() {
         <div>
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#c77e10]">Explore</h2>
           <ul className="space-y-2 text-sm text-[#5a4018]">
-            <li><Link href="/booking" className="hover:text-[#e39b2e]">Book Services</Link></li>
-            <li><Link href="/shop" className="hover:text-[#e39b2e]">Shop</Link></li>
+            <li><Link href="/booking" className="hover:text-[#c8cccf]">Book Services</Link></li>
+            <li><Link href="/shop" className="hover:text-[#c8cccf]">Shop</Link></li>
+            <li><Link href="/contact" className="hover:text-[#c8cccf]">Contact</Link></li>
           </ul>
         </div>
       </div>
