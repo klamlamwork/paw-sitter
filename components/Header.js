@@ -33,7 +33,7 @@ export default function Header() {
           </Link>
           <Link
             href="/shop"
-            className="hidden text-sm font-medium text-[#5a4018] hover:text-[#c8cccf]"
+            className="hidden text-sm font-medium text-[#5a4018] hover:text-[#c8cccf] sm:inline"
           >
             Shop
           </Link>
@@ -60,7 +60,7 @@ export default function Header() {
           </Link>
           <Link
             href="/booking"
-            className="hidden border border-[#efd09a] bg-white px-3 py-1.5 text-xs font-semibold text-[#5a4018] sm:px-4 sm:py-2 sm:text-sm"
+            className="hidden border border-[#efd09a] bg-white px-3 py-1.5 text-xs font-semibold text-[#5a4018] sm:px-4 sm:py-2 sm:text-sm  sm:inline"
           >
             Book
           </Link>
