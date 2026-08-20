@@ -180,7 +180,7 @@ export default function BookingWizard({
       } catch {
         /* Inbox is also created when either person opens /inbox */
       }
-      window.location.href = `/booking?placed=1&booking=${booking.id}`;
+      window.location.href = "/account";
     } catch (err) {
       setError(err.message || "Could not submit booking");
       setSubmitting(false);
