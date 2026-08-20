@@ -19,9 +19,9 @@ export default function LoginClient() {
   const [success, setSuccess] = useState("");
   const [needsVerify, setNeedsVerify] = useState(false);
 
-  function callbackUrl() {
+  function callbackUrl(pathNext) {
     const origin = window.location.origin;
-    return origin + "/auth/callback?next=" + encodeURIComponent(next);
+    return origin + "/auth/callback?next=" + encodeURIComponent(pathNext || next);
   }
 
   async function signInWithGoogle() {
@@ -68,6 +68,16 @@ export default function LoginClient() {
         if (error) throw error;
         if (data.session) {
           window.location.href = next.startsWith("/") ? next : "/";
+          return;
+        }
+        const existing = !data.user?.identities?.length;
+        if (existing) {
+          const { error: resetErr } = await supabase.auth.resetPasswordForEmail(trimmed, {
+            redirectTo: callbackUrl("/login/update-password"),
+          });
+          if (resetErr) throw resetErr;
+          setNeedsVerify(false);
+          setSuccess("An account already exists for this email. We've sent a password setup link to your inbox so you can log in with a password going forward.");
           return;
         }
         setNeedsVerify(true);

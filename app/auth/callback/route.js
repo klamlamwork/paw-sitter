@@ -11,7 +11,8 @@ export async function GET(request) {
   const code = searchParams.get("code");
   const token_hash = searchParams.get("token_hash");
   const type = searchParams.get("type");
-  const next = safeNext(searchParams.get("next") || "/");
+  let next = safeNext(searchParams.get("next") || "/");
+  if (type === "recovery") next = "/login/update-password";
   const supabase = await createClient();
 
   if (code) {
@@ -21,7 +22,10 @@ export async function GET(request) {
 
   if (token_hash && type) {
     const { error } = await supabase.auth.verifyOtp({ token_hash, type });
-    if (!error) return NextResponse.redirect(origin + next);
+    if (!error) {
+      if (type === "recovery") next = "/login/update-password";
+      return NextResponse.redirect(origin + next);
+    }
   }
 
   return NextResponse.redirect(origin + "/login?error=auth");
