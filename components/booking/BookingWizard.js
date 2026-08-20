@@ -15,6 +15,7 @@ const DEFAULT_BOOKING_MESSAGE = "Hello, I am interested in your service.";
 
 export default function BookingWizard({
   customerId,
+  customerProfile = {},
   sitters = [],
   services = [],
   holidayDates = [],
@@ -23,15 +24,22 @@ export default function BookingWizard({
   const [step, setStep] = useState(1);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [address, setAddress] = useState({
-    formatted_address: "",
-    lat: null,
-    lng: null,
-    city: "",
-    state: "",
-    postal_code: "",
-    country: "",
-  });
+  const [address, setAddress] = useState(() => ({
+    formatted_address:
+      customerProfile?.formatted_address ||
+      customerProfile?.address ||
+      customerProfile?.street_address ||
+      [customerProfile?.city, customerProfile?.state, customerProfile?.country]
+        .filter(Boolean)
+        .join(", ") ||
+      "",
+    lat: customerProfile?.lat ?? null,
+    lng: customerProfile?.lng ?? null,
+    city: customerProfile?.city || "",
+    state: customerProfile?.state || "",
+    postal_code: customerProfile?.postal_code || "",
+    country: customerProfile?.country || "",
+  }));
   const [datesPayload, setDatesPayload] = useState([]);
   const [selectedPetIds, setSelectedPetIds] = useState([]);
   const [customerMessage, setCustomerMessage] = useState(DEFAULT_BOOKING_MESSAGE);
