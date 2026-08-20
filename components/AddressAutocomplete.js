@@ -63,7 +63,9 @@ function parseComponents(components) {
 export default function AddressAutocomplete({
   value = {},
   onChange,
-  countryCode,
+  countryCode = "",
+  cityName = "",
+  cityCoords = null,
   label = "Street address (optional)",
   disabled = false,
 }) {
@@ -127,22 +129,40 @@ export default function AddressAutocomplete({
   }, []);
 
   const fetchSuggestions = useCallback(async (input) => {
-    if (!placesReady.current || !input || input.trim().length < 3) {
+    if (!placesReady.current || !input || input.trim().length < 2) {
       setSuggestions([]);
       return;
     }
     setLoadingSug(true);
     try {
       const { AutocompleteSuggestion } = await window.google.maps.importLibrary("places");
+      
       const req = {
         input: input.trim(),
         includedPrimaryTypes: ["street_address", "premise", "subpremise", "route"],
       };
+
+      // 1. Filter by country if available
       if (countryCode) {
         req.includedRegionCodes = [String(countryCode).toLowerCase()];
       }
+
+      // 2. Bias suggestions within ~40km of the selected city's center coordinates
+      if (cityCoords?.lat != null && cityCoords?.lng != null) {
+        req.locationBias = {
+          circle: {
+            center: {
+              latitude: Number(cityCoords.lat),
+              longitude: Number(cityCoords.lng),
+            },
+            radius: 40000.0, // 40 km radius around city center
+          },
+        };
+      }
+
       const { suggestions: list } =
         await AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
+      
       setSuggestions(list || []);
       setOpen(true);
     } catch (err) {
@@ -155,8 +175,7 @@ export default function AddressAutocomplete({
     } finally {
       setLoadingSug(false);
     }
-  }, [countryCode]);
-
+  }, [countryCode, cityCoords]);
   function onQueryChange(text) {
     setQuery(text);
     setLocal((L) => ({ ...L, address_line1: text }));
@@ -271,7 +290,13 @@ export default function AddressAutocomplete({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onFocus={() => suggestions.length && setOpen(true)}
-          placeholder="Start typing address…"
+          placeholder={
+            !cityName
+              ? "Please choose a city above first..."
+              : ready
+              ? `Start typing street in ${cityName}…`
+              : "Loading Google…"
+          }
           className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
           autoComplete="off"
         />
