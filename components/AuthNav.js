@@ -17,7 +17,7 @@ function MoreIcon({ className = "h-5 w-5" }) {
 function ProfileAvatar({ profile }) {
   const name = profile.full_name || profile.email || "A";
   const initial = String(name).trim().charAt(0).toUpperCase() || "A";
-  return <span className="inline-flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-[#d6d6d6] bg-[#eeeeee] text-sm font-bold text-[#403f3f]">{initial}</span>;
+  return <span className="inline-flex h-9 w-9 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-[#d6d6d6] bg-[#eeeeee] text-sm font-bold text-[#403f3f] avatar-initial">{initial}</span>;
 }
 
 function SubMenu({ title, items, onNavigate }) {
