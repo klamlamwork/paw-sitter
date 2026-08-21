@@ -79,8 +79,8 @@ export default function AuthNav({ profile }) {
 
   const isSitter = profile.role === "sitter" || profile.role === "admin";
   const sitterLinks = isSitter ? [
-    { href: "/sitter/calendar", label: "Calendar" },
     { href: "/sitter/bookings", label: "Requests" },
+    { href: "/sitter/calendar", label: "Calendar" },
     { href: "/sitter/dashboard", label: "Sitter Profile & Settings" },
   ] : [];
   const shopLinks = profile.hasShop ? [
@@ -88,9 +88,11 @@ export default function AuthNav({ profile }) {
     { href: "/account/shop/orders", label: "Orders" },
   ] : [{ href: "/account/shop", label: "Open shop portal" }];
   const accountLinks = [
-    { href: "/account", label: "Profile & bookings" },
-    { href: "/shop/orders", label: "My shop orders" },
+    { href: "/account", label: "Profile & Bookings" },
+    { href: "/shop/orders", label: "My Purchase Orders" },
     { href: "/shop/cart", label: "Cart" },
+    { href: "/account/paw-points", label: "My PawPoints" },
+
   ];
   if (profile.role === "admin") accountLinks.push({ href: "/admin/sitters", label: "Admin sitters" });
 
