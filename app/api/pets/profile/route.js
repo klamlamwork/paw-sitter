@@ -5,12 +5,17 @@ import { awardProfilePoints, basicChangedForPoints, basicComplete, loadPetProfil
 
 export const dynamic = "force-dynamic";
 
-function pickModule(row) {
-  const skip = ["id", "pet_id", "created_at", "updated_at"];
+const MODULE_FIELDS = {
+  diet: ["food_brand", "food_product_id", "food_product_name", "feeding_style", "feeder_type", "water_source", "portion_notes", "treats"],
+  hygiene: ["litter_brand", "litter_product_id", "litter_name", "litter_cleaning", "floor_cleaner", "home_fragrance", "bathing_product", "nail_routine", "brushing_routine"],
+  medical: ["allergies", "conditions", "insurance_company", "policy_number", "notes"],
+  social: ["friendly_with", "play_toys", "custom_toy"],
+};
+
+function pickModule(row, module) {
+  const allow = MODULE_FIELDS[module] || [];
   const out = {};
-  Object.entries(row || {}).forEach(([k, v]) => {
-    if (!skip.includes(k)) out[k] = v ?? null;
-  });
+  allow.forEach((k) => { out[k] = row?.[k] ?? null; });
   return out;
 }
 
@@ -72,13 +77,14 @@ export async function PATCH(request) {
   const tables = { diet: "pet_diet", hygiene: "pet_hygiene", medical: "pet_medical", social: "pet_social" };
   if (!tables[module]) return NextResponse.json({ error: "Unknown module." }, { status: 400 });
   const current = await loadPetProfile(petId, profile.id);
-  const before = pickModule(current[module] || {});
-  const row = { pet_id: petId, ...payload, updated_at: new Date().toISOString() };
+  const before = pickModule(current[module] || {}, module);
+  const clean = pickModule(payload, module);
+  const row = { pet_id: petId, ...clean, updated_at: new Date().toISOString() };
   const { error } = await admin.from(tables[module]).upsert(row);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const afterFull = await loadPetProfile(petId, profile.id);
-  const after = pickModule(afterFull[module] || {});
+  const after = pickModule(afterFull[module] || {}, module);
   const prog = afterFull.progress[module] || 0;
   const firstPaid = (afterFull.rewards || []).some((r) => r.module === module && r.first_bonus_paid);
   const changed = JSON.stringify(before) !== JSON.stringify(after);
