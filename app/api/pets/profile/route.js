@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { awardProfilePoints, basicChangedForPoints, basicComplete, loadPetProfile } from "@/lib/petProfile";
+import { awardProfilePoints, basicChangedForPoints, basicComplete, loadPetProfile, logProfileChange } from "@/lib/petProfile";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +9,7 @@ function pickModule(row) {
   const skip = ["id", "pet_id", "created_at", "updated_at"];
   const out = {};
   Object.entries(row || {}).forEach(([k, v]) => {
-    if (!skip.includes(k)) out[k] = v;
+    if (!skip.includes(k)) out[k] = v ?? null;
   });
   return out;
 }
@@ -65,6 +65,7 @@ export async function PATCH(request) {
     } else if (firstPaid && basicChangedForPoints(pet, saved)) {
       award = await awardProfilePoints({ userId: profile.id, petId, module: "basic", kind: "update" });
     }
+    await logProfileChange({ petId, userId: profile.id, module: "basic", before: pet, after: saved, review: reason, points: (award.points || 0) + (award.bonus || 0) });
     return NextResponse.json({ ok: true, award });
   }
 
@@ -92,16 +93,15 @@ export async function PATCH(request) {
       longevity = !!prod?.is_longevity_partner;
     }
   }
-  const productChanged = module === "diet"
-    ? before.food_product_id !== after.food_product_id || before.food_brand !== after.food_brand
-    : module === "hygiene"
-      ? before.litter_product_id !== after.litter_product_id
-      : false;
-  const needReview = productChanged && (module === "diet" || module === "hygiene");
-  const awardReason = needReview ? reason : (reason || "updated");
-  if (needReview && awardReason.trim().length < 25 && kind === "update") {
-    return NextResponse.json({ ok: true, award: { points: 0, skipped: "reason" }, progress: afterFull.progress, hint: "Write 25+ characters to earn Switch & Earn points." });
-  }
-  const award = kind ? await awardProfilePoints({ userId: profile.id, petId, module, kind, reason: awardReason, longevity }) : { points: 0, skipped: "unchanged" };
+  const award = kind ? await awardProfilePoints({ userId: profile.id, petId, module, kind, reason: reason || "updated", longevity }) : { points: 0, skipped: "unchanged" };
+  await logProfileChange({
+    petId,
+    userId: profile.id,
+    module,
+    before,
+    after,
+    review: reason,
+    points: (award.points || 0) + (award.bonus || 0),
+  });
   return NextResponse.json({ ok: true, award, progress: afterFull.progress });
 }
