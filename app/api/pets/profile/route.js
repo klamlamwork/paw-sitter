@@ -90,7 +90,7 @@ export async function PATCH(request) {
   const changed = JSON.stringify(before) !== JSON.stringify(after);
   let kind = null;
   if (!firstPaid && prog >= 100) kind = "first";
-  else if (changed) kind = "update";
+  else if (firstPaid && changed && prog >= 100) kind = "update";
   let longevity = false;
   if (module === "diet" || module === "hygiene") {
     const productId = module === "diet" ? afterFull.diet.food_product_id : afterFull.hygiene.litter_product_id;
@@ -99,7 +99,7 @@ export async function PATCH(request) {
       longevity = !!prod?.is_longevity_partner;
     }
   }
-  const award = kind ? await awardProfilePoints({ userId: profile.id, petId, module, kind, reason: reason || "updated", longevity }) : { points: 0, skipped: "unchanged" };
+  const award = kind ? await awardProfilePoints({ userId: profile.id, petId, module, kind, reason: reason || "updated", longevity }) : { points: 0, skipped: prog < 100 ? "incomplete" : "unchanged" };
   await logProfileChange({
     petId,
     userId: profile.id,
