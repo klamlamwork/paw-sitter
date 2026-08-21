@@ -15,7 +15,11 @@ function Multi({ options, value = [], onChange }) {
     <div className="mt-1 grid gap-1">
       {options.map((opt) => (
         <label key={opt} className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={value.includes(opt)} onChange={() => onChange(value.includes(opt) ? value.filter((v) => v !== opt) : [...value, opt])} />
+          <input type="checkbox" checked={value.includes(opt)} onChange={() => {
+            if (opt === "None") return onChange(value.includes("None") ? [] : ["None"]);
+            const next = value.includes(opt) ? value.filter((v) => v !== opt) : [...value.filter((v) => v !== "None"), opt];
+            onChange(next);
+          }} />
           <span>{opt}</span>
         </label>
       ))}
@@ -23,33 +27,39 @@ function Multi({ options, value = [], onChange }) {
   );
 }
 
-function Typeahead({ category, value, onPick, placeholder }) {
-  const [q, setQ] = useState(value || "");
-  const [rows, setRows] = useState([]);
-  useEffect(() => { setQ(value || ""); }, [value]);
+function BrandProduct({ category, brand, productId, productName, onChange }) {
+  const [brands, setBrands] = useState([]);
+  const [products, setProducts] = useState([]);
   useEffect(() => {
-    const t = setTimeout(() => {
-      fetch(`/api/catalog?category=${encodeURIComponent(category)}&q=${encodeURIComponent(q)}`)
-        .then((r) => r.json())
-        .then((d) => setRows(d.products || []))
-        .catch(() => setRows([]));
-    }, 200);
-    return () => clearTimeout(t);
-  }, [category, q]);
+    fetch("/api/catalog?category=" + encodeURIComponent(category))
+      .then((r) => r.json())
+      .then((d) => setBrands(d.brands || []))
+      .catch(() => setBrands([]));
+  }, [category]);
+  useEffect(() => {
+    if (!brand) { setProducts([]); return; }
+    fetch("/api/catalog?category=" + encodeURIComponent(category) + "&brand=" + encodeURIComponent(brand))
+      .then((r) => r.json())
+      .then((d) => setProducts(d.products || []))
+      .catch(() => setProducts([]));
+  }, [category, brand]);
   return (
-    <div className="relative">
-      <input className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" value={q} placeholder={placeholder} onChange={(e) => setQ(e.target.value)} />
-      {rows.length ? (
-        <ul className="absolute z-20 mt-1 max-h-40 w-full overflow-auto rounded-xl border border-[#e8d5c4] bg-white shadow">
-          {rows.map((p) => (
-            <li key={p.id}>
-              <button type="button" className="w-full px-3 py-2 text-left text-sm hover:bg-[#fff8f0]" onClick={() => { onPick(p); setQ(`${p.brand} ${p.name}`); setRows([]); }}>
-                {p.brand} {p.name}{p.is_longevity_partner ? " · Longevity" : ""}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+    <div className="grid gap-2 sm:grid-cols-2">
+      <label className="text-sm">Brand
+        <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={brand || ""} onChange={(e) => onChange({ brand: e.target.value, productId: "", productName: "" })}>
+          <option value="">Select brand</option>
+          {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+        </select>
+      </label>
+      <label className="text-sm">Product
+        <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={productId || ""} disabled={!brand} onChange={(e) => {
+          const p = products.find((x) => x.id === e.target.value);
+          onChange({ brand, productId: e.target.value, productName: p ? p.name : productName, longevity: !!p?.is_longevity_partner });
+        }}>
+          <option value="">{brand ? "Select product" : "Choose a brand first"}</option>
+          {products.map((p) => <option key={p.id} value={p.id}>{p.name}{p.is_longevity_partner ? " · Longevity" : ""}</option>)}
+        </select>
+      </label>
     </div>
   );
 }
@@ -63,7 +73,7 @@ export default function PetProfileEditor({ pet }) {
   const [episode, setEpisode] = useState({ event_type: "Vomiting", notes: "" });
 
   async function reload() {
-    const res = await fetch(`/api/pets/profile?pet_id=${pet.id}`);
+    const res = await fetch("/api/pets/profile?pet_id=" + pet.id);
     const json = await res.json();
     if (res.ok) setData(json);
   }
@@ -80,7 +90,10 @@ export default function PetProfileEditor({ pet }) {
     setSaving(false);
     if (!res.ok) { setMsg(json.error || "Could not save"); return; }
     const got = (json.award?.points || 0) + (json.award?.bonus || 0);
-    setMsg(got ? `Saved. +${got} Paw Points` : json.award?.skipped === "cooldown" ? "Saved. Update points are on cooldown." : "Saved.");
+    if (got) setMsg("Saved. +" + got + " Paw Points");
+    else if (json.hint) setMsg("Saved. " + json.hint);
+    else if (json.award?.skipped === "cooldown") setMsg("Saved. Update points are on cooldown.");
+    else setMsg("Saved.");
     setReason("");
     reload();
   }
@@ -95,7 +108,7 @@ export default function PetProfileEditor({ pet }) {
     const json = await res.json();
     setSaving(false);
     if (!res.ok) { setMsg(json.error || "Could not add episode"); return; }
-    setMsg(json.award?.points ? `Logged. +${json.award.points} Paw Points` : "Logged.");
+    setMsg(json.award?.points ? "Logged. +" + json.award.points + " Paw Points" : "Logged.");
     setEpisode({ event_type: "Vomiting", notes: "" });
     reload();
   }
@@ -120,38 +133,13 @@ export default function PetProfileEditor({ pet }) {
 
       {tab === "diet" ? (
         <div className="mt-3 grid gap-2 text-sm">
-          <p className="font-semibold">Current food</p>
-          <Typeahead category="food" value={diet.food_product_name || diet.food_brand || ""} onPick={(prod) => { diet.food_product_id = prod.id; diet.food_brand = prod.brand; diet.food_product_name = prod.name; }} placeholder="Search food brand / product" />
-          <button type="button" className="text-left text-xs font-semibold text-[#c45c26]" onClick={() => setTab("diet")}>Changed food or brand? Write a short review to earn +100 Paw Points</button>
-          <label>Feeding style
-            <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={diet.feeding_style || ""} onChange={(e) => { diet.feeding_style = e.target.value; setData({ ...data, diet }); }}>
-              <option value="">Select</option>
-              <option>Scheduled (e.g. 2x Daily)</option>
-              <option>Free Feeding (Bowl left full)</option>
-              <option>Combination</option>
-            </select>
-          </label>
-          <label>Feeder type
-            <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={diet.feeder_type || ""} onChange={(e) => { diet.feeder_type = e.target.value; setData({ ...data, diet }); }}>
-              <option value="">Select</option>
-              <option>Standard Stainless/Ceramic Bowl</option>
-              <option>Slow Feeder Bowl</option>
-              <option>Automatic/Electric Feeder</option>
-              <option>Puzzle Feeder</option>
-              <option>Lick Mat / Snuffle Mat</option>
-            </select>
-          </label>
-          <label>Water source
-            <select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={diet.water_source || ""} onChange={(e) => { diet.water_source = e.target.value; setData({ ...data, diet }); }}>
-              <option value="">Select</option>
-              <option>Filtered Water Fountain</option>
-              <option>Standard Water Bowl</option>
-              <option>Gravity Water Dispenser</option>
-              <option>Tap Water Bowl</option>
-            </select>
-          </label>
+          <BrandProduct category="food" brand={diet.food_brand || ""} productId={diet.food_product_id || ""} productName={diet.food_product_name || ""} onChange={(v) => { diet.food_brand = v.brand; diet.food_product_id = v.productId || null; diet.food_product_name = v.productName || ""; setData({ ...data, diet }); }} />
+          <p className="text-xs font-semibold text-[#c45c26]">Changed food or brand? Write a short review (25+ characters) to earn +100 Paw Points</p>
+          <label>Feeding style<select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={diet.feeding_style || ""} onChange={(e) => { diet.feeding_style = e.target.value; setData({ ...data, diet }); }}><option value="">Select</option><option>Scheduled (e.g. 2x Daily)</option><option>Free Feeding (Bowl left full)</option><option>Combination</option></select></label>
+          <label>Feeder type<select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={diet.feeder_type || ""} onChange={(e) => { diet.feeder_type = e.target.value; setData({ ...data, diet }); }}><option value="">Select</option><option>Standard Stainless/Ceramic Bowl</option><option>Slow Feeder Bowl</option><option>Automatic/Electric Feeder</option><option>Puzzle Feeder</option><option>Lick Mat / Snuffle Mat</option></select></label>
+          <label>Water source<select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={diet.water_source || ""} onChange={(e) => { diet.water_source = e.target.value; setData({ ...data, diet }); }}><option value="">Select</option><option>Filtered Water Fountain</option><option>Standard Water Bowl</option><option>Gravity Water Dispenser</option><option>Tap Water Bowl</option></select></label>
           <label>Portion / instructions<textarea className="mt-1 min-h-[60px] w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={diet.portion_notes || ""} onChange={(e) => { diet.portion_notes = e.target.value; setData({ ...data, diet }); }} /></label>
-          <label>Update review ({reason.length}/25)<textarea className="mt-1 min-h-[60px] w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Required for Switch & Earn (+100)" /></label>
+          <label>Update review ({reason.length}/25)<textarea className="mt-1 min-h-[60px] w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Required when changing brand/product" /></label>
           <button type="button" disabled={saving} onClick={() => save("diet", diet)} className="rounded-full bg-[#c45c26] px-4 py-2 text-xs font-semibold text-white">Save diet</button>
         </div>
       ) : null}
@@ -160,9 +148,8 @@ export default function PetProfileEditor({ pet }) {
         <div className="mt-3 grid gap-2 text-sm">
           {pet.species === "cat" ? (
             <>
-              <p className="font-semibold">Litter</p>
-              <Typeahead category="litter" value={hygiene.litter_name || ""} onPick={(prod) => { hygiene.litter_product_id = prod.id; hygiene.litter_name = `${prod.brand} ${prod.name}`; }} placeholder="Search litter" />
-              <button type="button" className="text-left text-xs font-semibold text-[#c45c26]">Changed litter? Write a short review to earn +100 Paw Points</button>
+              <BrandProduct category="litter" brand={hygiene.litter_brand || ""} productId={hygiene.litter_product_id || ""} productName={hygiene.litter_name || ""} onChange={(v) => { hygiene.litter_brand = v.brand; hygiene.litter_product_id = v.productId || null; hygiene.litter_name = v.productName ? (v.brand + " " + v.productName) : ""; setData({ ...data, hygiene }); }} />
+              <p className="text-xs font-semibold text-[#c45c26]">Changed litter? Write a short review (25+ characters) to earn +100 Paw Points</p>
               <label>Cleaning frequency<select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={hygiene.litter_cleaning || ""} onChange={(e) => { hygiene.litter_cleaning = e.target.value; setData({ ...data, hygiene }); }}><option value="">Select</option><option>Multiple Times Daily</option><option>Once Daily</option><option>Every 2 Days</option><option>Weekly</option></select></label>
             </>
           ) : null}
@@ -185,7 +172,6 @@ export default function PetProfileEditor({ pet }) {
           <Multi options={CONDITIONS} value={medical.conditions || []} onChange={(v) => { medical.conditions = v; setData({ ...data, medical }); }} />
           <label>Insurance<select className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={medical.insurance_company || ""} onChange={(e) => { medical.insurance_company = e.target.value; setData({ ...data, medical }); }}><option value="">Select</option><option>Trupanion</option><option>Spot</option><option>Petsecure</option><option>Fetch</option><option>CAA</option><option>Desjardins</option><option>Other</option><option>None</option></select></label>
           <label>Policy number<input className="mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={medical.policy_number || ""} onChange={(e) => { medical.policy_number = e.target.value; setData({ ...data, medical }); }} /></label>
-          <label>Update notes<textarea className="mt-1 min-h-[60px] w-full rounded-xl border border-[#e8d5c4] px-3 py-2" value={reason} onChange={(e) => setReason(e.target.value)} /></label>
           <button type="button" disabled={saving} onClick={() => save("medical", medical)} className="rounded-full bg-[#c45c26] px-4 py-2 text-xs font-semibold text-white">Save medical</button>
         </div>
       ) : null}
