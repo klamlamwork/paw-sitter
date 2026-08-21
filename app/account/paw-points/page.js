@@ -2,6 +2,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getBalance } from "@/lib/pawPoints";
 import { bookingOrderLabel, shopOrderLabel } from "@/lib/shopOrderNumber";
+import { getProfile } from "@/lib/auth";
+import ReferralInviteCard from "../ReferralInviteCard";
+import { REFERRAL_MONTHLY_CAP, attachReferralFromCookies, listReferralActivity, monthReferralEarned } from "@/lib/referrals";
 
 export const metadata = { title: "Paw Points | Paw Sitter" };
 
@@ -9,6 +12,7 @@ const LABELS = {
   earn_order: "Earnings - Shop order",
   earn_booking: "Earnings - Service booking",
   earn_kol: "Earnings - KOL",
+  earn_referral: "Referral reward",
   redeem: "Redeemed at checkout",
   admin_grant: "Admin grant",
   admin_adjust: "Admin adjustment",
@@ -19,25 +23,37 @@ const LABELS = {
 };
 
 export default async function AccountPawPointsPage() {
+  const profile = await getProfile();
+  if (!profile) redirect("/login?next=/account/paw-points");
+  await attachReferralFromCookies(profile);
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login?next=/account/paw-points");
-  const balance = await getBalance(user.id);
+  const balance = await getBalance(profile.id);
+  const monthPts = await monthReferralEarned(profile.id);
+  const activity = await listReferralActivity(profile.id);
   const { data: rows } = await supabase
     .from("paw_point_ledger")
     .select("id, delta, status, reason, remark, expires_at, created_at, order_id, booking_id")
-    .eq("user_id", user.id)
+    .eq("user_id", profile.id)
     .order("created_at", { ascending: false })
     .limit(50);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Paw Points</h1>
-      <p className="mt-2 text-sm text-[#7a5c4e]">500 points = $1.00. Available after delivery or completed booking.</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Available</p><p className="text-2xl font-bold">{Math.max(0, balance.available)}</p></div>
         <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Pending</p><p className="text-2xl font-bold">{Math.max(0, balance.pending)}</p></div>
         <div className="rounded-2xl border border-[#e8d5c4] bg-white p-4"><p className="text-xs text-[#7a5c4e]">Reserved</p><p className="text-2xl font-bold">{Math.max(0, balance.reserved)}</p></div>
+      </div>
+      <ReferralInviteCard />
+      <div className="mt-6 rounded-2xl border border-[#e8d5c4] bg-white p-4">
+        <h2 className="text-lg font-semibold text-[#3b2a22]">Referral rewards</h2>
+        <p className="mt-1 text-sm text-[#7a5c4e]">This month: {monthPts} / {REFERRAL_MONTHLY_CAP} points. Extra rewards roll to next month.</p>
+        <ul className="mt-3 space-y-2 text-sm">
+          {activity.length ? activity.map((row) => (
+            <li key={row.id} className="rounded-xl bg-[#fff8f0] px-3 py-2">{row.line}</li>
+          )) : <li className="text-[#7a5c4e]">No referrals yet.</li>}
+        </ul>
       </div>
       <ul className="mt-6 space-y-2 text-sm">
         {(rows || []).map((r) => {
