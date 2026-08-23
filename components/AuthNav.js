@@ -94,7 +94,11 @@ export default function AuthNav({ profile }) {
     { href: "/account/paw-points", label: "My PawPoints" },
 
   ];
-  if (profile.role === "admin") accountLinks.push({ href: "/admin/sitters", label: "Admin sitters" });
+  if (profile.role === "admin") accountLinks.push({ href: "/admin/sitters", label: "Admin Sitters" });
+  if (profile.role === "admin") accountLinks.push({ href: "/admin/holidays", label: "Admin Holidays" });
+  if (profile.role === "admin") accountLinks.push({ href: "/admin/shop", label: "Admin Shops" });
+  if (profile.role === "admin") accountLinks.push({ href: "/admin/discounts", label: "Admin discounts" });
+  if (profile.role === "admin") accountLinks.push({ href: "/admin/paw-points", label: "Admin Paw Points" });
 
   return (
     <div className="relative flex items-center gap-2" ref={rootRef}>
