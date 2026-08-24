@@ -25,7 +25,7 @@ export default function HomePage() {
               Book Service
             </Link>
             <Link
-              href="/services"
+              href="/shop"
               className="inline-flex items-center justify-center rounded-full border border-[#e8d5c4] bg-[#fff8f0] px-6 py-3 text-sm font-semibold text-[#b5710b] transition hover:border-[#c45c26] hover:text-[#c45c26]"
             >
               Shop, Get Rewards!
