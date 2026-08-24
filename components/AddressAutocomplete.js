@@ -146,12 +146,10 @@ export default function AddressAutocomplete({
       }
       if (cityCoords?.lat != null && cityCoords?.lng != null) {
         req.locationBias = {
-          circle: {
-            center: {
-              latitude: Number(cityCoords.lat),
-              longitude: Number(cityCoords.lng),
-            },
-            radius: 40000.0,
+          radius: 40000,
+          center: {
+            lat: Number(cityCoords.lat),
+            lng: Number(cityCoords.lng),
           },
         };
       }
