@@ -128,6 +128,29 @@ export default function LoginClient() {
     }
   }
 
+  async function forgotPassword() {
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed || !trimmed.includes("@")) {
+      setMessage("Enter your email first, then tap Forgot password.");
+      return;
+    }
+    setLoading(true);
+    setMessage("");
+    setSuccess("");
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo: callbackUrl("/login/update-password"),
+      });
+      if (error) throw error;
+      setSuccess("If that email has an account, we sent a password reset link.");
+    } catch (ex) {
+      setMessage(ex.message || "Could not send reset email.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div className="mx-auto flex max-w-md flex-col items-center px-4 py-16">
       <div className="w-full rounded-3xl border border-[#e8d5c4] bg-[#fff8f0]/95 p-8 shadow-lg">
@@ -163,6 +186,11 @@ export default function LoginClient() {
               <span className="font-medium text-[#3b2a22]">Confirm password</span>
               <input type="password" autoComplete="new-password" required minLength={8} value={confirm} onChange={(e) => setConfirm(e.target.value)} className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm" />
             </label>
+          ) : null}
+          {mode === "signin" ? (
+            <button type="button" onClick={forgotPassword} disabled={loading} className="text-xs font-semibold text-[#c45c26] hover:underline disabled:opacity-60">
+              Forgot password?
+            </button>
           ) : null}
           <button type="submit" disabled={loading || googleLoading} className="flex w-full items-center justify-center rounded-full bg-[#c45c26] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
             {loading ? "Working…" : mode === "signup" ? "Create account" : "Sign in with email"}
