@@ -94,7 +94,6 @@ export default function AccountLocationClient({ profile }) {
       <div className="mt-4">
         <AddressAutocomplete
           countryCode={countryCode}
-          cityName={fields.city}
           value={{
             address_line1: fields.address_line1,
             address_line2: fields.address_line2,
