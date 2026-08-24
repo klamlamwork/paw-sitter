@@ -44,6 +44,17 @@ function ensureMapsBootstrap(apiKey) {
   return bootstrapPromise;
 }
 
+function isPermissionError(err) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  return (
+    msg.includes("permission") ||
+    msg.includes("denied") ||
+    msg.includes("not authorized") ||
+    msg.includes("request_denied") ||
+    msg.includes("api_not_activated")
+  );
+}
+
 function componentText(components, type) {
   const list = components || [];
   const c = list.find((x) => (x.types || []).includes(type));
@@ -58,6 +69,24 @@ function parseComponents(components) {
     address_line1: line1,
     postal_code: componentText(components, "postal_code"),
   };
+}
+
+function normalizeNewSuggestions(list) {
+  return (list || []).map((s) => ({
+    kind: "new",
+    text: s.placePrediction?.text?.text || s.placePrediction?.mainText?.text || "Place",
+    secondary: s.placePrediction?.secondaryText?.text || "",
+    raw: s,
+  }));
+}
+
+function normalizeLegacyPredictions(predictions) {
+  return (predictions || []).map((p) => ({
+    kind: "legacy",
+    text: p.structured_formatting?.main_text || p.description || "Place",
+    secondary: p.structured_formatting?.secondary_text || "",
+    placeId: p.place_id,
+  }));
 }
 
 export default function AddressAutocomplete({
@@ -85,6 +114,7 @@ export default function AddressAutocomplete({
   const boxRef = useRef(null);
   const inputRef = useRef(null);
   const placesReady = useRef(false);
+  const useLegacy = useRef(false);
 
   useEffect(() => {
     setLocal({
@@ -129,6 +159,53 @@ export default function AddressAutocomplete({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
+  const fetchLegacySuggestions = useCallback(async (input) => {
+    const places = await window.google.maps.importLibrary("places");
+    const AutocompleteService =
+      places.AutocompleteService || window.google.maps.places.AutocompleteService;
+    const service = new AutocompleteService();
+    const req = {
+      input: input.trim(),
+      types: ["address"],
+    };
+    if (countryCode) {
+      req.componentRestrictions = { country: String(countryCode).toLowerCase() };
+    }
+    if (cityCoords?.lat != null && cityCoords?.lng != null) {
+      req.location = new window.google.maps.LatLng(
+        Number(cityCoords.lat),
+        Number(cityCoords.lng)
+      );
+      req.radius = 40000;
+    }
+    const res = await service.getPlacePredictions(req);
+    const predictions = Array.isArray(res) ? res : res?.predictions || [];
+    return normalizeLegacyPredictions(predictions);
+  }, [countryCode, cityCoords]);
+
+  const fetchNewSuggestions = useCallback(async (input) => {
+    const { AutocompleteSuggestion } = await window.google.maps.importLibrary("places");
+    const req = {
+      input: input.trim(),
+      includedPrimaryTypes: ["street_address", "premise", "subpremise", "route"],
+    };
+    if (countryCode) {
+      req.includedRegionCodes = [String(countryCode).toLowerCase()];
+    }
+    if (cityCoords?.lat != null && cityCoords?.lng != null) {
+      req.locationBias = {
+        radius: 40000,
+        center: {
+          lat: Number(cityCoords.lat),
+          lng: Number(cityCoords.lng),
+        },
+      };
+    }
+    const { suggestions: list } =
+      await AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
+    return normalizeNewSuggestions(list);
+  }, [countryCode, cityCoords]);
+
   const fetchSuggestions = useCallback(async (input) => {
     if (!placesReady.current || !input || input.trim().length < 2) {
       setSuggestions([]);
@@ -136,29 +213,32 @@ export default function AddressAutocomplete({
     }
     setLoadingSug(true);
     try {
-      const { AutocompleteSuggestion } = await window.google.maps.importLibrary("places");
-      const req = {
-        input: input.trim(),
-        includedPrimaryTypes: ["street_address", "premise", "subpremise", "route"],
-      };
-      if (countryCode) {
-        req.includedRegionCodes = [String(countryCode).toLowerCase()];
-      }
-      if (cityCoords?.lat != null && cityCoords?.lng != null) {
-        req.locationBias = {
-          radius: 40000,
-          center: {
-            lat: Number(cityCoords.lat),
-            lng: Number(cityCoords.lng),
-          },
-        };
-      }
-      const { suggestions: list } =
-        await AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
-      setSuggestions(list || []);
+      const list = useLegacy.current
+        ? await fetchLegacySuggestions(input)
+        : await fetchNewSuggestions(input);
+      setLoadError("");
+      setSuggestions(list);
       setOpen(true);
     } catch (err) {
       console.error("[AddressAutocomplete] suggest", err);
+      if (!useLegacy.current && isPermissionError(err)) {
+        try {
+          useLegacy.current = true;
+          const list = await fetchLegacySuggestions(input);
+          setLoadError("");
+          setSuggestions(list);
+          setOpen(true);
+          return;
+        } catch (legacyErr) {
+          console.error("[AddressAutocomplete] legacy suggest", legacyErr);
+          setLoadError(
+            (legacyErr?.message || String(legacyErr)) +
+              " Enable Places API (New) and Places API on this key, plus Maps JavaScript API. Add https://paw-sitter.vercel.app/* to HTTP referrers."
+          );
+          setSuggestions([]);
+          return;
+        }
+      }
       setLoadError(
         err?.message ||
           "Places suggestions failed. Enable Places API (New) on the key's project."
@@ -167,7 +247,7 @@ export default function AddressAutocomplete({
     } finally {
       setLoadingSug(false);
     }
-  }, [countryCode, cityCoords]);
+  }, [fetchLegacySuggestions, fetchNewSuggestions]);
 
   function onQueryChange(text) {
     setQuery(text);
@@ -185,43 +265,84 @@ export default function AddressAutocomplete({
     debounceRef.current = setTimeout(() => fetchSuggestions(text), 280);
   }
 
+  async function pickNewSuggestion(suggestion) {
+    const prediction = suggestion.raw?.placePrediction;
+    if (!prediction) return;
+    const place = prediction.toPlace();
+    await place.fetchFields({
+      fields: ["formattedAddress", "location", "addressComponents"],
+    });
+    const loc = place.location;
+    if (!loc) throw new Error("Could not read coordinates for that place.");
+    const lat = typeof loc.lat === "function" ? loc.lat() : Number(loc.lat);
+    const lng = typeof loc.lng === "function" ? loc.lng() : Number(loc.lng);
+    const parsed = parseComponents(place.addressComponents);
+    return {
+      address_line1:
+        parsed.address_line1 ||
+        place.formattedAddress ||
+        prediction.text?.text ||
+        query,
+      postal_code: parsed.postal_code || local.postal_code,
+      lat,
+      lng,
+      formatted: place.formattedAddress || prediction.text?.text || query,
+    };
+  }
+
+  async function pickLegacySuggestion(suggestion) {
+    if (!suggestion.placeId) return null;
+    const places = await window.google.maps.importLibrary("places");
+    const PlacesService = places.PlacesService || window.google.maps.places.PlacesService;
+    const attr = document.createElement("div");
+    const service = new PlacesService(attr);
+    const place = await new Promise((resolve, reject) => {
+      service.getDetails(
+        {
+          placeId: suggestion.placeId,
+          fields: ["formatted_address", "geometry", "address_components"],
+        },
+        (result, status) => {
+          if (status === "OK" && result) resolve(result);
+          else reject(new Error(status || "Failed to load place details."));
+        }
+      );
+    });
+    const loc = place.geometry?.location;
+    if (!loc) throw new Error("Could not read coordinates for that place.");
+    const parsed = parseComponents(place.address_components);
+    return {
+      address_line1:
+        parsed.address_line1 || place.formatted_address || suggestion.text || query,
+      postal_code: parsed.postal_code || local.postal_code,
+      lat: typeof loc.lat === "function" ? loc.lat() : Number(loc.lat),
+      lng: typeof loc.lng === "function" ? loc.lng() : Number(loc.lng),
+      formatted: place.formatted_address || suggestion.text || query,
+    };
+  }
+
   async function pickSuggestion(suggestion) {
     try {
       setOpen(false);
       setLoadingSug(true);
-      const prediction = suggestion.placePrediction;
-      if (!prediction) return;
-      const place = prediction.toPlace();
-      await place.fetchFields({
-        fields: ["formattedAddress", "location", "addressComponents"],
-      });
-      const loc = place.location;
-      if (!loc) {
-        setStatus("Could not read coordinates for that place.");
-        return;
-      }
-      const lat = typeof loc.lat === "function" ? loc.lat() : Number(loc.lat);
-      const lng = typeof loc.lng === "function" ? loc.lng() : Number(loc.lng);
-      const parsed = parseComponents(place.addressComponents);
-      const line1 =
-        parsed.address_line1 ||
-        place.formattedAddress ||
-        prediction.text?.text ||
-        query;
-
+      const picked =
+        suggestion.kind === "legacy"
+          ? await pickLegacySuggestion(suggestion)
+          : await pickNewSuggestion(suggestion);
+      if (!picked) return;
       const nextLocal = {
-        address_line1: line1,
+        address_line1: picked.address_line1,
         address_line2: local.address_line2,
-        postal_code: parsed.postal_code || local.postal_code,
+        postal_code: picked.postal_code,
       };
       setLocal(nextLocal);
-      setQuery(line1);
+      setQuery(picked.address_line1);
       setStatus("Address set — map coordinates updated for radius matching.");
       onChange?.({
         ...nextLocal,
-        lat,
-        lng,
-        formatted: place.formattedAddress || line1,
+        lat: picked.lat,
+        lng: picked.lng,
+        formatted: picked.formatted,
       });
     } catch (err) {
       console.error("[AddressAutocomplete] pick", err);
@@ -297,27 +418,20 @@ export default function AddressAutocomplete({
         ) : null}
         {open && suggestions.length > 0 ? (
           <ul className="absolute z-50 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-[#e8d5c4] bg-white py-1 shadow-lg">
-            {suggestions.map((s, idx) => {
-              const text =
-                s.placePrediction?.text?.text ||
-                s.placePrediction?.mainText?.text ||
-                "Place";
-              const secondary = s.placePrediction?.secondaryText?.text || "";
-              return (
-                <li key={idx}>
-                  <button
-                    type="button"
-                    className="w-full px-3 py-2 text-left text-sm text-[#3b2a22] hover:bg-[#fff8f0]"
-                    onClick={() => pickSuggestion(s)}
-                  >
-                    <span className="font-medium">{text}</span>
-                    {secondary ? (
-                      <span className="mt-0.5 block text-xs text-[#7a5c4e]">{secondary}</span>
-                    ) : null}
-                  </button>
-                </li>
-              );
-            })}
+            {suggestions.map((s, idx) => (
+              <li key={idx}>
+                <button
+                  type="button"
+                  className="w-full px-3 py-2 text-left text-sm text-[#3b2a22] hover:bg-[#fff8f0]"
+                  onClick={() => pickSuggestion(s)}
+                >
+                  <span className="font-medium">{s.text}</span>
+                  {s.secondary ? (
+                    <span className="mt-0.5 block text-xs text-[#7a5c4e]">{s.secondary}</span>
+                  ) : null}
+                </button>
+              </li>
+            ))}
           </ul>
         ) : null}
       </label>
