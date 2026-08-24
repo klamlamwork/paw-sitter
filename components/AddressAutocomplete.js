@@ -63,7 +63,9 @@ function parseComponents(components) {
 export default function AddressAutocomplete({
   value = {},
   onChange,
-  countryCode,
+  countryCode = "",
+  cityName = "",
+  cityCoords = null,
   label = "Street address (optional)",
   disabled = false,
 }) {
@@ -81,6 +83,7 @@ export default function AddressAutocomplete({
   });
   const debounceRef = useRef(null);
   const boxRef = useRef(null);
+  const inputRef = useRef(null);
   const placesReady = useRef(false);
 
   useEffect(() => {
@@ -127,7 +130,7 @@ export default function AddressAutocomplete({
   }, []);
 
   const fetchSuggestions = useCallback(async (input) => {
-    if (!placesReady.current || !input || input.trim().length < 3) {
+    if (!placesReady.current || !input || input.trim().length < 2) {
       setSuggestions([]);
       return;
     }
@@ -140,6 +143,17 @@ export default function AddressAutocomplete({
       };
       if (countryCode) {
         req.includedRegionCodes = [String(countryCode).toLowerCase()];
+      }
+      if (cityCoords?.lat != null && cityCoords?.lng != null) {
+        req.locationBias = {
+          circle: {
+            center: {
+              latitude: Number(cityCoords.lat),
+              longitude: Number(cityCoords.lng),
+            },
+            radius: 40000.0,
+          },
+        };
       }
       const { suggestions: list } =
         await AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
@@ -155,7 +169,7 @@ export default function AddressAutocomplete({
     } finally {
       setLoadingSug(false);
     }
-  }, [countryCode]);
+  }, [countryCode, cityCoords]);
 
   function onQueryChange(text) {
     setQuery(text);
@@ -266,12 +280,17 @@ export default function AddressAutocomplete({
       <label className="relative block text-xs text-[#7a5c4e]">
         Street / road + number
         <input
+          ref={inputRef}
           type="text"
           disabled={disabled}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onFocus={() => suggestions.length && setOpen(true)}
-          placeholder="Start typing address…"
+          placeholder={
+            !cityName
+              ? "Please choose a city above first…"
+              : `Start typing street in ${cityName}…`
+          }
           className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
           autoComplete="off"
         />
