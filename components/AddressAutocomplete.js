@@ -60,10 +60,50 @@ function parseComponents(components) {
   };
 }
 
+function normPlace(s) {
+  return String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function suggestionInCity(suggestion, cityName) {
+  if (!cityName) return true;
+  const city = normPlace(cityName);
+  if (!city) return true;
+  const blob = normPlace(
+    [
+      suggestion.placePrediction?.text?.text,
+      suggestion.placePrediction?.mainText?.text,
+      suggestion.placePrediction?.secondaryText?.text,
+    ]
+      .filter(Boolean)
+      .join(" ")
+  );
+  return blob.includes(city);
+}
+
+function localityMatchesCity(components, cityName) {
+  if (!cityName) return true;
+  const city = normPlace(cityName);
+  if (!city) return true;
+  const locality = normPlace(
+    componentText(components, "locality") ||
+      componentText(components, "postal_town") ||
+      componentText(components, "sublocality") ||
+      componentText(components, "administrative_area_level_3")
+  );
+  if (!locality) return true;
+  return locality.includes(city) || city.includes(locality);
+}
+
 export default function AddressAutocomplete({
   value = {},
   onChange,
   countryCode,
+  cityName = "",
   label = "Street address (optional)",
   disabled = false,
 }) {
@@ -134,8 +174,9 @@ export default function AddressAutocomplete({
     setLoadingSug(true);
     try {
       const { AutocompleteSuggestion } = await window.google.maps.importLibrary("places");
+      const trimmed = input.trim();
       const req = {
-        input: input.trim(),
+        input: cityName ? `${trimmed} ${cityName}` : trimmed,
         includedPrimaryTypes: ["street_address", "premise", "subpremise", "route"],
       };
       if (countryCode) {
@@ -143,7 +184,7 @@ export default function AddressAutocomplete({
       }
       const { suggestions: list } =
         await AutocompleteSuggestion.fetchAutocompleteSuggestions(req);
-      setSuggestions(list || []);
+      setSuggestions((list || []).filter((s) => suggestionInCity(s, cityName)));
       setOpen(true);
     } catch (err) {
       console.error("[AddressAutocomplete] suggest", err);
@@ -155,7 +196,7 @@ export default function AddressAutocomplete({
     } finally {
       setLoadingSug(false);
     }
-  }, [countryCode]);
+  }, [countryCode, cityName]);
 
   function onQueryChange(text) {
     setQuery(text);
@@ -186,6 +227,14 @@ export default function AddressAutocomplete({
       const loc = place.location;
       if (!loc) {
         setStatus("Could not read coordinates for that place.");
+        return;
+      }
+      if (!localityMatchesCity(place.addressComponents, cityName)) {
+        const locality =
+          componentText(place.addressComponents, "locality") ||
+          componentText(place.addressComponents, "postal_town") ||
+          "another city";
+        setStatus(`That address is in ${locality}, not ${cityName}. Pick one in ${cityName}.`);
         return;
       }
       const lat = typeof loc.lat === "function" ? loc.lat() : Number(loc.lat);
@@ -271,7 +320,9 @@ export default function AddressAutocomplete({
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onFocus={() => suggestions.length && setOpen(true)}
-          placeholder="Start typing address…"
+          placeholder={
+            cityName ? `Start typing street in ${cityName}…` : "Start typing address…"
+          }
           className="mt-1 w-full rounded-xl border border-[#e8d5c4] bg-white px-3 py-2 text-sm"
           autoComplete="off"
         />
