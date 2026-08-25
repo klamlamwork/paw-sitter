@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { deductShopOrderStock } from "@/lib/shopInventory";
-import { onShopOrderPaid, onShopOrderRefunded } from "@/lib/pawPointsHooks";
-import { onBookingPaid } from "@/lib/pawPointsHooks";
+import { onShopOrderPaid, onShopOrderRefunded, onBookingPaid } from "@/lib/pawPointsHooks";
+import { clearUserShopCart, releaseReservedPoints } from "@/lib/pawPointsRelease";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -21,6 +21,19 @@ async function markBookingPaid(admin, bookingId, paymentIntent) {
   if (error) throw error;
   try { await onBookingPaid(bookingId); } catch (e) { console.error(e.message); }
   return true;
+}
+
+async function releaseSessionPoints(session) {
+  const userId = session.metadata?.user_id || null;
+  const orderIds = String(session.metadata?.order_ids || "").split(",").filter(Boolean);
+  const bookingId = session.metadata?.booking_id || null;
+  if (bookingId) {
+    await releaseReservedPoints({ userId, bookingId });
+    return;
+  }
+  for (const orderId of orderIds) {
+    await releaseReservedPoints({ userId, orderId });
+  }
 }
 
 export async function POST(request) {
@@ -66,13 +79,25 @@ export async function POST(request) {
       .eq("stripe_session_id", session.id)
       .select("id");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
     const fromMeta = (session.metadata?.order_ids || "").split(",").filter(Boolean);
     const orderIds = [...new Set([...(paidOrders || []).map((o) => o.id), ...fromMeta])];
     for (const orderId of orderIds) {
       try { await deductShopOrderStock(orderId); } catch (e) { console.error(e.message); }
       try { await onShopOrderPaid(orderId); } catch (e) { console.error(e.message); }
     }
+    try {
+      await clearUserShopCart(admin, {
+        cartId: session.metadata?.cart_id || null,
+        userId: session.metadata?.user_id || null,
+      });
+    } catch (e) { console.error(e.message); }
     return NextResponse.json({ received: true });
+  }
+
+  if (event.type === "checkout.session.expired" || event.type === "checkout.session.async_payment_failed") {
+    try { await releaseSessionPoints(event.data.object); } catch (e) { console.error(e.message); }
+    return NextResponse.json({ received: true, released: true });
   }
 
   if (event.type === "charge.refunded" || event.type === "refund.created") {
