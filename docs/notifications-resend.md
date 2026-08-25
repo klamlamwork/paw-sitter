@@ -33,15 +33,15 @@ Create two webhooks, same URL and Bearer secret:
 URL: `https://YOUR_DOMAIN/api/webhooks/notifications`
 Header: `Authorization` = `Bearer FAKESECRET_k1l2m3n4o5p6q7r8s9t0`
 
-## Cron reminders
+## Cron reminders (Hobby-safe)
 
-`vercel.json` calls `/api/cron/notifications` hourly. Vercel sends an Authorization header automatically on Pro; on Hobby you can hit:
+Vercel Hobby only allows crons that run **once per day**. Hourly expressions fail the deploy.
 
-`/api/cron/notifications?secret=CRON_SECRET`
+`vercel.json` runs `/api/cron/notifications` daily at 14:15 UTC. That job:
+- emails customers whose accepted booking starts in the next 12–36 hours
+- emails sitters a 48-hour overview (once per sitter per calendar day)
 
-Sends:
-- customer reminder ~24 hours before an accepted booking slot
-- sitter daily overview of accepted sittings in the next 48 hours (once per sitter per day)
+Manual test: `/api/cron/notifications?secret=CRON_SECRET`
 
 ## Preferences
 
