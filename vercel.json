@@ -3,6 +3,10 @@
     {
       "path": "/api/admin/settle-escrow?payout=1",
       "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/cron/notifications",
+      "schedule": "0 * * * *"
     }
   ]
 }
