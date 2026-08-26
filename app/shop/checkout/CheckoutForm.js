@@ -1,23 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import PawPointsCheckout from "@/components/shop/PawPointsCheckout";
+import LocationPicker from "@/components/LocationPicker";
+import AddressAutocomplete from "@/components/AddressAutocomplete";
+import { inferProvinceFromPostal } from "@/lib/shopShipping";
 
 function money(cents) {
   return `$${((Number(cents) || 0) / 100).toFixed(2)}`;
 }
 
-export default function CheckoutForm({ userId, cartId, items = [], subtotalCents = 0, defaultAddress }) {
+function quoteAddress(form) {
+  const state = form.state || inferProvinceFromPostal(form.postal_code, form.country);
+  return {
+    name: form.name,
+    email: form.email,
+    phone: form.phone,
+    line1: form.address_line1,
+    line2: form.address_line2,
+    address_line1: form.address_line1,
+    address_line2: form.address_line2,
+    city: form.city,
+    state,
+    province_state: state,
+    postal_code: form.postal_code,
+    country: form.country,
+    country_code: form.country_code,
+  };
+}
+
+export default function CheckoutForm({ userId, items = [], subtotalCents = 0, defaultAddress }) {
   const [form, setForm] = useState({
     name: defaultAddress?.name || "",
     email: defaultAddress?.email || "",
     phone: defaultAddress?.phone || "",
-    line1: defaultAddress?.line1 || "",
-    line2: defaultAddress?.line2 || "",
+    location_id: defaultAddress?.location_id || "",
+    address_line1: defaultAddress?.address_line1 || "",
+    address_line2: defaultAddress?.address_line2 || "",
     city: defaultAddress?.city || "",
-    state: defaultAddress?.state || "",
+    state: inferProvinceFromPostal(defaultAddress?.postal_code, defaultAddress?.country),
     postal_code: defaultAddress?.postal_code || "",
     country: defaultAddress?.country || "Canada",
+    country_code: defaultAddress?.country_code || "CA",
     payment_method: "card",
   });
   const [submitting, setSubmitting] = useState(false);
@@ -30,14 +54,25 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
   const [totalShippingCents, setTotalShippingCents] = useState(0);
   const [paw, setPaw] = useState({ points: 0, cents: 0, earn: 0 });
 
-  function setField(k, v) {
-    setForm((f) => ({ ...f, [k]: v }));
+  const allPickup = useMemo(
+    () => Object.keys(shopMethods).length > 0 && Object.values(shopMethods).every((method) => method === "pickup"),
+    [shopMethods]
+  );
+
+  function setField(key, value) {
+    setForm((current) => {
+      const next = { ...current, [key]: value };
+      if (key === "postal_code" || key === "country") {
+        next.state = inferProvinceFromPostal(next.postal_code, next.country);
+      }
+      return next;
+    });
   }
 
   useEffect(() => {
     const initial = {};
-    for (const it of items || []) {
-      if (it.shop_id) initial[it.shop_id] = initial[it.shop_id] || "standard";
+    for (const item of items || []) {
+      if (item.shop_id) initial[item.shop_id] = initial[item.shop_id] || "standard";
     }
     setShopMethods(initial);
   }, [items]);
@@ -45,7 +80,12 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
   useEffect(() => {
     let cancelled = false;
     async function runQuote() {
-      if (!items?.length || !form.city || !form.state || !form.country) {
+      if (!items?.length) {
+        setShippingQuotes([]);
+        setTotalShippingCents(0);
+        return;
+      }
+      if (!allPickup && (!form.city || !form.country || !(form.state || form.postal_code))) {
         setShippingQuotes([]);
         setTotalShippingCents(0);
         return;
@@ -53,7 +93,7 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
       const res = await fetch("/api/shop/shipping/quote", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address: form, selections: shopMethods }),
+        body: JSON.stringify({ address: quoteAddress(form), selections: shopMethods }),
       });
       const data = await res.json();
       if (cancelled) return;
@@ -61,21 +101,24 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
         setError(data.error || "Could not quote shipping");
         return;
       }
+      setError("");
       setShippingQuotes(data.quotes || []);
       setTotalShippingCents(data.totalShippingCents || 0);
     }
     runQuote();
-    return () => { cancelled = true; };
-  }, [form.line1, form.city, form.state, form.country, shopMethods, items]);
+    return () => {
+      cancelled = true;
+    };
+  }, [items, form.city, form.country, form.state, form.postal_code, shopMethods, allPickup]);
 
   async function applyPromo() {
-    setError("");
     setPromoApplying(true);
+    setError("");
     try {
-      const res = await fetch("/api/discounts/apply", {
+      const res = await fetch("/api/shop/promo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: promo, context: "shop" }),
+        body: JSON.stringify({ code: promo }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Could not apply promo");
@@ -88,17 +131,25 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
     }
   }
 
-  async function submit(e) {
-    e.preventDefault();
+  async function submit(event) {
+    event.preventDefault();
     setError("");
     setSubmitting(true);
     try {
       if (!userId) throw new Error("Sign in to place an order.");
+      if (!allPickup) {
+        if (!form.city || !form.country) throw new Error("Choose your city and country.");
+        if (!form.address_line1.trim()) throw new Error("Street address is required unless you pick pickup.");
+        if (!form.postal_code.trim()) throw new Error("Postal code is required unless you pick pickup.");
+      }
+      if ((shippingQuotes || []).some((quote) => quote.blocked)) {
+        throw new Error("One or more shops cannot ship to this address.");
+      }
       const res = await fetch("/api/shop/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          address: form,
+          address: quoteAddress(form),
           promo_code: promoCode?.code || null,
           shipping_selections: shopMethods,
           paw_points: paw.points || 0,
@@ -115,11 +166,16 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
 
   const discount = promoCode?.discount_cents || 0;
   const total = Math.max(0, (subtotalCents || 0) - discount - (paw.cents || 0) + totalShippingCents);
-  const earnItems = (items || []).map((i) => ({ net_cents: (i.price_cents || 0) * (i.qty || 1), product_type: i.product?.product_type || "other", qty: 1 }));
+  const earnItems = (items || []).map((item) => ({
+    net_cents: (item.price_cents || 0) * (item.qty || 1),
+    product_type: item.product?.product_type || "other",
+    qty: 1,
+  }));
 
   return (
     <form onSubmit={submit} className="mt-4 space-y-4">
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
       <div className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0] p-4 text-sm">
         <p className="font-semibold">Order summary</p>
         <div className="mt-3 space-y-1 border-t border-[#e8d5c4] pt-2">
@@ -131,18 +187,73 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
         </div>
         {paw.earn ? <p className="mt-2 text-xs text-green-700">Earn {paw.earn} Paw Points on the cash portion (after delivery).</p> : null}
       </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="text-sm">Name<input className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.name} onChange={(e) => setField("name", e.target.value)} /></label>
-        <label className="text-sm">Email<input type="email" className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.email} onChange={(e) => setField("email", e.target.value)} /></label>
+        <label className="text-sm">Name<input required className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.name} onChange={(e) => setField("name", e.target.value)} /></label>
+        <label className="text-sm">Email<input required type="email" className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.email} onChange={(e) => setField("email", e.target.value)} /></label>
         <label className="text-sm">Phone<input className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.phone} onChange={(e) => setField("phone", e.target.value)} /></label>
-        <label className="text-sm">Postal code<input className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.postal_code} onChange={(e) => setField("postal_code", e.target.value)} /></label>
       </div>
-      <label className="block text-sm">Address line 1<input className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.line1} onChange={(e) => setField("line1", e.target.value)} /></label>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className="text-sm">City<input className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.city} onChange={(e) => setField("city", e.target.value)} /></label>
-        <label className="text-sm">Province<input className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.state} onChange={(e) => setField("state", e.target.value)} /></label>
-        <label className="text-sm">Country<input className="mt-1 w-full rounded-lg border border-[#e8d5c4] px-2 py-1" value={form.country} onChange={(e) => setField("country", e.target.value)} /></label>
-      </div>
+
+      {!allPickup ? (
+        <div className="space-y-4 rounded-2xl border border-[#e8d5c4] bg-white p-4">
+          <LocationPicker
+            valueId={form.location_id}
+            onChange={(loc) => {
+              if (!loc) {
+                setForm((current) => ({
+                  ...current,
+                  location_id: "",
+                  city: "",
+                  country: "",
+                  country_code: "",
+                  address_line1: "",
+                  address_line2: "",
+                  postal_code: "",
+                  state: "",
+                }));
+                return;
+              }
+              setForm((current) => ({
+                ...current,
+                location_id: loc.location_id,
+                city: loc.city,
+                country: loc.country,
+                country_code: loc.country_code,
+                address_line1: "",
+                address_line2: "",
+                postal_code: "",
+                state: "",
+              }));
+            }}
+          />
+          <AddressAutocomplete
+            countryCode={form.country_code}
+            cityName={form.city}
+            label="Street address"
+            value={{
+              address_line1: form.address_line1,
+              address_line2: form.address_line2,
+              postal_code: form.postal_code,
+            }}
+            onChange={(addr) => {
+              setForm((current) => {
+                const postal = addr.postal_code || current.postal_code;
+                return {
+                  ...current,
+                  address_line1: addr.address_line1 || "",
+                  address_line2: addr.address_line2 ?? current.address_line2,
+                  postal_code: postal,
+                  state: inferProvinceFromPostal(postal, current.country),
+                };
+              });
+            }}
+          />
+          <p className="text-xs text-[#7a5c4e]">Apt / unit stays optional. Street, city, country, and postal code are required for delivery.</p>
+        </div>
+      ) : (
+        <p className="text-sm text-[#7a5c4e]">Pickup selected for every shop — delivery address is not required.</p>
+      )}
+
       <div className="rounded-2xl border border-[#e8d5c4] p-3">
         <p className="text-sm font-medium">Promo code</p>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -150,16 +261,21 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
           <button type="button" disabled={promoApplying} onClick={applyPromo} className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold">{promoApplying ? "…" : "Apply"}</button>
         </div>
       </div>
+
       <PawPointsCheckout orderCents={Math.max(0, subtotalCents - discount)} items={earnItems} onChange={setPaw} />
+
       <div className="rounded-2xl border border-[#e8d5c4] p-3">
         <p className="text-sm font-medium">Shipping method (per shop)</p>
         <div className="mt-2 space-y-2">
           {Object.entries(shopMethods).map(([shopId, method]) => {
-            const quote = shippingQuotes.find((q) => q.shopId === shopId);
+            const quote = shippingQuotes.find((row) => row.shopId === shopId);
             return (
-              <div key={shopId} className="flex items-center justify-between gap-2 rounded-xl border border-[#e8d5c4] p-2 text-sm">
-                <span>{quote?.label || "Standard"} {quote?.cents != null ? `(${money(quote.cents)})` : ""}</span>
-                <select className="rounded-lg border border-[#e8d5c4] px-2 py-1" value={method} onChange={(e) => setShopMethods((m) => ({ ...m, [shopId]: e.target.value }))}>
+              <div key={shopId} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e8d5c4] p-2 text-sm">
+                <div>
+                  <p className="font-semibold">{quote?.label || "Standard"} {quote?.cents != null ? `(${money(quote.cents)})` : ""}</p>
+                  {quote?.blocked ? <p className="text-xs text-red-600">{quote.reason || "Unavailable for this address."}</p> : null}
+                </div>
+                <select className="rounded-lg border border-[#e8d5c4] px-2 py-1" value={method} onChange={(e) => setShopMethods((current) => ({ ...current, [shopId]: e.target.value }))}>
                   <option value="standard">Standard</option>
                   <option value="express">Express</option>
                   <option value="pickup">Pickup</option>
@@ -169,6 +285,7 @@ export default function CheckoutForm({ userId, cartId, items = [], subtotalCents
           })}
         </div>
       </div>
+
       <button type="submit" disabled={submitting || !items.length} className="rounded-full bg-[#c45c26] px-6 py-2.5 text-sm font-semibold text-white disabled:opacity-60">
         {submitting ? "Working…" : `Pay ${money(total)}`}
       </button>
