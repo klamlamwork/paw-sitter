@@ -29,6 +29,15 @@ function quoteAddress(form) {
   };
 }
 
+async function readJson(res) {
+  const text = await res.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error("Could not apply promo. Refresh and try again.");
+  }
+}
+
 export default function CheckoutForm({ userId, items = [], subtotalCents = 0, defaultAddress }) {
   const [form, setForm] = useState({
     name: defaultAddress?.name || "",
@@ -95,7 +104,7 @@ export default function CheckoutForm({ userId, items = [], subtotalCents = 0, de
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ address: quoteAddress(form), selections: shopMethods }),
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (cancelled) return;
       if (!res.ok) {
         setError(data.error || "Could not quote shipping");
@@ -105,7 +114,9 @@ export default function CheckoutForm({ userId, items = [], subtotalCents = 0, de
       setShippingQuotes(data.quotes || []);
       setTotalShippingCents(data.totalShippingCents || 0);
     }
-    runQuote();
+    runQuote().catch((err) => {
+      if (!cancelled) setError(err.message || "Could not quote shipping");
+    });
     return () => {
       cancelled = true;
     };
@@ -115,12 +126,12 @@ export default function CheckoutForm({ userId, items = [], subtotalCents = 0, de
     setPromoApplying(true);
     setError("");
     try {
-      const res = await fetch("/api/shop/promo", {
+      const res = await fetch("/api/discounts/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: promo }),
+        body: JSON.stringify({ code: promo, context: "shop" }),
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) throw new Error(data.error || "Could not apply promo");
       setPromoCode(data.code);
     } catch (err) {
@@ -155,7 +166,7 @@ export default function CheckoutForm({ userId, items = [], subtotalCents = 0, de
           paw_points: paw.points || 0,
         }),
       });
-      const data = await res.json();
+      const data = await readJson(res);
       if (!res.ok) throw new Error(data.error || "Could not start checkout");
       window.location.href = data.url;
     } catch (err) {
@@ -256,9 +267,10 @@ export default function CheckoutForm({ userId, items = [], subtotalCents = 0, de
 
       <div className="rounded-2xl border border-[#e8d5c4] p-3">
         <p className="text-sm font-medium">Promo code</p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <input className="w-40 rounded-lg border border-[#e8d5c4] px-2 py-1 text-sm" value={promo} onChange={(e) => setPromo(e.target.value)} />
-          <button type="button" disabled={promoApplying} onClick={applyPromo} className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold">{promoApplying ? "…" : "Apply"}</button>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <input placeholder="Enter code" className="w-40 rounded-lg border border-[#e8d5c4] px-2 py-1 text-sm" value={promo} onChange={(e) => setPromo(e.target.value)} />
+          <button type="button" disabled={promoApplying || !items.length} onClick={applyPromo} className="rounded-full border border-[#e8d5c4] px-3 py-1 text-xs font-semibold disabled:opacity-60">{promoApplying ? "Checking…" : "Apply"}</button>
+          {promoCode ? <span className="text-xs text-green-700">Applied: {promoCode.label || promoCode.code} (-{money(promoCode.discount_cents)})</span> : null}
         </div>
       </div>
 
