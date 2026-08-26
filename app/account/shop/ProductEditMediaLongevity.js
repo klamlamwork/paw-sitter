@@ -2,14 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { cloudinaryImageUrl } from "@/lib/cloudinary";
 import ProductGalleryEditor from "@/components/shop/ProductGalleryEditor";
 import LongevityChipsEditor from "@/components/shop/LongevityChipsEditor";
 
-export default function ProductEditMediaLongevity({
-  productId,
-  persistLive = true,
-  onChange,
-}) {
+function withPreview(row) {
+  return {
+    ...row,
+    url: row.public_id
+      ? cloudinaryImageUrl({ publicId: row.public_id, version: row.version, width: 360, height: 360 })
+      : row.url || "",
+  };
+}
+
+export default function ProductEditMediaLongevity({ productId }) {
   const [media, setMedia] = useState([]);
   const [chips, setChips] = useState([]);
   const [error, setError] = useState("");
@@ -20,41 +26,30 @@ export default function ProductEditMediaLongevity({
     const supabase = createClient();
     (async () => {
       const [{ data: mediaRows }, { data: chipRows }] = await Promise.all([
-        supabase.from("shop_product_media").select("id, url, alt_text, sort_order").eq("product_id", productId).order("sort_order"),
-        supabase
-          .from("shop_product_longevity_items")
-          .select("id, highlight_id, icon_key, label, note, sort_order")
-          .eq("product_id", productId)
-          .order("sort_order"),
+        supabase.from("shop_product_media").select("id, url, public_id, version, alt_text, sort_order").eq("product_id", productId).order("sort_order"),
+        supabase.from("shop_product_longevity_items").select("id, highlight_id, icon_key, label, note, sort_order").eq("product_id", productId).order("sort_order"),
       ]);
       if (cancelled) return;
-      const nextMedia = mediaRows || [];
-      const nextChips = chipRows || [];
-      setMedia(nextMedia);
-      setChips(nextChips);
-      onChange?.({ media: nextMedia, chips: nextChips });
+      setMedia((mediaRows || []).map(withPreview));
+      setChips(chipRows || []);
     })();
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [productId]);
 
   async function saveGallery(next) {
     setMedia(next);
     setError("");
-    onChange?.({ media: next, chips });
-    if (!persistLive) return;
     const supabase = createClient();
     const { error: delErr } = await supabase.from("shop_product_media").delete().eq("product_id", productId);
-    if (delErr) {
-      setError(delErr.message);
-      return;
-    }
+    if (delErr) { setError(delErr.message); return; }
     if (next.length) {
       const { error: insErr } = await supabase.from("shop_product_media").insert(
         next.map((m, i) => ({
           product_id: productId,
-          url: m.url,
+          public_id: m.public_id || null,
+          version: m.version || null,
+          // Keep legacy external URLs only for images that predate Cloudinary.
+          url: m.public_id ? null : (m.url || null),
           alt_text: m.alt_text || "",
           sort_order: i,
         }))
@@ -66,14 +61,9 @@ export default function ProductEditMediaLongevity({
   async function saveChips(next) {
     setChips(next);
     setError("");
-    onChange?.({ media, chips: next });
-    if (!persistLive) return;
     const supabase = createClient();
     const { error: delErr } = await supabase.from("shop_product_longevity_items").delete().eq("product_id", productId);
-    if (delErr) {
-      setError(delErr.message);
-      return;
-    }
+    if (delErr) { setError(delErr.message); return; }
     if (next.length) {
       const { error: insErr } = await supabase.from("shop_product_longevity_items").insert(
         next.map((c, i) => ({
@@ -92,10 +82,7 @@ export default function ProductEditMediaLongevity({
   return (
     <div className="space-y-3">
       {error ? <p className="text-xs text-red-700">{error}</p> : null}
-      {!persistLive ? (
-        <p className="text-xs text-amber-800">Gallery and longevity changes are included in the approval request. The public page keeps the last approved images until admin approves.</p>
-      ) : null}
-      <ProductGalleryEditor inputId={`edit-gallery-${productId}`} images={media} onChange={saveGallery} />
+      <ProductGalleryEditor inputId={`edit-gallery-${productId}`} productId={productId} images={media} onChange={saveGallery} />
       <LongevityChipsEditor items={chips} onChange={saveChips} />
     </div>
   );
