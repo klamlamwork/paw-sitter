@@ -3,20 +3,20 @@
 import CloudinaryUploader from "@/components/media/CloudinaryUploader";
 
 /** Product gallery. First image is cover. Uses Cloudinary public_id/version. */
-export default function ProductGalleryEditor({ images = [], onChange, inputId = "gallery", productId }) {
+export default function ProductGalleryEditor({ images = [], onChange, productId }) {
   function normalize(list) {
     return (list || []).map((item, index) => ({ ...item, sort_order: index }));
   }
 
-  function addUpload(asset) {
+  function addUploads(assets) {
     onChange(normalize([
       ...(images || []),
-      {
+      ...assets.map((asset) => ({
         public_id: asset.public_id,
         version: asset.version,
-        url: asset.preview_url, // UI preview only; save layer stores IDs/version.
+        url: asset.preview_url, // preview only; DB stores IDs/version.
         alt_text: "",
-      },
+      })),
     ]));
   }
 
@@ -32,24 +32,13 @@ export default function ProductGalleryEditor({ images = [], onChange, inputId = 
     onChange(normalize(images.filter((_, i) => i !== index)));
   }
 
-  const canUpload = !!productId;
-
   return (
     <div className="rounded-xl border border-[#e8d5c4] bg-white p-3">
       <p className="text-sm font-semibold text-[#3b2a22]">Gallery</p>
-      <p className="mt-0.5 text-xs text-[#7a5c4e]">
-        First image is the <strong>cover</strong> used in shop lists and the product page.
-      </p>
-      {canUpload ? (
-        <div className="mt-3">
-          <CloudinaryUploader kind="product" productId={productId} label="Upload gallery image" onUploaded={addUpload} />
-        </div>
-      ) : (
-        <p className="mt-3 rounded-lg bg-[#fff8f0] px-3 py-2 text-xs text-[#7a5c4e]">
-          Create the product first, then open Edit to upload its gallery images.
-        </p>
-      )}
-
+      <p className="mt-0.5 text-xs text-[#7a5c4e]">Upload one or many images. The first image is the <strong>cover</strong>.</p>
+      <div className="mt-3">
+        <CloudinaryUploader kind="product" productId={productId} label="Upload gallery images" multiple onUploadedMany={addUploads} />
+      </div>
       {images.length ? (
         <ul className="mt-3 flex flex-wrap gap-2">
           {images.map((m, i) => (

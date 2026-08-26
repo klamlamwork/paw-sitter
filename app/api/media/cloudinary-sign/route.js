@@ -15,6 +15,11 @@ function sign(params, secret) {
   return crypto.createHash("sha1").update(base + secret).digest("hex");
 }
 
+async function ownsAnyShop(admin, userId) {
+  const { data } = await admin.from("shop_shops").select("id").eq("owner_profile_id", userId).limit(1).maybeSingle();
+  return !!data?.id;
+}
+
 export async function POST(request) {
   try {
     const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || "").trim();
@@ -45,16 +50,27 @@ export async function POST(request) {
       publicId = "profile";
       overwrite = true;
     } else if (kind === "product") {
-      if (!product_id) return NextResponse.json({ error: "product_id is required." }, { status: 400 });
-      const { data: product } = await admin
-        .from("shop_products")
-        .select("id, shop:shop_shops(owner_profile_id)")
-        .eq("id", product_id)
-        .maybeSingle();
-      if (!product || product.shop?.owner_profile_id !== user.id) {
-        return NextResponse.json({ error: "You can upload only for products in your own shop." }, { status: 403 });
+      if (product_id) {
+        const { data: product } = await admin
+          .from("shop_products")
+          .select("id, primary_shop_id, brand_shop_id")
+          .eq("id", product_id)
+          .maybeSingle();
+        if (!product) return NextResponse.json({ error: "Product not found." }, { status: 404 });
+        const shopIds = [product.primary_shop_id, product.brand_shop_id].filter(Boolean);
+        const { data: owned } = shopIds.length
+          ? await admin.from("shop_shops").select("id").in("id", shopIds).eq("owner_profile_id", user.id).limit(1).maybeSingle()
+          : { data: null };
+        if (!owned?.id) return NextResponse.json({ error: "You can upload only for products in your own shop." }, { status: 403 });
+        folder = `joyful-paws/products/${product.id}/gallery`;
+      } else {
+        // New products have no ID yet. Permit a draft gallery only for users
+        // who own a shop; the DB trigger stores identifiers, never URLs.
+        if (!(await ownsAnyShop(admin, user.id))) {
+          return NextResponse.json({ error: "Create or join a shop before uploading product images." }, { status: 403 });
+        }
+        folder = `joyful-paws/products/drafts/${user.id}/gallery`;
       }
-      folder = `joyful-paws/products/${product.id}/gallery`;
       publicId = crypto.randomUUID();
     } else {
       return NextResponse.json({ error: "Invalid media kind." }, { status: 400 });
