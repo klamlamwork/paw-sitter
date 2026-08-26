@@ -5,13 +5,14 @@ import { useEffect } from "react";
 export default function StripeReturnHandler() {
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
-    const canceled = q.get("canceled") === "1";
-    const paid = q.get("paid") === "1" || q.get("placed") === "1";
-    if (!canceled && !paid) return;
+    if (q.get("canceled") !== "1") return;
+
+    // Never clear the cart on return. A verified Stripe webhook clears it only
+    // after checkout.session.completed.
     fetch("/api/shop/checkout/reconcile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ canceled, paid }),
+      body: JSON.stringify({ canceled: true }),
     }).catch(() => {});
   }, []);
   return null;
