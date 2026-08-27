@@ -15,13 +15,18 @@ function withPreview(row) {
   };
 }
 
-export default function ProductEditMediaLongevity({ productId }) {
-  const [media, setMedia] = useState([]);
-  const [chips, setChips] = useState([]);
+export default function ProductEditMediaLongevity({
+  productId,
+  persistLive = true,
+  onChange,
+  initialMedia,
+  initialChips,
+}) {
+  const [media, setMedia] = useState((initialMedia || []).map(withPreview));
+  const [chips, setChips] = useState(initialChips || []);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!productId) return;
     let cancelled = false;
     const supabase = createClient();
     (async () => {
@@ -30,26 +35,36 @@ export default function ProductEditMediaLongevity({ productId }) {
         supabase.from("shop_product_longevity_items").select("id, highlight_id, icon_key, label, note, sort_order").eq("product_id", productId).order("sort_order"),
       ]);
       if (cancelled) return;
-      setMedia((mediaRows || []).map(withPreview));
-      setChips(chipRows || []);
+      const pendingUsable = (initialMedia || []).some((row) => row.public_id || row.url);
+      const nextMedia = (pendingUsable ? initialMedia : mediaRows || []).map(withPreview);
+      const nextChips = (initialChips && initialChips.length ? initialChips : chipRows) || [];
+      setMedia(nextMedia);
+      setChips(nextChips);
+      onChange?.({ media: nextMedia, chips: nextChips });
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [productId]);
 
   async function saveGallery(next) {
     setMedia(next);
     setError("");
+    onChange?.({ media: next, chips });
+    if (!persistLive) return;
     const supabase = createClient();
     const { error: delErr } = await supabase.from("shop_product_media").delete().eq("product_id", productId);
-    if (delErr) { setError(delErr.message); return; }
+    if (delErr) {
+      setError(delErr.message);
+      return;
+    }
     if (next.length) {
       const { error: insErr } = await supabase.from("shop_product_media").insert(
         next.map((m, i) => ({
           product_id: productId,
           public_id: m.public_id || null,
           version: m.version || null,
-          // Keep legacy external URLs only for images that predate Cloudinary.
-          url: m.public_id ? null : (m.url || null),
+          url: m.public_id ? null : m.url || null,
           alt_text: m.alt_text || "",
           sort_order: i,
         }))
@@ -61,9 +76,14 @@ export default function ProductEditMediaLongevity({ productId }) {
   async function saveChips(next) {
     setChips(next);
     setError("");
+    onChange?.({ media, chips: next });
+    if (!persistLive) return;
     const supabase = createClient();
     const { error: delErr } = await supabase.from("shop_product_longevity_items").delete().eq("product_id", productId);
-    if (delErr) { setError(delErr.message); return; }
+    if (delErr) {
+      setError(delErr.message);
+      return;
+    }
     if (next.length) {
       const { error: insErr } = await supabase.from("shop_product_longevity_items").insert(
         next.map((c, i) => ({
@@ -82,6 +102,9 @@ export default function ProductEditMediaLongevity({ productId }) {
   return (
     <div className="space-y-3">
       {error ? <p className="text-xs text-red-700">{error}</p> : null}
+      {!persistLive ? (
+        <p className="text-xs text-amber-800">Gallery and longevity changes are included in the approval request. The public page keeps the last approved images until admin approves.</p>
+      ) : null}
       <ProductGalleryEditor inputId={`edit-gallery-${productId}`} productId={productId} images={media} onChange={saveGallery} />
       <LongevityChipsEditor items={chips} onChange={saveChips} />
     </div>
