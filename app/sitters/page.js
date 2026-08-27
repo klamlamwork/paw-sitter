@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { sitterPhotoUrl } from "@/lib/sitters";
 import SittersIndexClient from "./SittersIndexClient";
 
 export const metadata = { title: "Sitters | Paw Sitter" };
@@ -15,7 +16,8 @@ export default async function SittersPage() {
       bio,
       service_city,
       service_country,
-      profile_pic_url,
+      profile_pic_public_id,
+      profile_pic_version,
       is_active,
       sitter_services (
         service_type,
@@ -30,6 +32,7 @@ export default async function SittersPage() {
 
   const list = (sitters || []).map((s) => ({
     ...s,
+    profile_pic_url: sitterPhotoUrl(s, 800, 450),
     sitter_services: (s.sitter_services || []).filter((svc) => svc && svc.enabled !== false),
   }));
 
