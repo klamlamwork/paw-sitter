@@ -6,6 +6,7 @@ import { buildExpiringRows } from "@/lib/shopExpiring";
 import ShopPortalClient from "./ShopPortalClient";
 import ExpiringSoonPanel from "./ExpiringSoonPanel";
 import ShippingSettingsForm from "./ShippingSettingsForm";
+import NearExpiryRulesForm from "./NearExpiryRulesForm";
 
 export const metadata = { title: "My shop | Paw Sitter" };
 
@@ -30,7 +31,7 @@ export default async function AccountShopPortalPage() {
     const supabase = await createClient();
     const shopsRes = await supabase
       .from("shop_shops")
-      .select("id, name, slug, status, is_product_brand, owner_profile_id")
+      .select("id, name, slug, status, is_product_brand, owner_profile_id, expiry_hide_days, expiry_discount_days, expiry_discount_pct")
       .eq("owner_profile_id", profile.id)
       .order("name");
     shops = shopsRes.data || [];
@@ -56,7 +57,7 @@ export default async function AccountShopPortalPage() {
       if (productIds.length) {
         const [{ data: variantData }, { data: media }, { data: longevity }, { data: catLinks }] = await Promise.all([
           supabase.from("shop_product_variants").select("*").in("product_id", productIds).order("sort_order"),
-          supabase.from("shop_product_media").select("id, product_id, url, alt_text, sort_order").in("product_id", productIds).order("sort_order"),
+          supabase.from("shop_product_media").select("id, product_id, url, public_id, version, alt_text, sort_order").in("product_id", productIds).order("sort_order"),
           supabase.from("shop_product_longevity_items").select("id, product_id, icon_key, label, note, sort_order").in("product_id", productIds).order("sort_order"),
           supabase.from("shop_product_categories").select("product_id, category_id").in("product_id", productIds),
         ]);
@@ -155,6 +156,7 @@ export default async function AccountShopPortalPage() {
             <li key={s.id} className="rounded-2xl border border-[#e8d5c4] bg-white px-4 py-3 text-sm">
               <p className="font-semibold">{s.name}</p>
               <p className="text-xs text-[#7a5c4e]">{s.is_product_brand ? "Product brand" : "Retailer"} · {s.status}</p>
+              <NearExpiryRulesForm shop={s} />
             </li>
           ))}
         </ul>
