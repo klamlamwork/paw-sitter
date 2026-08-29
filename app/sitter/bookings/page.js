@@ -7,6 +7,31 @@ import SitterBookingsClient from "./SitterBookingsClient";
 
 export const metadata = { title: "Sitter bookings | Paw Sitter" };
 
+async function attachBookingPets(bookings, sitterId) {
+  if (!bookings.length || !sitterId) return bookings.map((b) => ({ ...b, pets: [] }));
+  const admin = createAdminClient();
+  const ids = bookings.map((b) => b.id);
+  const { data: links } = await admin.from("booking_pets").select("booking_id, pet_id").in("booking_id", ids);
+  const petIds = [...new Set((links || []).map((row) => row.pet_id).filter(Boolean))];
+  if (!petIds.length) return bookings.map((b) => ({ ...b, pets: [] }));
+
+  const [{ data: pets }, { data: reviews }] = await Promise.all([
+    admin.from("pets").select("id, name, species, breed, weight_lbs, age_years, age_months, sex, is_spayed_neutered, medications, notes, photo_url").in("id", petIds),
+    admin.from("pet_reviews").select("id, pet_id, body, published_at, status, sitters(id, display_name)").in("pet_id", petIds).eq("status", "published").order("published_at", { ascending: false }),
+  ]);
+
+  const petById = Object.fromEntries((pets || []).map((p) => [p.id, { ...p, reviews: [] }]));
+  for (const review of reviews || []) {
+    if (petById[review.pet_id]) petById[review.pet_id].reviews.push(review);
+  }
+  const petsByBooking = {};
+  for (const link of links || []) {
+    if (!petsByBooking[link.booking_id]) petsByBooking[link.booking_id] = [];
+    if (petById[link.pet_id]) petsByBooking[link.booking_id].push(petById[link.pet_id]);
+  }
+  return bookings.map((b) => ({ ...b, pets: petsByBooking[b.id] || [] }));
+}
+
 export default async function SitterBookingsPage() {
   const profile = await getProfile();
   if (!profile) redirect("/login?next=/sitter/bookings");
@@ -34,7 +59,7 @@ export default async function SitterBookingsPage() {
         <div>
           <h1 className="text-3xl font-bold text-[#3b2a22]">Booking requests</h1>
           <p className="mt-2 text-sm text-[#7a5c4e]">
-            Accept or decline requests. After accept, mark paid when payment is received.
+            Accept or decline requests.
             {sitter?.timezone ? <> Your timezone: <strong>{sitter.timezone}</strong>{sitter.service_city ? ` (${sitter.service_city})` : ""}.</> : null}
           </p>
         </div>
@@ -45,29 +70,4 @@ export default async function SitterBookingsPage() {
       <SitterBookingsClient bookings={bookings || []} sitterTimezone={sitter?.timezone || null} sitterLocation={sitter || null} />
     </div>
   );
-}
-
-async function attachBookingPets(bookings, sitterId) {
-  if (!bookings.length || !sitterId) return bookings.map((b) => ({ ...b, pets: [] }));
-  const admin = createAdminClient();
-  const ids = bookings.map((b) => b.id);
-  const { data: links } = await admin.from("booking_pets").select("booking_id, pet_id").in("booking_id", ids);
-  const petIds = [...new Set((links || []).map((row) => row.pet_id).filter(Boolean))];
-  if (!petIds.length) return bookings.map((b) => ({ ...b, pets: [] }));
-
-  const [{ data: pets }, { data: reviews }] = await Promise.all([
-    admin.from("pets").select("id, name, species, breed, weight_lbs, age_years, age_months, sex, is_spayed_neutered, medications, notes, photo_url").in("id", petIds),
-    admin.from("pet_reviews").select("id, pet_id, body, published_at, status, sitters(id, display_name)").in("pet_id", petIds).eq("status", "published").order("published_at", { ascending: false }),
-  ]);
-
-  const petById = Object.fromEntries((pets || []).map((p) => [p.id, { ...p, reviews: [] }]));
-  for (const review of reviews || []) {
-    if (petById[review.pet_id]) petById[review.pet_id].reviews.push(review);
-  }
-  const petsByBooking = {};
-  for (const link of links || []) {
-    if (!petsByBooking[link.booking_id]) petsByBooking[link.booking_id] = [];
-    if (petById[link.pet_id]) petsByBooking[link.booking_id].push(petById[link.pet_id]);
-  }
-  return bookings.map((b) => ({ ...b, pets: petsByBooking[b.id] || [] }));
 }

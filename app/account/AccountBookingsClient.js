@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { isBookingPaid, dollarsToCents } from "@/lib/money";
 import { quoteBookingCustomerTotal } from "@/lib/pawServiceFee";
 import PawPointsCheckout from "@/components/shop/PawPointsCheckout";
 import BookingPriceBreakdown from "@/components/booking/BookingPriceBreakdown";
+import ReviewBookingButton from "@/components/booking/ReviewBookingButton";
+import TipBookingButton from "@/components/booking/TipBookingButton";
 import { formatInTimezone, serviceLocationText, timezoneLabel } from "@/lib/bookingTime";
 
 function hoursUntilUTC(startsAtISO) {
@@ -33,10 +36,7 @@ export default function AccountBookingsClient({ bookings = [], displayTimezone =
     let cancelled = false;
     (async () => {
       const supabase = createClient();
-      const { data } = await supabase
-        .from("sitter_payments")
-        .select("stripe_enabled, card_enabled, etransfer_enabled, pay_later_enabled")
-        .limit(1);
+      const { data } = await supabase.from("sitter_payments").select("stripe_enabled, card_enabled, etransfer_enabled, pay_later_enabled").limit(1);
       if (cancelled) return;
       const settings = data?.[0];
       setMethods({
@@ -109,10 +109,18 @@ export default function AccountBookingsClient({ bookings = [], displayTimezone =
           const subtotalCents = dollarsToCents(b.estimated_total);
           const quoted = quoteBookingCustomerTotal({ subtotalCents, pointsCents: paw.cents || 0 });
           const overnight = b.service_type === "house_sit" || b.service_type === "boarding";
+          const sitterId = b.sitters?.id || b.sitter_id;
+          const sitterName = b.sitters?.display_name || "Sitter";
           return (
             <li key={b.id} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/90 px-4 py-3 text-sm">
               <div className="flex justify-between gap-2">
-                <span className="font-semibold">{serviceLabel(b.service_type)}</span>
+                <span className="font-semibold">
+                  {serviceLabel(b.service_type)}
+                  {" · "}
+                  {sitterId ? (
+                    <Link href={`/sitters/${sitterId}`} className="text-[#c45c26] hover:underline">{sitterName}</Link>
+                  ) : sitterName}
+                </span>
                 <span className="rounded-full bg-[#f3e0d0] px-2 py-0.5 text-xs capitalize text-[#c45c26]">{b.status}</span>
               </div>
               <p className="mt-1 text-sm text-[#5c4033]">Service location: {serviceLocationText(b)}</p>
@@ -125,7 +133,11 @@ export default function AccountBookingsClient({ bookings = [], displayTimezone =
 
               {showPay ? (!canPay ? <p className="mt-2 text-xs text-red-600">Payment must be made at least 48 hours before the booking starts.</p> : <div className="mt-3"><button type="button" onClick={() => setOpenId(open ? "" : b.id)} disabled={!methods} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60">{methods ? (open ? "Hide payment options" : "Pay now") : "Loading payment options…"}</button>{open && methods ? <div className="mt-2 space-y-2 rounded-xl border border-[#e8d5c4] bg-white p-3"><PawPointsCheckout orderCents={subtotalCents} items={[{ net_cents: subtotalCents, qty: 1, source_key: "sitter_booking" }]} onChange={(next) => setPawByBooking((prev) => ({ ...prev, [b.id]: next }))} />{methods.card ? <button type="button" disabled={busyId === b.id} onClick={() => startPay(b.id, "card")} className="rounded-full bg-[#c45c26] px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-60">Pay with card</button> : null}{methods.etransfer ? <button type="button" disabled={busyId === b.id} onClick={() => startPay(b.id, "etransfer")} className="ml-2 rounded-full border border-[#c45c26] px-4 py-1.5 text-xs font-semibold text-[#c45c26] disabled:opacity-60">E-transfer</button> : null}{methods.later ? <button type="button" disabled={busyId === b.id} onClick={() => startPay(b.id, "later")} className="ml-2 rounded-full border border-[#e8d5c4] px-4 py-1.5 text-xs font-semibold disabled:opacity-60">Pay later</button> : null}</div> : null}</div>) : null}
 
-              {b.status !== "canceled" && b.status !== "completed" ? <button type="button" disabled={busyId === b.id} onClick={() => cancelBooking(b.id)} className="mt-3 rounded-full border border-[#e8d5c4] bg-white px-4 py-1.5 text-xs font-semibold disabled:opacity-60">Cancel booking</button> : null}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {b.status !== "canceled" && b.status !== "completed" ? <button type="button" disabled={busyId === b.id} onClick={() => cancelBooking(b.id)} className="rounded-full border border-[#e8d5c4] bg-white px-4 py-1.5 text-xs font-semibold disabled:opacity-60">Cancel booking</button> : null}
+                <ReviewBookingButton bookingId={b.id} label="Review sitter" />
+                <TipBookingButton bookingId={b.id} />
+              </div>
             </li>
           );
         })}
