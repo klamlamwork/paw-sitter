@@ -8,7 +8,6 @@ import { quoteBookingCustomerTotal } from "@/lib/pawServiceFee";
 import PawPointsCheckout from "@/components/shop/PawPointsCheckout";
 import BookingPriceBreakdown from "@/components/booking/BookingPriceBreakdown";
 import ReviewBookingButton from "@/components/booking/ReviewBookingButton";
-import TipBookingButton from "@/components/booking/TipBookingButton";
 import { formatInTimezone, serviceLocationText, timezoneLabel } from "@/lib/bookingTime";
 
 function hoursUntilUTC(startsAtISO) {
@@ -136,7 +135,6 @@ export default function AccountBookingsClient({ bookings = [], displayTimezone =
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 {b.status !== "canceled" && b.status !== "completed" ? <button type="button" disabled={busyId === b.id} onClick={() => cancelBooking(b.id)} className="rounded-full border border-[#e8d5c4] bg-white px-4 py-1.5 text-xs font-semibold disabled:opacity-60">Cancel booking</button> : null}
                 <ReviewBookingButton bookingId={b.id} label="Review sitter" />
-                <TipBookingButton bookingId={b.id} />
               </div>
             </li>
           );
