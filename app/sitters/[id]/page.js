@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import SitterRatingBadge from "@/components/SitterRatingBadge";
 import {
+  averageRating,
   enabledServices,
   formatCityCountry,
   serviceLabel,
@@ -62,6 +64,7 @@ export default async function PublicSitterPage({ params }) {
   const svcs = enabledServices(sitter);
   const bookHref = `/booking?sitter=${encodeURIComponent(sitter.id)}`;
   const photo = sitterPhotoUrl(sitter, 1400, 600);
+  const ratingAvg = averageRating(reviews || []);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
@@ -81,7 +84,10 @@ export default async function PublicSitterPage({ params }) {
         </div>
 
         <div className="p-6 sm:p-8">
-          <h1 className="text-3xl font-bold text-[#3b2a22]">{sitter.display_name}</h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="min-w-0 flex-1 text-3xl font-bold text-[#3b2a22]">{sitter.display_name}</h1>
+            <SitterRatingBadge avg={ratingAvg} className="mt-1 text-base" />
+          </div>
           <p className="mt-2 text-sm font-medium text-[#7a5c4e]">{formatCityCountry(sitter)}</p>
 
           <div className="mt-6">

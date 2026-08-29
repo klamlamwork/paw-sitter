@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
-import { sitterPhotoUrl } from "@/lib/sitters";
+import { averageRating, sitterPhotoUrl } from "@/lib/sitters";
 import SittersIndexClient from "./SittersIndexClient";
 
 export const metadata = { title: "Sitters | Paw Sitter" };
@@ -30,9 +30,20 @@ export default async function SittersPage() {
     .eq("is_active", true)
     .order("display_name", { ascending: true });
 
+  const ids = (sitters || []).map((s) => s.id);
+  const { data: ratingRows } = ids.length
+    ? await supabase.from("sitter_reviews").select("sitter_id, rating").eq("status", "published").in("sitter_id", ids)
+    : { data: [] };
+  const ratingsBySitter = {};
+  for (const row of ratingRows || []) {
+    if (!ratingsBySitter[row.sitter_id]) ratingsBySitter[row.sitter_id] = [];
+    ratingsBySitter[row.sitter_id].push(row);
+  }
+
   const list = (sitters || []).map((s) => ({
     ...s,
     profile_pic_url: sitterPhotoUrl(s, 800, 450),
+    rating_avg: averageRating(ratingsBySitter[s.id] || []),
     sitter_services: (s.sitter_services || []).filter((svc) => svc && svc.enabled !== false),
   }));
 

@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { enabledServices, formatCityCountry, serviceLabel } from "@/lib/sitters";
+import SitterRatingBadge from "@/components/SitterRatingBadge";
 
 const ALL_SERVICES = ["house_sit", "drop_in", "walking", "boarding"];
 
@@ -94,7 +95,10 @@ export default function SittersIndexClient({ sitters = [], loadError = "" }) {
                   {s.profile_pic_url ? <img src={s.profile_pic_url} alt="" className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-sm font-medium text-[#c4a484]">{(s.display_name || "?").slice(0, 1).toUpperCase()}</div>}
                 </div>
                 <div className="p-5">
-                  <h2 className="text-lg font-bold text-[#3b2a22]">{s.display_name}</h2>
+                  <div className="flex items-start justify-between gap-2">
+                    <h2 className="min-w-0 flex-1 text-lg font-bold text-[#3b2a22]">{s.display_name}</h2>
+                    <SitterRatingBadge avg={s.rating_avg} />
+                  </div>
                   <p className="mt-1 text-xs font-medium text-[#7a5c4e]">{formatCityCountry(s)}</p>
                   {s.bio ? <p className="mt-3 line-clamp-3 text-sm text-[#5c4033]">{s.bio}</p> : <p className="mt-3 text-sm text-[#7a5c4e]">No bio yet.</p>}
                   {svcs.length ? (
