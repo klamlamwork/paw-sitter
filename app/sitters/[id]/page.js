@@ -52,6 +52,13 @@ export default async function PublicSitterPage({ params }) {
 
   if (!sitter) notFound();
 
+  const { data: reviews } = await supabase
+    .from("sitter_reviews")
+    .select("id, rating, body, published_at")
+    .eq("sitter_id", sitter.id)
+    .eq("status", "published")
+    .order("published_at", { ascending: false });
+
   const svcs = enabledServices(sitter);
   const bookHref = `/booking?sitter=${encodeURIComponent(sitter.id)}`;
   const photo = sitterPhotoUrl(sitter, 1400, 600);
@@ -103,6 +110,23 @@ export default async function PublicSitterPage({ params }) {
                         {" "}/ {serviceRateUnit(svc.service_type)}
                       </span>
                     </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div className="mt-8">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-[#7a5c4e]">Customer reviews</h2>
+            {(reviews || []).length === 0 ? (
+              <p className="mt-2 text-sm text-[#7a5c4e]">No published reviews yet.</p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {(reviews || []).map((review) => (
+                  <li key={review.id} className="rounded-2xl border border-[#e8d5c4] bg-[#fff8f0]/80 px-4 py-3">
+                    <p className="text-sm font-semibold text-[#c45c26]">{"★".repeat(Number(review.rating) || 0)}{"☆".repeat(Math.max(0, 5 - (Number(review.rating) || 0)))}</p>
+                    {review.published_at ? <p className="mt-0.5 text-xs text-[#7a5c4e]">{new Date(review.published_at).toLocaleDateString()}</p> : null}
+                    <p className="mt-2 whitespace-pre-wrap text-sm text-[#3b2a22]">{review.body}</p>
                   </li>
                 ))}
               </ul>

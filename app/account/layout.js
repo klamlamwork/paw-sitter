@@ -1,5 +1,6 @@
 import { getProfile } from "@/lib/auth";
 import AccountAvatarGate from "@/components/media/AccountAvatarGate";
+import AccountReviewMount from "./AccountReviewMount";
 
 export default async function AccountLayout({ children }) {
   const profile = await getProfile();
@@ -11,6 +12,7 @@ export default async function AccountLayout({ children }) {
         </div>
       ) : null}
       {children}
+      {profile ? <AccountReviewMount /> : null}
     </>
   );
 }
