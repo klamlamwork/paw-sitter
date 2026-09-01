@@ -5,12 +5,16 @@ import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { buildProductSnapshot } from "@/lib/shopProductPending";
 import { mergeBrandTagsIntoSnapshot } from "@/lib/shopProductBrandTags";
+import ProductBrandSelect from "@/components/shop/ProductBrandSelect";
 import ProductBrandTagsEditor from "@/components/shop/ProductBrandTagsEditor";
+
+const inp = "mt-1 w-full rounded-xl border border-[#e8d5c4] px-3 py-2 text-sm";
 
 export default function ProductBrandTagsPanel() {
   const pathname = usePathname();
   const [products, setProducts] = useState([]);
   const [tags, setTags] = useState([]);
+  const [brands, setBrands] = useState([]);
   const [drafts, setDrafts] = useState({});
   const [busyId, setBusyId] = useState("");
   const [error, setError] = useState("");
@@ -26,11 +30,12 @@ export default function ProductBrandTagsPanel() {
       const { data: shops } = await supabase.from("shop_shops").select("id").eq("owner_profile_id", user.id);
       const shopIds = (shops || []).map((s) => s.id);
       if (!shopIds.length) return;
-      const select = "id, name, slug, status, brand_name, has_pending_edit, pending_snapshot, primary_shop_id, brand_shop_id, short_description, description, price_cents, currency, hide_price, category_id, product_type, inventory_mode, show_affiliate, show_add_to_cart, affiliate_url";
-      const [prim, brand, tagRows] = await Promise.all([
+      const select = "id, name, slug, status, brand_name, brand_shop_id, has_pending_edit, pending_snapshot, primary_shop_id, short_description, description, price_cents, currency, hide_price, category_id, product_type, inventory_mode, show_affiliate, show_add_to_cart, affiliate_url";
+      const [prim, brand, tagRows, brandRows] = await Promise.all([
         supabase.from("shop_products").select(select).in("primary_shop_id", shopIds),
         supabase.from("shop_products").select(select).in("brand_shop_id", shopIds),
         supabase.from("shop_tags").select("id, name, slug").eq("status", "active").order("name"),
+        supabase.from("shop_shops").select("id, name, slug").eq("is_product_brand", true).eq("status", "active").order("name"),
       ]);
       const map = new Map();
       for (const p of [...(prim.data || []), ...(brand.data || [])]) map.set(p.id, p);
@@ -80,13 +85,14 @@ export default function ProductBrandTagsPanel() {
           longevity_items: chipsByProduct[p.id] || [],
           category_ids: catsByProduct[p.id] || (p.category_id ? [p.category_id] : []),
           tag_ids: Array.isArray(pending.tag_ids) ? pending.tag_ids : tagIdsByProduct[p.id] || [],
-          brand_name: pending.brand_name != null ? pending.brand_name : p.brand_name || "",
+          brand_shop_id: pending.brand_shop_id || p.brand_shop_id || "",
         };
       });
       if (cancelled) return;
       setTags(tagRows.data || []);
+      setBrands(brandRows.data || []);
       setProducts(next);
-      setDrafts(Object.fromEntries(next.map((p) => [p.id, { brandName: p.brand_name || "", tagIds: p.tag_ids || [] }])));
+      setDrafts(Object.fromEntries(next.map((p) => [p.id, { brandShopId: p.brand_shop_id || "", tagIds: p.tag_ids || [] }])));
     })();
     return () => {
       cancelled = true;
@@ -96,8 +102,12 @@ export default function ProductBrandTagsPanel() {
   if (pathname !== "/account/shop") return null;
   if (!products.length) return null;
 
+  function patchDraft(id, patch) {
+    setDrafts((cur) => ({ ...cur, [id]: { ...(cur[id] || { brandShopId: "", tagIds: [] }), ...patch } }));
+  }
+
   async function save(product) {
-    const draft = drafts[product.id] || { brandName: "", tagIds: [] };
+    const draft = drafts[product.id] || { brandShopId: "", tagIds: [] };
     setBusyId(product.id);
     setError("");
     setOk("");
@@ -106,7 +116,7 @@ export default function ProductBrandTagsPanel() {
     if (product.status !== "approved") {
       const { error: brandErr } = await supabase
         .from("shop_products")
-        .update({ brand_name: (draft.brandName || "").trim() || null, updated_at: new Date().toISOString() })
+        .update({ brand_shop_id: draft.brandShopId || null, updated_at: new Date().toISOString() })
         .eq("id", product.id);
       if (brandErr) {
         setBusyId("");
@@ -132,10 +142,8 @@ export default function ProductBrandTagsPanel() {
     const base = product.has_pending_edit && product.pending_snapshot
       ? product.pending_snapshot
       : buildProductSnapshot(product, product.media, product.longevity_items, product.category_ids);
-    const snap = mergeBrandTagsIntoSnapshot(base, product, {
-      brand_name: draft.brandName,
-      tag_ids: draft.tagIds || [],
-    });
+    const snap = mergeBrandTagsIntoSnapshot(base, product, { tag_ids: draft.tagIds || [] });
+    snap.brand_shop_id = draft.brandShopId || null;
     const { error } = await supabase
       .from("shop_products")
       .update({
@@ -158,23 +166,30 @@ export default function ProductBrandTagsPanel() {
     <section className="mx-auto max-w-4xl px-4 pb-10 sm:px-6">
       <h2 className="text-lg font-semibold text-[#3b2a22]">Brand & tags</h2>
       <p className="mt-1 text-xs text-[#7a5c4e]">
-        Pick from admin-controlled tags. Live products keep the last approved brand and tags until admin approves.
+        Brand is a dropdown from Admin → Shop → Brands. Tags are separate. Live products keep the last approved values until admin approves.
       </p>
       {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
       {ok ? <p className="mt-2 text-xs text-green-700">{ok}</p> : null}
       <ul className="mt-4 space-y-4">
         {products.map((product) => {
-          const draft = drafts[product.id] || { brandName: "", tagIds: [] };
+          const draft = drafts[product.id] || { brandShopId: "", tagIds: [] };
           return (
-            <li key={product.id}>
+            <li key={product.id} className="rounded-xl border border-[#f0e0d2] p-3">
               <p className="mb-2 text-sm font-semibold text-[#3b2a22]">{product.name}</p>
-              <ProductBrandTagsEditor
-                brandName={draft.brandName}
-                tagIds={draft.tagIds}
-                tags={tags}
-                pending={product.status === "approved"}
-                onChange={(next) => setDrafts((cur) => ({ ...cur, [product.id]: next }))}
+              <ProductBrandSelect
+                className={inp}
+                brands={brands}
+                value={draft.brandShopId}
+                onChange={(id) => patchDraft(product.id, { brandShopId: id })}
               />
+              <div className="mt-3">
+                <ProductBrandTagsEditor
+                  tagIds={draft.tagIds}
+                  tags={tags}
+                  pending={product.status === "approved"}
+                  onChange={(next) => patchDraft(product.id, { tagIds: next.tagIds || [] })}
+                />
+              </div>
               <button
                 type="button"
                 disabled={busyId === product.id}
