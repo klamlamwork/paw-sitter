@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import ProductBrandTagsPanel from "./ProductBrandTagsPanel";
 
 export default async function AccountShopLayout({ children }) {
   let profile;
@@ -34,5 +35,10 @@ export default async function AccountShopLayout({ children }) {
     );
   }
 
-  return children;
+  return (
+    <>
+      {children}
+      <ProductBrandTagsPanel />
+    </>
+  );
 }
