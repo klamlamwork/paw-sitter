@@ -1,10 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatShopPrice, productPath } from "@/lib/shop";
+import { createClient } from "@/lib/supabase/client";
+import {
+  brandFilterItems,
+  productMatchesSharedFilters,
+  productTypeFilterItems,
+} from "@/lib/shopSharedTaxonomy";
 
 const PAGE_SIZE = 8;
+
+function toggleInSet(set, id) {
+  const next = new Set(set);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
 
 function ProductCard({ product, coverUrl }) {
   const price = formatShopPrice(product.price_cents, product.currency, product.hide_price);
@@ -30,11 +43,24 @@ function ToggleChip({ active, onClick, children }) {
   );
 }
 
-function toggleInSet(set, value) {
-  const next = new Set(set);
-  if (next.has(value)) next.delete(value);
-  else next.add(value);
-  return next;
+function FilterRow({ label, items, selected, onToggle, onClear, idKey = "id", nameKey = "name" }) {
+  if (!(items || []).length) return null;
+  return (
+    <div>
+      <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">{label}</p>
+      <div className="flex flex-wrap gap-2">
+        <ToggleChip active={selected.size === 0} onClick={onClear}>All</ToggleChip>
+        {items.map((item) => {
+          const id = item[idKey];
+          return (
+            <ToggleChip key={id} active={selected.has(id)} onClick={() => onToggle(id)}>
+              {item[nameKey]}
+            </ToggleChip>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 export default function ShopProductsPanel({
@@ -43,21 +69,47 @@ export default function ShopProductsPanel({
   categoriesRow1,
   categoriesRow2,
   longevityLabels,
+  brands = [],
 }) {
+  const [brandItems, setBrandItems] = useState(() => brandFilterItems(brands));
+  const [selectedBrands, setSelectedBrands] = useState(() => new Set());
+  const [selectedTypes, setSelectedTypes] = useState(() => new Set());
   const [selectedCats, setSelectedCats] = useState(() => new Set());
   const [selectedLon, setSelectedLon] = useState(() => new Set());
   const [sort, setSort] = useState("newest");
   const [page, setPage] = useState(1);
+  const typeItems = productTypeFilterItems();
+
+  useEffect(() => {
+    const incoming = brandFilterItems(brands);
+    if (incoming.length) {
+      setBrandItems(incoming);
+      return;
+    }
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from("shop_shops")
+      .select("id, name, slug, is_product_brand, status")
+      .eq("is_product_brand", true)
+      .eq("status", "active")
+      .order("name")
+      .then(({ data }) => {
+        if (!cancelled) setBrandItems(brandFilterItems(data || []));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [brands]);
 
   const filtered = useMemo(() => {
-    let list = [...(products || [])];
-    if (selectedCats.size > 0) {
-      list = list.filter((p) => {
-        const ids = new Set(p.category_ids || (p.category_id ? [p.category_id] : []));
-        for (const id of selectedCats) if (!ids.has(id)) return false;
-        return true;
-      });
-    }
+    let list = [...(products || [])].filter((p) =>
+      productMatchesSharedFilters(p, {
+        brandIds: selectedBrands,
+        productTypes: selectedTypes,
+        categoryIds: selectedCats,
+      })
+    );
     if (selectedLon.size > 0) {
       list = list.filter((p) => {
         const labels = new Set((p.longevity_labels || []).map((l) => String(l).toLowerCase()));
@@ -81,17 +133,33 @@ export default function ShopProductsPanel({
       list.sort((a, b) => new Date(b.updated_at || 0) - new Date(a.updated_at || 0));
     }
     return list;
-  }, [products, selectedCats, selectedLon, sort]);
+  }, [products, selectedBrands, selectedTypes, selectedCats, selectedLon, sort]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
   const slice = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   function setCats(next) { setSelectedCats(next); setPage(1); }
   function setLon(next) { setSelectedLon(next); setPage(1); }
+  function setBrandSel(next) { setSelectedBrands(next); setPage(1); }
+  function setTypeSel(next) { setSelectedTypes(next); setPage(1); }
   const hasCats = (categoriesRow1 || []).length + (categoriesRow2 || []).length > 0;
 
   return (
     <div className="mt-4 space-y-4">
+      <FilterRow
+        label="Brand"
+        items={brandItems}
+        selected={selectedBrands}
+        onClear={() => setBrandSel(new Set())}
+        onToggle={(id) => setBrandSel(toggleInSet(selectedBrands, id))}
+      />
+      <FilterRow
+        label="Product type"
+        items={typeItems}
+        selected={selectedTypes}
+        onClear={() => setTypeSel(new Set())}
+        onToggle={(id) => setTypeSel(toggleInSet(selectedTypes, id))}
+      />
       {hasCats ? (
         <div>
           <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#7a5c4e]">Categories</p>
