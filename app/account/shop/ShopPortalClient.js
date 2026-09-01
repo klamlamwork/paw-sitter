@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -12,6 +12,7 @@ import ProductGalleryEditor from "@/components/shop/ProductGalleryEditor";
 import LongevityChipsEditor from "@/components/shop/LongevityChipsEditor";
 import CategoryMultiSelect from "@/components/shop/CategoryMultiSelect";
 import ProductTypeSelect from "@/components/shop/ProductTypeSelect";
+import ProductBrandSelect from "@/components/shop/ProductBrandSelect";
 import ShopPortalVariantsHook from "./ShopPortalVariantsHook";
 import ProductEditMediaLongevity from "./ProductEditMediaLongevity";
 
@@ -22,13 +23,16 @@ export default function ShopPortalClient({
   shops = [],
   initialProducts = [],
   categories = [],
+  productBrandShops = [],
   profileId,
 }) {
   const router = useRouter();
   const activeShops = useMemo(() => (shops || []).filter((s) => s.status === "active"), [shops]);
+  const [brands, setBrands] = useState(productBrandShops || []);
   const [products, setProducts] = useState(initialProducts || []);
   const [name, setName] = useState("");
   const [shopId, setShopId] = useState(activeShops[0]?.id || "");
+  const [brandShopId, setBrandShopId] = useState(activeShops[0]?.is_product_brand ? activeShops[0].id : "");
   const [shortDescription, setShortDescription] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
@@ -50,6 +54,33 @@ export default function ShopPortalClient({
   const [editId, setEditId] = useState("");
   const [edit, setEdit] = useState(null);
 
+  useEffect(() => {
+    if ((productBrandShops || []).length) {
+      setBrands(productBrandShops);
+      return;
+    }
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from("shop_shops")
+      .select("id, name, slug")
+      .eq("is_product_brand", true)
+      .eq("status", "active")
+      .order("name")
+      .then(({ data }) => {
+        if (!cancelled) setBrands(data || []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [productBrandShops]);
+
+  function onShopChange(id) {
+    setShopId(id);
+    const shop = activeShops.find((s) => s.id === id);
+    if (shop?.is_product_brand) setBrandShopId(id);
+  }
+
   function openEdit(p) {
     setError("");
     setOk("");
@@ -64,6 +95,7 @@ export default function ShopPortalClient({
       product_type: pending.product_type || p.product_type || "other",
       inventory_mode: pending.inventory_mode || p.inventory_mode || "simple",
       category_ids: pending.category_ids || p.edit_category_ids || (p.category_id ? [p.category_id] : []),
+      brand_shop_id: pending.brand_shop_id || p.brand_shop_id || "",
       show_affiliate: pending.show_affiliate ?? !!p.show_affiliate,
       show_add_to_cart: pending.show_add_to_cart ?? !!p.show_add_to_cart,
       affiliate_url: pending.affiliate_url || p.affiliate_url || "",
@@ -90,11 +122,23 @@ export default function ShopPortalClient({
         ...edit,
         slug: slugifyShop(edit.name),
         inventory_mode: edit.inventory_mode || defaultInventoryMode(edit.product_type),
+        brand_shop_id: edit.brand_shop_id || null,
       },
       media: edit.media || [],
       longevityItems: edit.chips || [],
       categoryIds: edit.category_ids || [],
     });
+    if (!result.error && p.status !== "approved") {
+      const { error: brandErr } = await supabase
+        .from("shop_products")
+        .update({ brand_shop_id: edit.brand_shop_id || null, updated_at: new Date().toISOString() })
+        .eq("id", p.id);
+      if (brandErr) {
+        setBusy(false);
+        setError(brandErr.message);
+        return;
+      }
+    }
     setBusy(false);
     if (result.error) {
       setError(result.error.message || "Could not save");
@@ -108,6 +152,7 @@ export default function ShopPortalClient({
               stock_qty: result.stockQty,
               has_pending_edit: result.mode === "pending_approval",
               pending_snapshot: result.mode === "pending_approval" ? result.snapshot : null,
+              brand_shop_id: p.status !== "approved" ? edit.brand_shop_id || null : x.brand_shop_id,
               ...(result.mode === "live_pending"
                 ? {
                     name: edit.name.trim(),
@@ -165,6 +210,7 @@ export default function ShopPortalClient({
         short_description: shortDescription.trim(),
         description: description.trim(),
         primary_shop_id: shopId,
+        brand_shop_id: brandShopId || null,
         category_id: categoryIds[0] || null,
         product_type: productType || "other",
         inventory_mode: inventoryMode || defaultInventoryMode(productType),
@@ -182,7 +228,7 @@ export default function ShopPortalClient({
         updated_at: new Date().toISOString(),
       })
       .select(
-        "id, name, slug, status, primary_shop_id, short_description, description, price_cents, product_type, inventory_mode, stock_qty, category_id, show_affiliate, show_add_to_cart, affiliate_url, has_pending_edit, updated_at"
+        "id, name, slug, status, primary_shop_id, brand_shop_id, short_description, description, price_cents, product_type, inventory_mode, stock_qty, category_id, show_affiliate, show_add_to_cart, affiliate_url, has_pending_edit, updated_at"
       )
       .single();
 
@@ -195,7 +241,9 @@ export default function ShopPortalClient({
       await supabase.from("shop_product_media").insert(
         gallery.map((m, i) => ({
           product_id: product.id,
-          url: m.url,
+          public_id: m.public_id || null,
+          version: m.version || null,
+          url: m.public_id ? null : m.url || null,
           alt_text: n,
           sort_order: i,
         }))
@@ -246,6 +294,7 @@ export default function ShopPortalClient({
     setCategoryIds([]);
     setGallery([]);
     setChips([]);
+    setBrandShopId(activeShops.find((s) => s.id === shopId)?.is_product_brand ? shopId : "");
     setProducts((list) => [
       { ...product, variants: [], longevity_items: chips, media: gallery, edit_category_ids: categoryIds },
       ...list,
@@ -263,7 +312,7 @@ export default function ShopPortalClient({
         {activeShops.length ? (
           <label className="block text-sm font-medium">
             Shop
-            <select className={inp} value={shopId} onChange={(e) => setShopId(e.target.value)}>
+            <select className={inp} value={shopId} onChange={(e) => onShopChange(e.target.value)}>
               {activeShops.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
@@ -272,6 +321,7 @@ export default function ShopPortalClient({
         ) : (
           <p className="text-sm text-amber-800">No active shop on this account.</p>
         )}
+        <ProductBrandSelect className={inp} brands={brands} value={brandShopId} onChange={setBrandShopId} />
         <label className="block text-sm font-medium">
           Name
           <input className={inp} value={name} onChange={(e) => setName(e.target.value)} required />
@@ -364,6 +414,12 @@ export default function ShopPortalClient({
                     Name
                     <input className={inp} value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} />
                   </label>
+                  <ProductBrandSelect
+                    className={inp}
+                    brands={brands}
+                    value={edit.brand_shop_id}
+                    onChange={(id) => setEdit({ ...edit, brand_shop_id: id })}
+                  />
                   <ProductTypeSelect
                     productType={edit.product_type}
                     inventoryMode={edit.inventory_mode}
