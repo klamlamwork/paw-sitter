@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { formatShopPrice, productPath } from "@/lib/shop";
-import { createClient } from "@/lib/supabase/client";
 import {
   brandFilterItems,
   productMatchesSharedFilters,
@@ -87,16 +86,18 @@ export default function ShopProductsPanel({
       return;
     }
     let cancelled = false;
-    const supabase = createClient();
-    supabase
-      .from("shop_shops")
-      .select("id, name, slug, is_product_brand, status")
-      .eq("is_product_brand", true)
-      .eq("status", "active")
-      .order("name")
-      .then(({ data }) => {
-        if (!cancelled) setBrandItems(brandFilterItems(data || []));
-      });
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+    if (!url || !key) return;
+    fetch(
+      `${url}/rest/v1/shop_shops?is_product_brand=eq.true&status=eq.active&select=id,name,slug,is_product_brand&order=name`,
+      { headers: { apikey: key, Authorization: `Bearer ${key}` } }
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled && Array.isArray(data)) setBrandItems(brandFilterItems(data));
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
