@@ -20,12 +20,12 @@ function remainingQty(item) {
   return Math.max(0, Math.floor(Number(item?.qty || 0) - Number(item?.refunded_qty || 0)));
 }
 
-function canRefundDeliveredItem(order, item, now = new Date()) {
+function canRefundItem(order, item, now = new Date()) {
   if (!order || !item) return false;
   if (remainingQty(item) <= 0) return false;
   if ((item.refund_status || "none") === "refunded") return false;
   const delivered = order.status === "delivered" || !!order.delivered_at;
-  if (!delivered) return false;
+  if (!delivered) return true;
   const ends = [];
   if (order.return_window_ends_at) {
     const t = new Date(order.return_window_ends_at).getTime();
@@ -93,7 +93,7 @@ export default function SellerOrdersClient({ initialOrders }) {
             <ul className="mt-3 space-y-2">
               {(order.items || []).map((item) => {
                 const remaining = remainingQty(item);
-                const showRefund = canRefundDeliveredItem(order, item);
+                const showRefund = canRefundItem(order, item);
                 return (
                   <li key={item.id} className="flex flex-wrap items-center justify-between gap-3">
                     <span>
