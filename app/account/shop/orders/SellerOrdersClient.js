@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatShopPrice } from "@/lib/shop";
+import { canRefundDeliveredItem } from "@/lib/shopItemRefund";
 import SellerItemRefundButton from "./SellerItemRefundButton";
 
 const NEXT = {
@@ -11,6 +12,7 @@ const NEXT = {
     { status: "declined", label: "Decline" },
   ],
   accepted: [{ status: "shipped", label: "Mark shipped" }],
+  shipped: [{ status: "delivered", label: "Mark delivered" }],
 };
 
 export default function SellerOrdersClient({ initialOrders }) {
@@ -50,7 +52,6 @@ export default function SellerOrdersClient({ initialOrders }) {
         const currency = order.items?.[0]?.currency || "CAD";
         const actions = NEXT[order.status] || [];
         const shipName = order.shipping_label || (order.shipping_method ? String(order.shipping_method)[0].toUpperCase() + String(order.shipping_method).slice(1) : "Shipping");
-        const canRefund = ["paid", "partially_refunded"].includes(order.payment_status);
         return (
           <article key={order.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
             <div className="flex flex-wrap items-start justify-between gap-2">
@@ -66,18 +67,22 @@ export default function SellerOrdersClient({ initialOrders }) {
             <p className="text-sm text-[#5c4033]">{[order.shipping_line1, order.shipping_line2, order.shipping_city, order.shipping_state, order.shipping_postal_code, order.shipping_country].filter(Boolean).join(", ")}</p>
             {order.shipping_email ? <p className="text-xs text-[#7a5c4e]">{order.shipping_email}</p> : null}
             <ul className="mt-3 space-y-2">
-              {(order.items || []).map((item) => (
-                <li key={item.id} className="flex flex-wrap items-center justify-between gap-3">
-                  <span>
-                    {item.product?.slug ? <Link href={`/shop/p/${item.product.slug}`} className="hover:underline">{item.product.name}</Link> : item.product?.name || "Product"}
-                    <span className="text-[#7a5c4e]"> × {item.qty}</span>
-                  </span>
-                  <span className="flex items-center gap-3">
-                    <span className="text-[#c45c26]">{formatShopPrice((item.price_cents || 0) * (item.qty || 0), item.currency)}</span>
-                    {canRefund ? <SellerItemRefundButton orderItemId={item.id} refundStatus={item.refund_status} /> : null}
-                  </span>
-                </li>
-              ))}
+              {(order.items || []).map((item) => {
+                const remaining = Math.max(0, (item.qty || 0) - (item.refunded_qty || 0));
+                const showRefund = canRefundDeliveredItem(order, item);
+                return (
+                  <li key={item.id} className="flex flex-wrap items-center justify-between gap-3">
+                    <span>
+                      {item.product?.slug ? <Link href={`/shop/p/${item.product.slug}`} className="hover:underline">{item.product.name}</Link> : item.product?.name || "Product"}
+                      <span className="text-[#7a5c4e]"> × {item.qty}</span>
+                    </span>
+                    <span className="flex items-center gap-3">
+                      <span className="text-[#c45c26]">{formatShopPrice((item.price_cents || 0) * (item.qty || 0), item.currency)}</span>
+                      {showRefund ? <SellerItemRefundButton orderItemId={item.id} remainingQty={remaining} /> : remaining <= 0 ? <span className="text-xs font-semibold text-green-800">Refunded</span> : null}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
             <div className="mt-2 space-y-0.5 text-sm">
               <p className="text-[#7a5c4e]">Subtotal {formatShopPrice(subtotal, currency)}</p>

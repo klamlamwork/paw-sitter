@@ -12,8 +12,9 @@ export async function POST(request) {
     if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
     const body = await request.json().catch(() => ({}));
     const orderItemId = body?.orderItemId;
+    const qty = body?.qty;
     if (!orderItemId) return NextResponse.json({ error: "orderItemId is required." }, { status: 400 });
-    const result = await applyShopItemRefund({ orderItemId, sellerUserId: user.id });
+    const result = await applyShopItemRefund({ orderItemId, sellerUserId: user.id, qty });
     return NextResponse.json(result);
   } catch (err) {
     return NextResponse.json({ error: err.message || "Could not refund item." }, { status: 400 });
