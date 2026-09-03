@@ -14,24 +14,29 @@ const NEXT = {
   shipped: [{ status: "delivered", label: "Mark delivered" }],
 };
 
+const REFUND_MS = 7 * 24 * 60 * 60 * 1000;
+
 function remainingQty(item) {
   return Math.max(0, Math.floor(Number(item?.qty || 0) - Number(item?.refunded_qty || 0)));
 }
 
 function canRefundDeliveredItem(order, item, now = new Date()) {
   if (!order || !item) return false;
-  const delivered = order.status === "delivered" || !!order.delivered_at;
-  if (!delivered) return false;
   if (remainingQty(item) <= 0) return false;
   if ((item.refund_status || "none") === "refunded") return false;
-  let end = null;
-  if (order.return_window_ends_at) end = new Date(order.return_window_ends_at);
-  else if (order.delivered_at) {
-    end = new Date(order.delivered_at);
-    end.setDate(end.getDate() + 7);
+  const delivered = order.status === "delivered" || !!order.delivered_at;
+  if (!delivered) return false;
+  const ends = [];
+  if (order.return_window_ends_at) {
+    const t = new Date(order.return_window_ends_at).getTime();
+    if (!Number.isNaN(t)) ends.push(t);
   }
-  if (end && end.getTime() < now.getTime()) return false;
-  return true;
+  if (order.delivered_at) {
+    const t = new Date(order.delivered_at).getTime();
+    if (!Number.isNaN(t)) ends.push(t + REFUND_MS);
+  }
+  if (!ends.length) return false;
+  return now.getTime() < Math.min(...ends);
 }
 
 export default function SellerOrdersClient({ initialOrders }) {
@@ -53,7 +58,7 @@ export default function SellerOrdersClient({ initialOrders }) {
       setError(data.error || "Could not update");
       return;
     }
-    setOrders((list) => list.map((o) => (o.id === id ? { ...o, status } : o)));
+    setOrders((list) => list.map((o) => (o.id === id ? { ...o, status, delivered_at: status === "delivered" ? o.delivered_at || new Date().toISOString() : o.delivered_at } : o)));
   }
 
   if (!orders.length) {
