@@ -22,6 +22,7 @@ function remainingQty(item) {
 
 function canRefundItem(order, item, now = new Date()) {
   if (!order || !item) return false;
+  if (order.status === "declined") return false;
   if (remainingQty(item) <= 0) return false;
   if ((item.refund_status || "none") === "refunded") return false;
   const delivered = order.status === "delivered" || !!order.delivered_at;
