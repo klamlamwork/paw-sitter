@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatShopPrice } from "@/lib/shop";
-import { canRefundDeliveredItem } from "@/lib/shopItemRefund";
 import SellerItemRefundButton from "./SellerItemRefundButton";
 
 const NEXT = {
@@ -14,6 +13,26 @@ const NEXT = {
   accepted: [{ status: "shipped", label: "Mark shipped" }],
   shipped: [{ status: "delivered", label: "Mark delivered" }],
 };
+
+function remainingQty(item) {
+  return Math.max(0, Math.floor(Number(item?.qty || 0) - Number(item?.refunded_qty || 0)));
+}
+
+function canRefundDeliveredItem(order, item, now = new Date()) {
+  if (!order || !item) return false;
+  const delivered = order.status === "delivered" || !!order.delivered_at;
+  if (!delivered) return false;
+  if (remainingQty(item) <= 0) return false;
+  if ((item.refund_status || "none") === "refunded") return false;
+  let end = null;
+  if (order.return_window_ends_at) end = new Date(order.return_window_ends_at);
+  else if (order.delivered_at) {
+    end = new Date(order.delivered_at);
+    end.setDate(end.getDate() + 7);
+  }
+  if (end && end.getTime() < now.getTime()) return false;
+  return true;
+}
 
 export default function SellerOrdersClient({ initialOrders }) {
   const [orders, setOrders] = useState(initialOrders || []);
@@ -68,7 +87,7 @@ export default function SellerOrdersClient({ initialOrders }) {
             {order.shipping_email ? <p className="text-xs text-[#7a5c4e]">{order.shipping_email}</p> : null}
             <ul className="mt-3 space-y-2">
               {(order.items || []).map((item) => {
-                const remaining = Math.max(0, (item.qty || 0) - (item.refunded_qty || 0));
+                const remaining = remainingQty(item);
                 const showRefund = canRefundDeliveredItem(order, item);
                 return (
                   <li key={item.id} className="flex flex-wrap items-center justify-between gap-3">
