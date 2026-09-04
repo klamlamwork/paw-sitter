@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { onShopOrderDelivered } from "@/lib/pawPointsHooks";
 import { applyShopOrderDeclineRefund } from "@/lib/shopItemRefund";
+import { reconcileVerifiedKolForOrder } from "@/lib/kolRefundReconciliation";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +15,7 @@ export async function POST(request) {
   if (status === "declined") {
     try {
       await applyShopOrderDeclineRefund({ orderId: id, sellerUserId: user.id });
+      try { await reconcileVerifiedKolForOrder(id); } catch (err) { console.error(err.message); }
     } catch (err) {
       return NextResponse.json({ error: err.message || "Could not refund declined order." }, { status: 400 });
     }
@@ -21,7 +23,7 @@ export async function POST(request) {
   const { error } = await supabase.from("shop_orders").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   if (status === "delivered") {
-    try { await onShopOrderDelivered(id); } catch (e) { console.error(e.message); }
-  }
+    try { await onShopOrderDelivered(id); } catch (err) { console.error(err.message); }
+    }
   return NextResponse.json({ ok: true });
 }
