@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cleanupOrphanKolUploads } from "@/lib/kolUploads";
 import { releaseDueKolRewards } from "@/lib/kolRewards";
+import { releaseDueShopOrderEarns } from "@/lib/shopOrderEarnHold";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,7 +19,13 @@ export async function GET(request) {
   try {
     const orphans = await cleanupOrphanKolUploads();
     const released = await releaseDueKolRewards();
-    return NextResponse.json({ ok: true, orphans: orphans.length, released: released.length });
+    let shop = { released: [], restored: [] };
+    try {
+      shop = await releaseDueShopOrderEarns();
+    } catch (err) {
+      console.error(err.message);
+    }
+    return NextResponse.json({ ok: true, orphans: orphans.length, released: released.length, shop });
   } catch (err) {
     return NextResponse.json({ error: err.message || "KOL maintenance failed" }, { status: 500 });
   }
