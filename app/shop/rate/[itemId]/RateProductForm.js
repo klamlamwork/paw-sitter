@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import VerifiedKolMediaUpload from "./VerifiedKolMediaUpload";
 
 export default function RateProductForm({ itemId, options = [] }) {
   const router = useRouter();
@@ -31,7 +32,7 @@ export default function RateProductForm({ itemId, options = [] }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ item_id: itemId, rating, title, body, option_ids: [...ticks] }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Could not save review");
       router.push("/shop/orders?rated=1");
       router.refresh();
@@ -66,6 +67,7 @@ export default function RateProductForm({ itemId, options = [] }) {
           </ul>
         </div>
       ) : null}
+      <VerifiedKolMediaUpload itemId={itemId} />
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       <button type="submit" disabled={busy} className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">{busy ? "Saving…" : "Submit verified review"}</button>
     </form>
