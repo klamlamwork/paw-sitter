@@ -20,30 +20,22 @@ export async function POST(request) {
     const cloudName = (process.env.CLOUDINARY_CLOUD_NAME || "").trim();
     const apiKey = (process.env.CLOUDINARY_API_KEY || "").trim();
     const apiSecret = (process.env.CLOUDINARY_API_SECRET || "").trim();
-    if (!cloudName || !apiKey || !apiSecret) {
-      return NextResponse.json({ error: "Cloudinary is not configured." }, { status: 503 });
-    }
+    if (!cloudName || !apiKey || !apiSecret) return NextResponse.json({ error: "Cloudinary is not configured." }, { status: 503 });
 
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Sign in first." }, { status: 401 });
 
-    const body = await request.json();
-    const mediaKind = body?.media_kind === "video" ? "video" : "image";
-    const session = await createKolUploadSession({
-      userId: user.id,
-      mediaKind,
-      postId: body?.post_id || null,
-    });
+    const body = await request.json().catch(() => ({}));
+    const mediaKind = body?.media_kind === "video" ? "video" : body?.media_kind === "image" ? "image" : "";
+    if (!mediaKind) return NextResponse.json({ error: "media_kind must be image or video." }, { status: 400 });
+    const session = await createKolUploadSession({ userId: user.id, mediaKind, postId: body?.post_id || null });
 
     const timestamp = Math.floor(Date.now() / 1000);
-    const params = {
-      folder: session.folder,
-      public_id: session.public_id,
-      timestamp,
-    };
+    const params = { folder: session.folder, public_id: session.public_id, timestamp };
     return NextResponse.json({
       session_id: session.id,
+      post_id: session.post_id,
       cloud_name: cloudName,
       api_key: apiKey,
       timestamp,
@@ -57,6 +49,6 @@ export async function POST(request) {
       upload_url: `https://api.cloudinary.com/v1_1/${cloudName}/${session.resource_type}/upload`,
     });
   } catch (err) {
-    return NextResponse.json({ error: err.message || "Could not sign KOL upload." }, { status: 500 });
+    return NextResponse.json({ error: err.message || "Could not sign KOL upload." }, { status: 400 });
   }
 }
