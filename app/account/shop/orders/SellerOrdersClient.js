@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { formatShopPrice } from "@/lib/shop";
+import { shopOrderDisplayTotals } from "@/lib/shopOrderDisplay";
 import SellerItemRefundButton from "./SellerItemRefundButton";
 
 const NEXT = {
@@ -53,7 +54,7 @@ export default function SellerOrdersClient({ initialOrders }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, status }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     setBusyId("");
     if (!res.ok) {
       setError(data.error || "Could not update");
@@ -70,10 +71,7 @@ export default function SellerOrdersClient({ initialOrders }) {
     <div className="mt-6 space-y-4">
       {error ? <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
       {orders.map((order) => {
-        const subtotal = (order.items || []).reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 0), 0);
-        const discount = order.discount_cents || 0;
-        const shipping = Number(order.shipping_cents) || 0;
-        const total = Math.max(0, subtotal - discount) + shipping;
+        const totals = order.display || shopOrderDisplayTotals(order);
         const currency = order.items?.[0]?.currency || "CAD";
         const actions = NEXT[order.status] || [];
         const shipName = order.shipping_label || (order.shipping_method ? String(order.shipping_method)[0].toUpperCase() + String(order.shipping_method).slice(1) : "Shipping");
@@ -110,10 +108,11 @@ export default function SellerOrdersClient({ initialOrders }) {
               })}
             </ul>
             <div className="mt-2 space-y-0.5 text-sm">
-              <p className="text-[#7a5c4e]">Subtotal {formatShopPrice(subtotal, currency)}</p>
-              {discount ? <p className="text-green-700">Discount{order.discount_code ? ` (${order.discount_code})` : ""} −{formatShopPrice(discount, currency)}</p> : null}
-              <p className="text-[#7a5c4e]">{shipName} {shipping ? formatShopPrice(shipping, currency) : "Free"}</p>
-              <p className="font-bold text-[#3b2a22]">Total {formatShopPrice(total, currency)}</p>
+              <p className="text-[#7a5c4e]">Subtotal {formatShopPrice(totals.subtotal, currency)}</p>
+              {totals.discount ? <p className="text-green-700">Discount{order.discount_code ? ` (${order.discount_code})` : ""} −{formatShopPrice(totals.discount, currency)}</p> : null}
+              {totals.pointsCents ? <p className="text-green-700">Paw Points −{formatShopPrice(totals.pointsCents, currency)}</p> : null}
+              <p className="text-[#7a5c4e]">{shipName} {totals.shipping ? formatShopPrice(totals.shipping, currency) : "Free"}</p>
+              <p className="font-bold text-[#3b2a22]">Total {formatShopPrice(totals.total, currency)}</p>
             </div>
             {actions.length ? (
               <div className="mt-3 flex flex-wrap gap-2">

@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatShopPrice } from "@/lib/shop";
 import { shopOrderLabel } from "@/lib/shopOrderNumber";
+import { attachShopOrderDisplay } from "@/lib/shopOrderDisplay";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Your shop orders | Paw Sitter" };
@@ -16,7 +17,7 @@ export default async function ShopOrdersPage({ searchParams }) {
   const supabase = await createClient();
   const { data: orders } = await supabase
     .from("shop_orders")
-    .select("id, status, payment_status, discount_cents, discount_code, shipping_cents, shipping_label, shipping_method, created_at, shipping_city, seller_shop_id, shop:shop_shops!seller_shop_id(id, name, slug), items:shop_order_items(id, qty, price_cents, currency, product_id, product:shop_products(name, slug))")
+    .select("id, status, payment_status, discount_cents, discount_code, paw_points_cents, shipping_cents, shipping_label, shipping_method, created_at, shipping_city, seller_shop_id, shop:shop_shops!seller_shop_id(id, name, slug), items:shop_order_items(id, qty, price_cents, currency, product_id, product:shop_products(name, slug))")
     .eq("user_id", profile.id)
     .order("created_at", { ascending: false });
 
@@ -28,6 +29,8 @@ export default async function ShopOrdersPage({ searchParams }) {
     for (const row of existing || []) rated.add(row.order_item_id);
   }
 
+  const listed = await attachShopOrderDisplay(supabase, orders || []);
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <Link href="/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">&larr; Shop</Link>
@@ -36,15 +39,12 @@ export default async function ShopOrdersPage({ searchParams }) {
       {params?.placed ? <p className="mt-4 rounded-xl bg-green-50 px-3 py-2 text-sm text-green-800">Order placed. We split items by seller so each shop can fulfill their part.</p> : null}
       {params?.paid ? <p className="mt-4 rounded-xl bg-green-50 px-3 py-2 text-sm text-green-800">Payment confirmed.</p> : null}
       {params?.rated ? <p className="mt-4 rounded-xl bg-green-50 px-3 py-2 text-sm text-green-800">Thanks — your verified review is live.</p> : null}
-      {!orders?.length ? (
+      {!listed.length ? (
         <p className="mt-6 text-sm text-[#7a5c4e]">No shop orders yet. <Link href="/shop" className="font-semibold text-[#c45c26] hover:underline">Browse the shop</Link></p>
       ) : (
         <ul className="mt-6 space-y-4">
-          {orders.map((order) => {
-            const subtotal = (order.items || []).reduce((sum, item) => sum + (item.price_cents || 0) * (item.qty || 0), 0);
-            const discount = order.discount_cents || 0;
-            const shipping = Number(order.shipping_cents) || 0;
-            const total = Math.max(0, subtotal - discount) + shipping;
+          {listed.map((order) => {
+            const totals = order.display || {};
             const currency = order.items?.[0]?.currency || "CAD";
             const orderNo = shopOrderLabel(order.id);
             const shipName = order.shipping_label || (order.shipping_method ? String(order.shipping_method)[0].toUpperCase() + String(order.shipping_method).slice(1) : "Shipping");
@@ -81,10 +81,11 @@ export default async function ShopOrdersPage({ searchParams }) {
                   ))}
                 </ul>
                 <div className="mt-3 space-y-0.5 text-sm">
-                  <p className="text-[#7a5c4e]">Subtotal {formatShopPrice(subtotal, currency)}</p>
-                  {discount ? <p className="text-green-700">Discount{order.discount_code ? ` (${order.discount_code})` : ""} −{formatShopPrice(discount, currency)}</p> : null}
-                  <p className="text-[#7a5c4e]">{shipName} {shipping ? formatShopPrice(shipping, currency) : "Free"}</p>
-                  <p className="font-bold text-[#3b2a22]">Total {formatShopPrice(total, currency)}</p>
+                  <p className="text-[#7a5c4e]">Subtotal {formatShopPrice(totals.subtotal, currency)}</p>
+                  {totals.discount ? <p className="text-green-700">Discount{order.discount_code ? ` (${order.discount_code})` : ""} −{formatShopPrice(totals.discount, currency)}</p> : null}
+                  {totals.pointsCents ? <p className="text-green-700">Paw Points −{formatShopPrice(totals.pointsCents, currency)}</p> : null}
+                  <p className="text-[#7a5c4e]">{shipName} {totals.shipping ? formatShopPrice(totals.shipping, currency) : "Free"}</p>
+                  <p className="font-bold text-[#3b2a22]">Total {formatShopPrice(totals.total, currency)}</p>
                 </div>
               </li>
             );
