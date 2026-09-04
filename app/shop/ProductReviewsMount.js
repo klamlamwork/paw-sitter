@@ -31,18 +31,19 @@ export default function ProductReviewsMount() {
 
   if (!slug || !reviews) return null;
   const avg = reviews.length ? reviews.reduce((s, r) => s + Number(r.rating || 0), 0) / reviews.length : 0;
+  const verifiedCount = reviews.filter((r) => r.verified_purchase !== false).length;
 
   return (
     <section className="mx-auto max-w-5xl px-4 pb-12 sm:px-6">
       <h2 className="text-xl font-bold text-[#3b2a22]">Reviews</h2>
-      {reviews.length ? <p className="mt-1 text-sm text-[#5c4033]">{avg.toFixed(1)} / 5 · {reviews.length} verified purchase{reviews.length === 1 ? "" : "s"}</p> : <p className="mt-2 text-sm text-[#7a5c4e]">No verified reviews yet.</p>}
+      {reviews.length ? <p className="mt-1 text-sm text-[#5c4033]">{avg.toFixed(1)} / 5 · {reviews.length} review{reviews.length === 1 ? "" : "s"}{verifiedCount ? ` · ${verifiedCount} verified purchase${verifiedCount === 1 ? "" : "s"}` : ""}</p> : <p className="mt-2 text-sm text-[#7a5c4e]">No verified reviews yet.</p>}
       <ul className="mt-4 space-y-4">
         {reviews.map((r) => (
           <li key={r.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
             <p className="text-sm font-semibold text-[#c77e10]">{r.rating}/5</p>
             {r.title ? <p className="mt-1 font-semibold text-[#3b2a22]">{r.title}</p> : null}
             <p className="mt-1 whitespace-pre-wrap text-sm text-[#3b2a22]">{r.body}</p>
-            <p className="mt-2 text-xs font-semibold text-[#7a5c4e]">Verified purchase</p>
+            {r.verified_purchase !== false ? <p className="mt-2 text-xs font-semibold text-[#7a5c4e]">Verified purchase</p> : null}
             {r.ticks?.length ? (
               <ul className="mt-2 flex flex-wrap gap-2">
                 {r.ticks.map((t) => (
