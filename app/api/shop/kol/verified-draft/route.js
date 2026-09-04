@@ -18,12 +18,11 @@ async function ownedDraft(admin, profileId, itemId) {
     .limit(1)
     .maybeSingle();
   if (!post) return null;
-  const { count } = await admin
-    .from("shop_kol_post_media")
-    .select("id", { count: "exact", head: true })
-    .eq("post_id", post.id)
-    .in("lifecycle", ["unattached", "attached_private", "published"]);
-  return { ...post, media_count: count || 0 };
+  const [{ count }, { data: revision }] = await Promise.all([
+    admin.from("shop_kol_post_media").select("id", { count: "exact", head: true }).eq("post_id", post.id).in("lifecycle", ["unattached", "attached_private", "published"]),
+    post.pending_revision_id ? admin.from("shop_kol_post_revisions").select("admin_note").eq("id", post.pending_revision_id).maybeSingle() : { data: null },
+  ]);
+  return { ...post, media_count: count || 0, admin_note: revision?.admin_note || "" };
 }
 
 export async function GET(request) {
@@ -52,14 +51,14 @@ export async function POST(request) {
     if (!access.ok) return NextResponse.json({ error: access.reason }, { status: 400 });
     const admin = createAdminClient();
     const existing = await ownedDraft(admin, profile.id, itemId);
-    if (existing) return NextResponse.json({ ok: true, post_id: existing.id, status: existing.status, media_count: existing.media_count });
+    if (existing) return NextResponse.json({ ok: true, post_id: existing.id, status: existing.status, media_count: existing.media_count, admin_note: existing.admin_note });
     const { data: post, error } = await admin
       .from("shop_kol_posts")
       .insert({ author_profile_id: profile.id, source_type: "verified_purchase", content_type: "review", status: "draft", verified_order_item_id: itemId, primary_product_id: access.item.product_id, verified_badge: false })
       .select("id, status")
       .single();
     if (error) throw error;
-    return NextResponse.json({ ok: true, post_id: post.id, status: post.status, media_count: 0 });
+    return NextResponse.json({ ok: true, post_id: post.id, status: post.status, media_count: 0, admin_note: "" });
   } catch (err) {
     return NextResponse.json({ error: err.message || "Could not start the verified media draft." }, { status: 400 });
   }

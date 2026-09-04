@@ -44,6 +44,7 @@ export default function VerifiedKolMediaUpload({ itemId, title, body, rating }) 
   const [postId, setPostId] = useState("");
   const [status, setStatus] = useState("");
   const [mediaCount, setMediaCount] = useState(0);
+  const [adminNote, setAdminNote] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -54,6 +55,7 @@ export default function VerifiedKolMediaUpload({ itemId, title, body, rating }) 
         setPostId(data.draft.id);
         setStatus(data.draft.status || "");
         setMediaCount(Number(data.draft.media_count || 0));
+        setAdminNote(data.draft.admin_note || "");
       })
       .catch(() => {});
     return () => { active = false; };
@@ -67,13 +69,32 @@ export default function VerifiedKolMediaUpload({ itemId, title, body, rating }) 
     setPostId(draft.post_id);
     setStatus(draft.status || "draft");
     setMediaCount(Number(draft.media_count || 0));
+    setAdminNote(draft.admin_note || "");
     return draft.post_id;
+  }
+
+  async function reopen() {
+    if (!postId || busy || status !== "needs_changes") return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/shop/kol/reopen-requested-changes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ post_id: postId, order_item_id: itemId }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Could not reopen the draft.");
+      setStatus("draft");
+      setMediaCount((count) => count + Number(data.copied_media || 0));
+      setProgress("Draft reopened. Update the review and submit it again for admin approval.");
+    } catch (err) {
+      setError(err.message || "Could not reopen the draft.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function chooseFiles(event) {
     const files = [...(event.target.files || [])];
     event.target.value = "";
-    if (!files.length || busy || status === "pending_admin" || status === "published") return;
+    if (!files.length || busy || status === "pending_admin" || status === "published" || status === "needs_changes") return;
     setError("");
     const videos = files.filter((file) => VIDEO_TYPES.has(file.type));
     const images = files.filter((file) => IMAGE_TYPES.has(file.type));
@@ -127,16 +148,16 @@ export default function VerifiedKolMediaUpload({ itemId, title, body, rating }) 
   }
 
   const locked = status === "pending_admin" || status === "published";
-  return (
-    <div className="rounded-xl border border-dashed border-[#e8d5c4] bg-[#fff8f0] p-4">
-      <p className="text-sm font-semibold text-[#3b2a22]">Optional photos or video</p>
-      <p className="mt-1 text-xs text-[#7a5c4e]">Media reviews are private until admin approval. Photos may earn 500 Paw Points; a video may earn 2,000.</p>
-      {status ? <p className="mt-2 text-xs font-semibold text-[#5c4033]">KOL media status: {statusLabel(status)}{mediaCount ? ` · ${mediaCount} private file${mediaCount === 1 ? "" : "s"}` : ""}</p> : null}
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" multiple className="sr-only" onChange={chooseFiles} />
-      {!locked ? <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="mt-3 rounded-full border border-[#c45c26] bg-white px-4 py-2 text-xs font-semibold text-[#c45c26] disabled:opacity-60">{busy ? progress || "Uploading…" : "Add photos or video"}</button> : null}
-      {postId && mediaCount > 0 && status === "draft" ? <button type="button" disabled={busy} onClick={submitMediaReview} className="ml-2 mt-3 rounded-full bg-[#c45c26] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60">{busy ? "Submitting…" : "Submit media review for approval"}</button> : null}
-      {progress && !busy ? <p className="mt-2 text-xs text-green-800">{progress}</p> : null}
-      {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
-    </div>
-  );
+  return <div className="rounded-xl border border-dashed border-[#e8d5c4] bg-[#fff8f0] p-4">
+    <p className="text-sm font-semibold text-[#3b2a22]">Optional photos or video</p>
+    <p className="mt-1 text-xs text-[#7a5c4e]">Media reviews are private until admin approval. Photos may earn 500 Paw Points; a video may earn 2,000.</p>
+    {status ? <p className="mt-2 text-xs font-semibold text-[#5c4033]">KOL media status: {statusLabel(status)}{mediaCount ? ` · ${mediaCount} private file${mediaCount === 1 ? "" : "s"}` : ""}</p> : null}
+    {status === "needs_changes" && adminNote ? <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-xs text-red-800">Admin requested: {adminNote}</p> : null}
+    <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" multiple className="sr-only" onChange={chooseFiles} />
+    {status === "needs_changes" ? <button type="button" disabled={busy} onClick={reopen} className="mt-3 rounded-full border border-[#c45c26] bg-white px-4 py-2 text-xs font-semibold text-[#c45c26] disabled:opacity-60">{busy ? "Reopening…" : "Edit and resubmit"}</button> : null}
+    {!locked && status !== "needs_changes" ? <button type="button" disabled={busy} onClick={() => inputRef.current?.click()} className="mt-3 rounded-full border border-[#c45c26] bg-white px-4 py-2 text-xs font-semibold text-[#c45c26] disabled:opacity-60">{busy ? progress || "Uploading…" : "Add photos or video"}</button> : null}
+    {postId && mediaCount > 0 && status === "draft" ? <button type="button" disabled={busy} onClick={submitMediaReview} className="ml-2 mt-3 rounded-full bg-[#c45c26] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60">{busy ? "Submitting…" : "Submit media review for approval"}</button> : null}
+    {progress && !busy ? <p className="mt-2 text-xs text-green-800">{progress}</p> : null}
+    {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
+  </div>;
 }
