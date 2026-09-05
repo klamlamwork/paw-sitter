@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export default function KolProductFeed() {
@@ -42,6 +43,7 @@ export default function KolProductFeed() {
                 ))}
               </div>
             ) : null}
+            {post.href ? <Link href={post.href} className="mt-3 inline-block text-xs font-semibold text-[#c45c26] hover:underline">View full post</Link> : null}
           </li>
         ))}
       </ul>
