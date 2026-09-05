@@ -33,6 +33,12 @@ async function uploadDirect(file, signed) {
   return data;
 }
 
+function Preview({ item }) {
+  if (!item?.preview) return null;
+  if (item.resource_type === "video") return <video src={item.preview} controls className="mt-2 max-h-48 w-full rounded-lg bg-black" />;
+  return <img src={item.preview} alt="" className="mt-2 max-h-48 w-full rounded-lg object-cover" />;
+}
+
 export default function CommunityKolForm({ initialSlug = "" }) {
   const coverRef = useRef(null);
   const productRef = useRef(null);
@@ -60,11 +66,8 @@ export default function CommunityKolForm({ initialSlug = "" }) {
       setPostId(data.draft.id);
       setStatus(data.draft.status || "draft");
       if (data.draft.content_type === "how_to" || data.draft.content_type === "review") setContentType(data.draft.content_type);
-      if (data.draft.products?.length) {
-        setProducts(data.draft.products.map((row) => ({ ...row, description: row.description || "" })));
-        if (data.draft.products[0]?.brand_shop_id) setBrandId(data.draft.products[0].brand_shop_id);
-      }
-      if (data.draft.media?.length) setMedia(data.draft.media.map((row) => ({ id: row.id, resource_type: row.resource_type, caption: row.caption || "", is_cover: !!row.is_cover, product_id: row.product_id || null, name: row.resource_type })));
+      if (data.draft.products?.length) setProducts(data.draft.products.map((row) => ({ ...row, description: row.description || "" })));
+      if (data.draft.media?.length) setMedia(data.draft.media.map((row) => ({ id: row.id, resource_type: row.resource_type, caption: row.caption || "", is_cover: !!row.is_cover, product_id: row.product_id || null, name: row.resource_type, preview: "" })));
     }).catch(() => {});
   }, []);
 
@@ -86,9 +89,9 @@ export default function CommunityKolForm({ initialSlug = "" }) {
     return () => clearTimeout(handle);
   }, [brandId, query]);
 
-  async function syncDraft(nextProducts = products, nextType = contentType) {
+  async function syncDraft(nextProducts = products) {
     if (!nextProducts.length) throw new Error("Choose a catalog product first.");
-    const draftRes = await fetch("/api/shop/kol/community-draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_ids: nextProducts.map((row) => row.id), brand_id: brandId, content_type: nextType }) });
+    const draftRes = await fetch("/api/shop/kol/community-draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_ids: nextProducts.map((row) => row.id), brand_id: brandId, content_type: contentType }) });
     const draft = await draftRes.json().catch(() => ({}));
     if (!draftRes.ok || !draft.post_id) throw new Error(draft.error || "Could not save the product list.");
     setPostId(draft.post_id);
@@ -149,14 +152,15 @@ export default function CommunityKolForm({ initialSlug = "" }) {
         const completeRes = await fetch("/api/shop/kol/media-complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ session_id: signed.session_id, public_id: cloud.public_id, version: cloud.version, resource_type: cloud.resource_type, bytes: cloud.bytes, width: cloud.width, height: cloud.height, duration_seconds: cloud.duration }) });
         const complete = await completeRes.json().catch(() => ({}));
         if (!completeRes.ok) throw new Error(complete.error || "Could not save uploaded media.");
-        uploaded.push({ id: complete.media?.id || complete.id, resource_type: mediaKind, caption: "", is_cover: mediaKind === "video", product_id: productId || null, name: file.name });
+        const saved = complete.media || complete;
+        uploaded.push({ id: saved.id, resource_type: mediaKind, caption: "", is_cover: mediaKind === "video" && !productId, product_id: productId || null, name: file.name, preview: URL.createObjectURL(file) });
       }
       setMedia((list) => {
         const next = [...list, ...uploaded.filter((row) => row.id)];
         if (uploaded.some((row) => row.resource_type === "video")) return next.map((row) => ({ ...row, is_cover: row.resource_type === "video" && !row.product_id }));
         if (!productId && !next.some((row) => row.is_cover && !row.product_id)) {
           const first = next.find((row) => !row.product_id);
-          return next.map((row) => ({ ...row, is_cover: first ? row.id === first.id : false }));
+          return next.map((row) => ({ ...row, is_cover: first ? row.id === first.id : row.is_cover }));
         }
         return next;
       });
@@ -170,7 +174,8 @@ export default function CommunityKolForm({ initialSlug = "" }) {
   }
 
   async function submit() {
-    if (!postId || !media.length || busy || status !== "draft") return;
+    const ready = media.filter((row) => row.id);
+    if (!postId || !ready.length || busy || status !== "draft") return;
     setBusy(true);
     setError("");
     try {
@@ -185,7 +190,7 @@ export default function CommunityKolForm({ initialSlug = "" }) {
           content_type: contentType,
           key_takeaways: takeaways,
           products: products.map((row) => ({ id: row.id, description: row.description })),
-          media: media.map((row, index) => ({ id: row.id, caption: row.caption, is_cover: !!row.is_cover, product_id: row.product_id, sort_order: index })),
+          media: ready.map((row, index) => ({ id: row.id, caption: row.caption, is_cover: !!row.is_cover, product_id: row.product_id, sort_order: index })),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -202,6 +207,7 @@ export default function CommunityKolForm({ initialSlug = "" }) {
   const locked = status === "pending_admin" || status === "published";
   const coverItems = media.filter((row) => !row.product_id);
   const hasVideo = coverItems.some((row) => row.resource_type === "video");
+  const canSubmit = !locked && !!postId && products.length > 0 && media.some((row) => row.id);
 
   return (
     <div className="mt-6 space-y-5 rounded-2xl border border-[#e8d5c4] bg-white p-5">
@@ -228,12 +234,13 @@ export default function CommunityKolForm({ initialSlug = "" }) {
 
       <div className="rounded-xl border border-dashed border-[#e8d5c4] bg-[#fff8f0] p-4">
         <p className="text-sm font-semibold text-[#3b2a22]">Cover video or photos</p>
-        <p className="mt-1 text-xs text-[#7a5c4e]">One video up to 15 minutes becomes the cover. If you add photos only, choose Cover. Captions show under each slide.</p>
+        <p className="mt-1 text-xs text-[#7a5c4e]">One video up to 15 minutes becomes the cover. If you add photos only, choose Cover.</p>
         <input ref={coverRef} type="file" accept="image/jpeg,image/png,image/webp,video/mp4,video/webm" multiple className="sr-only" onChange={(e) => chooseFiles(e, null)} />
         {locked ? null : <button type="button" disabled={busy || !products.length} onClick={() => coverRef.current?.click()} className="mt-3 rounded-full border border-[#c45c26] bg-white px-4 py-2 text-xs font-semibold text-[#c45c26] disabled:opacity-60">{busy ? progress || "Uploading…" : "Add cover photos or video"}</button>}
-        <ul className="mt-3 space-y-2">{coverItems.map((row) => (
+        <ul className="mt-3 space-y-3">{coverItems.map((row) => (
           <li key={row.id} className="rounded-lg bg-white p-2 text-xs">
-            <p className="font-semibold">{row.resource_type === "video" ? "Video cover" : row.name || "Photo"}{row.is_cover ? " \u00b7 Cover" : ""}</p>
+            <p className="font-semibold">{row.resource_type === "video" ? "Video" : "Photo"}{row.is_cover ? " \u00b7 Cover" : ""}</p>
+            <Preview item={row} />
             <input className="mt-1 w-full border border-[#e8d5c4] px-2 py-1" placeholder="Caption" value={row.caption} disabled={locked} onChange={(e) => setMedia((list) => list.map((item) => item.id === row.id ? { ...item, caption: e.target.value } : item))} />
             {!locked && !hasVideo && row.resource_type === "image" ? <button type="button" className="mt-1 font-semibold text-[#c45c26]" onClick={() => setMedia((list) => list.map((item) => ({ ...item, is_cover: !item.product_id && item.id === row.id })))}>Set cover</button> : null}
           </li>
@@ -257,13 +264,16 @@ export default function CommunityKolForm({ initialSlug = "" }) {
           <textarea className="mt-2 min-h-[70px] w-full border border-[#e8d5c4] px-3 py-2 text-sm" placeholder="Description for this product" value={product.description} disabled={locked} onChange={(e) => setProducts((list) => list.map((row) => row.id === product.id ? { ...row, description: e.target.value } : row))} />
           <input ref={uploadFor === product.id ? productRef : null} type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" onChange={(e) => chooseFiles(e, product.id)} />
           {locked ? null : <button type="button" disabled={busy} onClick={() => { setUploadFor(product.id); setTimeout(() => productRef.current?.click(), 0); }} className="mt-2 rounded-full border border-[#c45c26] px-3 py-1 text-xs font-semibold text-[#c45c26]">Add photos</button>}
-          <ul className="mt-2 space-y-2">{media.filter((row) => row.product_id === product.id).map((row) => (
-            <li key={row.id}><input className="w-full border border-[#e8d5c4] px-2 py-1 text-xs" placeholder="Caption" value={row.caption} disabled={locked} onChange={(e) => setMedia((list) => list.map((item) => item.id === row.id ? { ...item, caption: e.target.value } : item))} /></li>
+          <ul className="mt-2 grid gap-2 sm:grid-cols-2">{media.filter((row) => row.product_id === product.id).map((row) => (
+            <li key={row.id} className="rounded-lg border border-[#e8d5c4] p-2 text-xs">
+              <Preview item={row} />
+              <input className="mt-1 w-full border border-[#e8d5c4] px-2 py-1" placeholder="Caption" value={row.caption} disabled={locked} onChange={(e) => setMedia((list) => list.map((item) => item.id === row.id ? { ...item, caption: e.target.value } : item))} />
+            </li>
           ))}</ul>
         </div>
       ))}
 
-      {postId && media.length && status === "draft" ? <button type="button" disabled={busy} onClick={submit} className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">{busy ? "Submitting…" : "Submit for admin approval"}</button> : null}
+      {canSubmit ? <button type="button" disabled={busy} onClick={submit} className="rounded-full bg-[#c45c26] px-5 py-2 text-sm font-semibold text-white disabled:opacity-60">{busy ? "Submitting…" : "Submit for admin approval"}</button> : null}
       {progress && !busy ? <p className="text-xs text-green-800">{progress}</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
     </div>
