@@ -34,8 +34,11 @@ export default async function ShopTagHubPage({ params }) {
     ? await supabase.from("shop_product_reviews").select("id, rating, title, body, product_id, created_at, product:shop_products(name, slug)").in("product_id", productIds).order("created_at", { ascending: false }).limit(20)
     : { data: [] };
 
-  const { data: kolLinks } = await supabase.from("shop_kol_post_tags").select("post_id").eq("tag_id", tag.id);
-  const kolIds = [...new Set((kolLinks || []).map((row) => row.post_id))];
+  const [{ data: kolLinks }, { data: kolProductLinks }] = await Promise.all([
+    supabase.from("shop_kol_post_tags").select("post_id").eq("tag_id", tag.id),
+    productIds.length ? supabase.from("shop_kol_post_products").select("post_id").in("product_id", productIds) : { data: [] },
+  ]);
+  const kolIds = [...new Set([...(kolLinks || []).map((row) => row.post_id), ...(kolProductLinks || []).map((row) => row.post_id)].filter(Boolean))];
   const { data: kolPosts } = kolIds.length
     ? await supabase.from("shop_kol_posts").select("id, slug, source_type, content_type, published_at, published_revision_id").eq("status", "published").in("id", kolIds).order("published_at", { ascending: false }).limit(20)
     : { data: [] };
@@ -88,7 +91,7 @@ export default async function ShopTagHubPage({ params }) {
           <ul className="mt-3 space-y-3">
             {(kolPosts || []).map((post) => {
               const revision = revisionById[post.published_revision_id] || {};
-              const href = post.slug ? `/shop/kol/${post.slug}` : `/shop/tags/${tag.slug}`;
+              const href = `/shop/reviews/${post.slug || post.id}`;
               return (
                 <li key={post.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
                   <Link href={href} className="font-semibold text-[#c45c26] hover:underline">{revision.title || "KOL post"}</Link>
