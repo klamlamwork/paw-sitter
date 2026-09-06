@@ -18,7 +18,7 @@ export default async function ShopReviewPermalinkPage({ params }) {
   if (!post) notFound();
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <Link href="/shop/reviews" className="text-sm font-semibold text-[#c45c26] hover:underline">&larr; All reviews</Link>
+      <Link href="/shop/reviews" className="text-sm font-semibold text-[#3b2a22] hover:underline">&larr; All reviews</Link>
       <div className="mt-6"><KolArticle post={post} /></div>
     </div>
   );

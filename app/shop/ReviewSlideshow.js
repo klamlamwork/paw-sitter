@@ -4,20 +4,32 @@ import { useState } from "react";
 
 export default function ReviewSlideshow({ items = [] }) {
   const slides = items.filter((row) => row?.url);
-  const [index, setIndex] = useState(0);
+  const [open, setOpen] = useState(-1);
   if (!slides.length) return null;
-  const slide = slides[Math.min(index, slides.length - 1)];
+  const active = open >= 0 ? slides[open] : null;
   return (
-    <div className="mt-3">
-      {slide.resource_type === "video" ? <video key={slide.id} controls className="w-full rounded-2xl bg-black" src={slide.url} /> : <img key={slide.id} src={slide.url} alt={slide.caption || ""} className="w-full rounded-2xl object-cover" />}
-      {slide.caption ? <p className="mt-2 text-sm text-[#5c4033]">{slide.caption}</p> : null}
-      {slides.length > 1 ? (
-        <div className="mt-2 flex items-center justify-between text-xs">
-          <button type="button" className="font-semibold text-[#c45c26]" onClick={() => setIndex((i) => (i === 0 ? slides.length - 1 : i - 1))}>Prev</button>
-          <span>{index + 1} / {slides.length}</span>
-          <button type="button" className="font-semibold text-[#c45c26]" onClick={() => setIndex((i) => (i + 1) % slides.length)}>Next</button>
+    <>
+      <div className="mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
+        {slides.map((slide, index) => (
+          <button key={slide.id || index} type="button" className="w-[78%] shrink-0 snap-center text-left sm:w-72" onClick={() => setOpen(index)}>
+            {slide.resource_type === "video" ? <video src={slide.url} className="max-h-[400px] w-full rounded-2xl bg-black object-contain" muted playsInline /> : <img src={slide.url} alt="" className="max-h-[400px] w-full rounded-2xl object-cover" />}
+            {slide.caption ? <p className="mt-2 line-clamp-5 text-sm text-[#5c4033]">{slide.caption}</p> : null}
+          </button>
+        ))}
+      </div>
+      {active ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={() => setOpen(-1)}>
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-4" onClick={(e) => e.stopPropagation()}>
+            {active.resource_type === "video" ? <video src={active.url} controls className="max-h-[400px] w-full rounded-xl bg-black" /> : <img src={active.url} alt="" className="max-h-[70vh] w-full rounded-xl object-contain" />}
+            {active.caption ? <p className="mt-3 whitespace-pre-wrap text-sm text-[#3b2a22]">{active.caption}</p> : null}
+            <div className="mt-4 flex items-center justify-between text-sm">
+              <button type="button" className="font-semibold text-[#3b2a22]" onClick={() => setOpen((i) => (i <= 0 ? slides.length - 1 : i - 1))}>Previous</button>
+              <button type="button" className="font-semibold text-[#3b2a22]" onClick={() => setOpen(-1)}>Close</button>
+              <button type="button" className="font-semibold text-[#3b2a22]" onClick={() => setOpen((i) => (i + 1) % slides.length)}>Next</button>
+            </div>
+          </div>
         </div>
       ) : null}
-    </div>
+    </>
   );
 }
