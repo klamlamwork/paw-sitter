@@ -3,9 +3,25 @@ import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { screenKolText } from "@/lib/kolTextModeration";
 import { assertCommunityProducts, linkCommunityProducts, normalizeCommunityContentType } from "@/lib/kolCommunity";
+import { optionsForProduct } from "@/lib/shopRatings";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+async function stoodOutForPost(products, body) {
+  const requested = Array.isArray(body?.stood_out) ? body.stood_out : [];
+  const byProduct = new Map();
+  for (const row of requested) {
+    if (row?.product_id) byProduct.set(String(row.product_id), Array.isArray(row.option_ids) ? row.option_ids : []);
+  }
+  const stoodOut = [];
+  for (const product of products) {
+    const allowed = new Set((await optionsForProduct(product.id)).map((opt) => String(opt.id)));
+    const optionIds = [...new Set((byProduct.get(String(product.id)) || []).map((id) => String(id)).filter((id) => allowed.has(id)))];
+    if (optionIds.length) stoodOut.push({ product_id: product.id, option_ids: optionIds });
+  }
+  return stoodOut;
+}
 
 export async function POST(request) {
   try {
@@ -34,9 +50,15 @@ export async function POST(request) {
     const videos = (media || []).filter((row) => row.resource_type === "video");
     if (videos.length > 1) return NextResponse.json({ error: "Only one video can be uploaded." }, { status: 400 });
 
+    const stoodOut = await stoodOutForPost(products, body);
     const { data: lastRevision } = await admin.from("shop_kol_post_revisions").select("revision_number").eq("post_id", post.id).order("revision_number", { ascending: false }).limit(1).maybeSingle();
     const now = new Date().toISOString();
-    const { data: revision, error: revisionErr } = await admin.from("shop_kol_post_revisions").insert({ post_id: post.id, revision_number: Number(lastRevision?.revision_number || 0) + 1, title, body: text, rating: null, content_type: contentType, key_takeaways: takeaways, moderation_status: "pending", moderation_reasons: [], submitted_at: now }).select("id").single();
+    const revisionNumber = Number(lastRevision?.revision_number || 0) + 1;
+    const baseRevision = { post_id: post.id, revision_number: revisionNumber, title, body: text, rating: null, content_type: contentType, key_takeaways: takeaways, moderation_status: "pending", moderation_reasons: [], submitted_at: now };
+    let { data: revision, error: revisionErr } = await admin.from("shop_kol_post_revisions").insert({ ...baseRevision, stood_out: stoodOut }).select("id").single();
+    if (revisionErr) {
+      ({ data: revision, error: revisionErr } = await admin.from("shop_kol_post_revisions").insert(baseRevision).select("id").single());
+    }
     if (revisionErr) throw revisionErr;
 
     const extrasById = Object.fromEntries((Array.isArray(body?.products) ? body.products : []).filter((row) => row?.id).map((row) => [row.id, row]));
