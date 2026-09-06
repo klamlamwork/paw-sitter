@@ -66,20 +66,18 @@ export default function CommunityKolForm({ initialSlug = "" }) {
       setPostId(data.draft.id);
       setStatus(data.draft.status || "draft");
       if (data.draft.content_type === "how_to" || data.draft.content_type === "review") setContentType(data.draft.content_type);
-      if (data.draft.products?.length) setProducts(data.draft.products.map((row) => ({ ...row, description: row.description || "" })));
       if (data.draft.media?.length) setMedia(data.draft.media.map((row) => ({ id: row.id, resource_type: row.resource_type, caption: row.caption || "", is_cover: !!row.is_cover, product_id: row.product_id || null, name: row.resource_type, preview: "" })));
     }).catch(() => {});
   }, []);
 
   useEffect(() => {
-    if (!initialSlug || products.length) return;
-    fetch(`/api/shop/kol/catalog?slug=${encodeURIComponent(initialSlug)}`).then((res) => res.json()).then((data) => {
+    if (!initialSlug || !brandId || products.length) return;
+    fetch(`/api/shop/kol/catalog?brand_id=${encodeURIComponent(brandId)}&slug=${encodeURIComponent(initialSlug)}`).then((res) => res.json()).then((data) => {
       const row = data.products?.[0];
-      if (!row) return;
-      if (row.brand_shop_id) setBrandId(row.brand_shop_id);
+      if (!row || (row.brand_shop_id && row.brand_shop_id !== brandId)) return;
       setProducts([{ id: row.id, name: row.name, slug: row.slug, description: "" }]);
     }).catch(() => {});
-  }, [initialSlug, products.length]);
+  }, [initialSlug, brandId, products.length]);
 
   useEffect(() => {
     if (!brandId || query.trim().length < 2) { setMatches([]); return; }
@@ -212,7 +210,7 @@ export default function CommunityKolForm({ initialSlug = "" }) {
   return (
     <div className="mt-6 space-y-5 rounded-2xl border border-[#e8d5c4] bg-white p-5">
       <label className="block text-sm font-semibold text-[#3b2a22]">Brand
-        <select className="mt-1 w-full border border-[#e8d5c4] px-3 py-2 text-sm" value={brandId} onChange={(e) => { setBrandId(e.target.value); setQuery(""); setMatches([]); }} disabled={locked}>
+        <select className="mt-1 w-full border border-[#e8d5c4] px-3 py-2 text-sm" value={brandId} onChange={(e) => { setBrandId(e.target.value); setQuery(""); setMatches([]); setProducts([]); }} disabled={locked}>
           <option value="">Select a brand</option>
           {brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
         </select>
