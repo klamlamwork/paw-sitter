@@ -11,7 +11,29 @@ export default async function ShopReviewsIndexPage() {
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       <Link href="/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">&larr; Shop</Link>
       <h1 className="mt-4 text-3xl font-bold text-[#3b2a22]">Reviews</h1>
-      <p className="mt-2 text-sm text-[#7a5c4e]">Verified text reviews and published photo/video reviews from the shop. Open a photo/video review with View full post; you do not need to know its slug.</p>
+      <p className="mt-2 text-sm text-[#7a5c4e]">Photo and video reviews, plus verified text reviews. <Link href="/shop/reviews/write" className="font-semibold text-[#c45c26] hover:underline">Write a photo or video review</Link></p>
+
+      <h2 className="mt-10 text-xl font-bold text-[#3b2a22]">Photo and video reviews</h2>
+      {!kolPosts.length ? <p className="mt-3 text-sm text-[#7a5c4e]">No published photo or video reviews yet.</p> : (
+        <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {kolPosts.map((post) => (
+            <li key={post.id} className="overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white">
+              <Link href={post.href} className="block">
+                {post.cover?.url ? (post.cover.resource_type === "video" ? <video src={post.cover.url} className="h-40 w-full object-cover" muted /> : <img src={post.cover.url} alt="" className="h-40 w-full object-cover" />) : <div className="h-40 bg-[#fff8f0]" />}
+              </Link>
+              <div className="p-3">
+                <p className="text-xs text-[#7a5c4e]">{post.published_at ? new Date(post.published_at).toLocaleDateString() : ""}</p>
+                <Link href={post.href} className="mt-1 block font-semibold text-[#3b2a22] hover:text-[#c45c26]">{post.title || "Review"}</Link>
+                {post.products?.length ? (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {post.products.map((product) => product.slug ? <Link key={product.id} href={`/shop/p/${product.slug}`} className="rounded-full bg-[#fff8f0] px-2 py-0.5 text-[11px] font-semibold text-[#c45c26]">{product.name}</Link> : <span key={product.id} className="rounded-full bg-[#fff8f0] px-2 py-0.5 text-[11px]">{product.name}</span>)}
+                  </div>
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <h2 className="mt-10 text-xl font-bold text-[#3b2a22]">Text reviews</h2>
       {!reviews.length ? <p className="mt-3 text-sm text-[#7a5c4e]">No text reviews yet.</p> : (
@@ -21,35 +43,9 @@ export default async function ShopReviewsIndexPage() {
               <p className="text-sm font-semibold text-[#c77e10]">{review.rating}/5</p>
               {review.title ? <p className="mt-1 font-semibold text-[#3b2a22]">{review.title}</p> : null}
               {review.body ? <p className="mt-1 whitespace-pre-wrap text-sm text-[#3b2a22]">{review.body}</p> : null}
-              <p className="mt-2 text-xs text-[#7a5c4e]">{review.author_name}{review.created_at ? ` \u00b7 ${new Date(review.created_at).toLocaleDateString()}` : ""}</p>
+              <p className="mt-2 text-xs text-[#7a5c4e]">{review.author_name}{review.created_at ? ` · ${new Date(review.created_at).toLocaleDateString()}` : ""}</p>
               {review.verified_purchase ? <p className="mt-1 text-xs font-semibold text-[#7a5c4e]">Verified purchase</p> : null}
               {review.product?.slug ? <Link href={`/shop/p/${review.product.slug}`} className="mt-2 inline-block text-xs font-semibold text-[#c45c26] hover:underline">{review.product.name}</Link> : null}
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <h2 className="mt-10 text-xl font-bold text-[#3b2a22]">Photo and video reviews</h2>
-      {!kolPosts.length ? <p className="mt-3 text-sm text-[#7a5c4e]">No published photo or video reviews yet.</p> : (
-        <ul className="mt-4 space-y-4">
-          {kolPosts.map((post) => (
-            <li key={post.id} className="rounded-2xl border border-[#e8d5c4] bg-white p-4">
-              {post.rating ? <p className="text-sm font-semibold text-[#c77e10]">{post.rating}/5</p> : null}
-              {post.title ? <p className="mt-1 font-semibold text-[#3b2a22]">{post.title}</p> : null}
-              {post.body ? <p className="mt-1 line-clamp-4 whitespace-pre-wrap text-sm text-[#3b2a22]">{post.body}</p> : null}
-              <p className="mt-2 text-xs text-[#7a5c4e]">{post.author_name}{post.published_at ? ` \u00b7 ${new Date(post.published_at).toLocaleDateString()}` : ""}</p>
-              {post.verified_badge ? <p className="mt-1 text-xs font-semibold text-[#7a5c4e]">Verified purchase</p> : <p className="mt-1 text-xs font-semibold text-[#7a5c4e]">Community</p>}
-              {post.media?.length ? (
-                <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {post.media.map((asset) => asset.resource_type === "video" ? (
-                    <video key={asset.id} controls preload="metadata" className="aspect-video w-full rounded-xl bg-black" src={asset.url} />
-                  ) : (
-                    <img key={asset.id} src={asset.url} alt="" className="aspect-square w-full rounded-xl object-cover" />
-                  ))}
-                </div>
-              ) : null}
-              {post.product?.slug ? <Link href={`/shop/p/${post.product.slug}`} className="mt-3 mr-3 inline-block text-xs font-semibold text-[#c45c26] hover:underline">{post.product.name}</Link> : null}
-              <Link href={post.href} className="mt-3 inline-block rounded-full bg-[#c45c26] px-3 py-1.5 text-xs font-semibold text-white">View full post</Link>
             </li>
           ))}
         </ul>
