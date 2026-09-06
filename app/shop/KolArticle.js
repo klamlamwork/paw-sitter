@@ -11,7 +11,7 @@ function Cover({ item }) {
   );
 }
 
-function ProductThumb({ url, name }) {
+function ProductThumb({ url }) {
   return url ? <img src={url} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" /> : <span className="h-10 w-10 shrink-0 rounded-md bg-[#fff8f0]" aria-hidden />;
 }
 
@@ -35,10 +35,21 @@ export default function KolArticle({ post }) {
       {(post.products || []).map((product) => (
         <section key={product.id} className="mt-8 border-t border-[#e8d5c4] pt-5">
           <div className="flex items-center gap-3">
-            <ProductThumb url={product.cover_url} name={product.name} />
+            <ProductThumb url={product.cover_url} />
             {product.slug ? <Link href={`/shop/p/${product.slug}`} className="text-lg font-semibold text-[#3b2a22] hover:underline">{product.name}</Link> : <h2 className="text-lg font-semibold text-[#3b2a22]">{product.name}</h2>}
           </div>
           {product.description ? <p className="mt-2 whitespace-pre-wrap text-sm text-[#3b2a22]">{product.description}</p> : null}
+          {product.ticks?.length ? (
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {product.ticks.map((tick) => (
+                <li key={tick.id} className="inline-flex items-center gap-1 rounded-full bg-[#fff8f0] px-2 py-1 text-xs font-semibold text-[#5a4018]">
+                  <span className="text-[#d4a017]">✓</span>
+                  {tick.icon_url ? <img src={tick.icon_url} alt="" className="h-4 w-4 object-contain" /> : null}
+                  {tick.label}
+                </li>
+              ))}
+            </ul>
+          ) : null}
           <ReviewSlideshow items={product.media || []} />
         </section>
       ))}
