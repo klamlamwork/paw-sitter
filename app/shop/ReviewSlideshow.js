@@ -11,8 +11,8 @@ export default function ReviewSlideshow({ items = [] }) {
     <>
       <div className="mt-3 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2">
         {slides.map((slide, index) => (
-          <button key={slide.id || index} type="button" className="w-[78%] shrink-0 snap-center text-left sm:w-72" onClick={() => setOpen(index)}>
-            {slide.resource_type === "video" ? <video src={slide.url} className="max-h-[400px] w-full rounded-2xl bg-black object-contain" muted playsInline /> : <img src={slide.url} alt="" className="max-h-[400px] w-full rounded-2xl object-cover" />}
+          <button key={slide.id || index} type="button" className="w-[78%] shrink-0 snap-center text-left sm:h-[360px] sm:w-[360px]" onClick={() => setOpen(index)}>
+            {slide.resource_type === "video" ? <video src={slide.url} className="max-h-[400px] w-full rounded-2xl bg-black object-contain sm:h-[300px]" muted playsInline /> : <img src={slide.url} alt="" className="max-h-[400px] w-full rounded-2xl object-cover sm:h-[300px]" />}
             {slide.caption ? <p className="mt-2 line-clamp-5 text-sm text-[#5c4033]">{slide.caption}</p> : null}
           </button>
         ))}
