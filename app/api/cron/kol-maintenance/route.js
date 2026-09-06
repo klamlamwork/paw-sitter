@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cleanupOrphanKolUploads } from "@/lib/kolUploads";
 import { releaseDueKolRewards } from "@/lib/kolRewards";
-import { releaseDueShopOrderEarns } from "@/lib/shopOrderEarnHold";
+import { releaseDueVerifiedTextReviewRewards } from "@/lib/shopReviewRewards";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,14 +18,9 @@ export async function GET(request) {
   if (!authorized(request)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
     const orphans = await cleanupOrphanKolUploads();
-    const released = await releaseDueKolRewards();
-    let shop = { released: [], restored: [] };
-    try {
-      shop = await releaseDueShopOrderEarns();
-    } catch (err) {
-      console.error(err.message);
-    }
-    return NextResponse.json({ ok: true, orphans: orphans.length, released: released.length, shop });
+    const releasedKol = await releaseDueKolRewards();
+    const releasedTextReviews = await releaseDueVerifiedTextReviewRewards();
+    return NextResponse.json({ ok: true, orphans: orphans.length, released: releasedKol.length, released_text_reviews: releasedTextReviews.length });
   } catch (err) {
     return NextResponse.json({ error: err.message || "KOL maintenance failed" }, { status: 500 });
   }
