@@ -58,6 +58,9 @@ export default function CommunityKolForm({ initialSlug = "" }) {
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
   const [uploadFor, setUploadFor] = useState(null);
+  const [tickOptions, setTickOptions] = useState({});
+  const [stoodOut, setStoodOut] = useState({});
+  const productIdsKey = products.map((row) => row.id).join("|");
 
   useEffect(() => {
     fetch("/api/shop/kol/catalog?brands=1").then((res) => res.json()).then((data) => setBrands(data.brands || [])).catch(() => {});
@@ -87,6 +90,27 @@ export default function CommunityKolForm({ initialSlug = "" }) {
     return () => clearTimeout(handle);
   }, [brandId, query]);
 
+  useEffect(() => {
+    if (!productIdsKey) { setTickOptions({}); return; }
+    let cancelled = false;
+    fetch(`/api/shop/kol/catalog?options=1&product_ids=${productIdsKey.split("|").map(encodeURIComponent).join(",")}`).then((res) => res.json()).then((data) => {
+      if (cancelled) return;
+      const next = {};
+      for (const row of data.products || []) next[row.id] = row.options || [];
+      setTickOptions(next);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [productIdsKey]);
+
+  function toggleTick(productId, optionId) {
+    setStoodOut((prev) => {
+      const current = new Set(prev[productId] || []);
+      if (current.has(optionId)) current.delete(optionId);
+      else current.add(optionId);
+      return { ...prev, [productId]: [...current] };
+    });
+  }
+
   async function syncDraft(nextProducts = products) {
     if (!nextProducts.length) throw new Error("Choose a catalog product first.");
     const draftRes = await fetch("/api/shop/kol/community-draft", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ product_ids: nextProducts.map((row) => row.id), brand_id: brandId, content_type: contentType }) });
@@ -115,6 +139,11 @@ export default function CommunityKolForm({ initialSlug = "" }) {
     const next = products.filter((row) => row.id !== id);
     setProducts(next);
     setMedia((list) => list.filter((row) => row.product_id !== id));
+    setStoodOut((prev) => {
+      const copy = { ...prev };
+      delete copy[id];
+      return copy;
+    });
     if (next.length) {
       try { await syncDraft(next); } catch (err) { setError(err.message); }
     }
@@ -187,6 +216,7 @@ export default function CommunityKolForm({ initialSlug = "" }) {
           body,
           content_type: contentType,
           key_takeaways: takeaways,
+          stood_out: products.map((row) => ({ product_id: row.id, option_ids: stoodOut[row.id] || [] })),
           products: products.map((row) => ({ id: row.id, description: row.description })),
           media: ready.map((row, index) => ({ id: row.id, caption: row.caption, is_cover: !!row.is_cover, product_id: row.product_id, sort_order: index })),
         }),
@@ -210,7 +240,7 @@ export default function CommunityKolForm({ initialSlug = "" }) {
   return (
     <div className="mt-6 space-y-5 rounded-2xl border border-[#e8d5c4] bg-white p-5">
       <label className="block text-sm font-semibold text-[#3b2a22]">Brand
-        <select className="mt-1 w-full border border-[#e8d5c4] px-3 py-2 text-sm" value={brandId} onChange={(e) => { setBrandId(e.target.value); setQuery(""); setMatches([]); setProducts([]); }} disabled={locked}>
+        <select className="mt-1 w-full border border-[#e8d5c4] px-3 py-2 text-sm" value={brandId} onChange={(e) => { setBrandId(e.target.value); setQuery(""); setMatches([]); setProducts([]); setStoodOut({}); }} disabled={locked}>
           <option value="">Select a brand</option>
           {brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}
         </select>
@@ -260,6 +290,22 @@ export default function CommunityKolForm({ initialSlug = "" }) {
         <div key={product.id} className="rounded-xl border border-[#e8d5c4] p-4">
           <p className="text-sm font-semibold text-[#3b2a22]">{product.name}</p>
           <textarea className="mt-2 min-h-[70px] w-full border border-[#e8d5c4] px-3 py-2 text-sm" placeholder="Description for this product" value={product.description} disabled={locked} onChange={(e) => setProducts((list) => list.map((row) => row.id === product.id ? { ...row, description: e.target.value } : row))} />
+          {(tickOptions[product.id] || []).length ? (
+            <div className="mt-3">
+              <p className="text-sm font-semibold text-[#3b2a22]">What stood out? Tick all that apply.</p>
+              <ul className="mt-2 space-y-2">
+                {(tickOptions[product.id] || []).map((opt) => (
+                  <li key={opt.id}>
+                    <label className="flex items-start gap-2 text-sm">
+                      <input type="checkbox" className="mt-1" checked={(stoodOut[product.id] || []).includes(opt.id)} disabled={locked} onChange={() => toggleTick(product.id, opt.id)} />
+                      {opt.icon_url ? <img src={opt.icon_url} alt="" className="h-6 w-6 object-contain" /> : null}
+                      <span><span className="font-semibold">{opt.label}</span>{opt.description ? <span className="block text-xs text-[#7a5c4e]">{opt.description}</span> : null}</span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           <input ref={uploadFor === product.id ? productRef : null} type="file" accept="image/jpeg,image/png,image/webp" multiple className="sr-only" onChange={(e) => chooseFiles(e, product.id)} />
           {locked ? null : <button type="button" disabled={busy} onClick={() => { setUploadFor(product.id); setTimeout(() => productRef.current?.click(), 0); }} className="mt-2 rounded-full border border-[#c45c26] px-3 py-1 text-xs font-semibold text-[#c45c26]">Add photos</button>}
           <ul className="mt-2 grid gap-2 sm:grid-cols-2">{media.filter((row) => row.product_id === product.id).map((row) => (
