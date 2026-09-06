@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { assertCommunityProducts, ownedCommunityDraft, normalizeCommunityContentType } from "@/lib/kolCommunity";
+import { assertCommunityProducts, ownedCommunityDraft, normalizeCommunityContentType, linkCommunityProducts } from "@/lib/kolCommunity";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -40,9 +40,7 @@ export async function POST(request) {
       postId = post.id;
       status = post.status;
     }
-    await admin.from("shop_kol_post_products").delete().eq("post_id", postId);
-    const { error: linkErr } = await admin.from("shop_kol_post_products").insert(products.map((product, index) => ({ post_id: postId, product_id: product.id, is_primary: index === 0, description: "" })));
-    if (linkErr) throw linkErr;
+    await linkCommunityProducts(admin, postId, products);
     const draft = await ownedCommunityDraft(admin, profile.id);
     return NextResponse.json({ ok: true, post_id: postId, status, media_count: draft?.media_count || 0, products: draft?.products || products, media: draft?.media || [] });
   } catch (err) {

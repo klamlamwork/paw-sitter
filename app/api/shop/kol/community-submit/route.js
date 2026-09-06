@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { screenKolText } from "@/lib/kolTextModeration";
-import { assertCommunityProducts, normalizeCommunityContentType } from "@/lib/kolCommunity";
+import { assertCommunityProducts, linkCommunityProducts, normalizeCommunityContentType } from "@/lib/kolCommunity";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -39,12 +39,8 @@ export async function POST(request) {
     const { data: revision, error: revisionErr } = await admin.from("shop_kol_post_revisions").insert({ post_id: post.id, revision_number: Number(lastRevision?.revision_number || 0) + 1, title, body: text, rating: null, content_type: contentType, key_takeaways: takeaways, moderation_status: "pending", moderation_reasons: [], submitted_at: now }).select("id").single();
     if (revisionErr) throw revisionErr;
 
-    await admin.from("shop_kol_post_products").delete().eq("post_id", post.id);
-    const { error: productErr } = await admin.from("shop_kol_post_products").insert(products.map((product, index) => {
-      const extra = (body.products || []).find((row) => row.id === product.id) || {};
-      return { post_id: post.id, product_id: product.id, is_primary: index === 0, description: String(extra.description || "").trim() };
-    }));
-    if (productErr) throw productErr;
+    const extrasById = Object.fromEntries((Array.isArray(body?.products) ? body.products : []).filter((row) => row?.id).map((row) => [row.id, row]));
+    await linkCommunityProducts(admin, post.id, products, extrasById);
 
     const { data: tags } = await admin.from("shop_product_tags").select("tag_id").in("product_id", products.map((row) => row.id));
     if ((tags || []).length) {
