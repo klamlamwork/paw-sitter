@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cleanupOrphanKolUploads } from "@/lib/kolUploads";
 import { releaseDueKolRewards } from "@/lib/kolRewards";
 import { releaseDueVerifiedTextReviewRewards } from "@/lib/shopReviewRewards";
+import { releasePublishedCommunityKolRewards } from "@/lib/kolCommunityRewards";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -20,7 +21,8 @@ export async function GET(request) {
     const orphans = await cleanupOrphanKolUploads();
     const releasedKol = await releaseDueKolRewards();
     const releasedTextReviews = await releaseDueVerifiedTextReviewRewards();
-    return NextResponse.json({ ok: true, orphans: orphans.length, released: releasedKol.length, released_text_reviews: releasedTextReviews.length });
+    const releasedCommunity = await releasePublishedCommunityKolRewards();
+    return NextResponse.json({ ok: true, orphans: orphans.length, released: releasedKol.length, released_text_reviews: releasedTextReviews.length, released_community: releasedCommunity.length });
   } catch (err) {
     return NextResponse.json({ error: err.message || "KOL maintenance failed" }, { status: 500 });
   }
