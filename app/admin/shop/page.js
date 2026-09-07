@@ -29,8 +29,6 @@ export default async function AdminShopPage() {
     { href: "/admin/discounts", label: "Products", desc: "Create shop order discounts", ready: true },
     { href: "/admin/shop/rating-options", label: "Rating Options", desc: "Create, edit customer rating options", ready: true },
     { href: "/admin/shop/shop/kol", label: "Products", desc: "Approve product reviews", ready: true },
-    /admin/discounts
-
   ];
 
   return (
