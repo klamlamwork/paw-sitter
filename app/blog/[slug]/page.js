@@ -36,7 +36,7 @@ export default async function BlogPostPage({ params }) {
       <Link href="/blog" className="text-sm font-semibold text-[#c45c26] hover:underline">&larr; Blog</Link>
       <div className="mt-6 grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
         <article>
-          <header>
+          <div>
             <h1 className="text-3xl font-bold leading-tight text-[#3b2a22] sm:text-4xl">{post.headline}</h1>
             <p className="mt-3 text-sm text-[#7a5c4e]">{formatBlogDate(post.published_at || post.created_at)}</p>
             {tags.length ? (
@@ -61,7 +61,7 @@ export default async function BlogPostPage({ params }) {
                 />
               </div>
             ) : null}
-          </header>
+          </div>
           <div
             className="blog-html mt-8 max-w-none space-y-4 text-[15px] leading-relaxed text-[#3b2a22] [&_a]:font-semibold [&_a]:text-[#c45c26] [&_h2]:mt-8 [&_h2]:text-2xl [&_h2]:font-bold [&_h3]:mt-6 [&_h3]:text-xl [&_h3]:font-bold [&_img]:rounded-xl [&_li]:ml-5 [&_ol]:list-decimal [&_p]:my-3 [&_ul]:list-disc"
             dangerouslySetInnerHTML={{ __html: post.content_html || "" }}
