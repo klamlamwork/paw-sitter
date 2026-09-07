@@ -80,7 +80,7 @@ body {
   color: #ffffff !important;
 }
 
-.paw-bg a.text-sm.font-semibold[class*="hover:underline"] { color: #ffffff !important; }
+.paw-bg a.text-sm.font-semibold[class*="hover:underline"] { color: #5c5c5c !important; }
 .paw-bg p.mb-3.inline-block.uppercase { display: none !important; }
 .paw-bg h1 span[class*="text-[#c45c26]"],
 .paw-bg h1 span[class*="text-[#e39b2e]"] { color: #ffffff !important; }
