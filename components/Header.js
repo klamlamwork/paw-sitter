@@ -26,16 +26,22 @@ export default function Header() {
             Sitters
           </Link>
           <Link
-            href="/blog"
-            className="hidden text-sm font-medium text-[#5a4018] hover:text-[#c8cccf] sm:inline"
-          >
-            Blog
-          </Link>
-          <Link
             href="/shop"
             className="hidden text-sm font-medium text-[#5a4018] hover:text-[#c8cccf] sm:inline"
           >
             Shop
+          </Link>
+          <Link
+            href="/shop/reviews"
+            className="hidden text-sm font-medium text-[#5a4018] hover:text-[#c8cccf] sm:inline"
+          >
+            Product Reviews
+          </Link>
+          <Link
+            href="/blog"
+            className="hidden text-sm font-medium text-[#5a4018] hover:text-[#c8cccf] sm:inline"
+          >
+            Blog
           </Link>
           {/* Chat icon for Inbox */}
           <Link
