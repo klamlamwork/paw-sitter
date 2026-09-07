@@ -44,7 +44,7 @@ export default async function ShopStorefrontPage({ params }) {
       <Link href="/shop" className="text-sm font-semibold text-[#c45c26] hover:underline">
         &larr; Shop
       </Link>
-      <header className="mt-4 flex flex-wrap items-start gap-4">
+      <div className="mt-4 flex flex-wrap items-start gap-4">
         {shop.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={shop.logo_url} alt="" className="h-16 w-16 rounded-2xl object-cover" />
@@ -56,7 +56,7 @@ export default async function ShopStorefrontPage({ params }) {
           <h1 className="mt-1 text-3xl font-bold text-[#3b2a22]">{shop.name}</h1>
           {shop.description ? <p className="mt-2 max-w-2xl text-sm text-[#7a5c4e]">{shop.description}</p> : null}
         </div>
-      </header>
+      </div>
 
       <h2 className="mt-10 text-lg font-bold text-[#3b2a22]">Catalog</h2>
       <p className="mt-1 text-xs text-[#7a5c4e]">
