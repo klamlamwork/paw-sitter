@@ -26,7 +26,7 @@ export default async function AdminShopPage() {
     { href: "/admin/shop/categories", label: "Categories", desc: "Catalog tree", ready: true },
     { href: "/admin/shop/longevity", label: "Longevity highlights", desc: "Choices and icons shops pick on products", ready: true },
     { href: "/admin/shop/products", label: "Products", desc: "Approve listings and eligible retailers", ready: true },
-    { href: "/admin/discounts", label: "Products", desc: "Create shop order discounts", ready: true },
+    { href: "/admin/discounts", label: "Shop Order Discounts", desc: "Create shop order discounts", ready: true },
     { href: "/admin/shop/rating-options", label: "Rating Options", desc: "Create, edit customer rating options", ready: true },
     { href: "/admin/shop/shop/kol", label: "Products", desc: "Approve product reviews", ready: true },
   ];
