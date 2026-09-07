@@ -58,12 +58,6 @@ export default async function ShopBrandDetailPage({ params }) {
           {brand.description ? (
             <p className="mt-2 max-w-2xl text-sm text-[#7a5c4e]">{brand.description}</p>
           ) : null}
-          <p className="mt-2 text-xs text-[#7a5c4e]">
-            Storefront:{" "}
-            <Link href={shopPath(brand)} className="font-semibold text-[#c45c26] hover:underline">
-              {shopPath(brand)}
-            </Link>
-          </p>
         </div>
       </div>
 
@@ -77,7 +71,8 @@ export default async function ShopBrandDetailPage({ params }) {
             <li key={p.id}>
               <Link
                 href={productPath(p)}
-                className="block overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white hover:border-[#c45c26]/40"
+                // 1. Changed to flex, flex-col, and h-full
+                className="flex h-full flex-col overflow-hidden rounded-2xl border border-[#e8d5c4] bg-white hover:border-[#c45c26]/40"
               >
                 <div className="aspect-[4/3] bg-[#fff1e6]">
                   {img ? (
@@ -85,12 +80,17 @@ export default async function ShopBrandDetailPage({ params }) {
                     <img src={img} alt="" className="h-full w-full object-cover" />
                   ) : null}
                 </div>
-                <div className="p-4">
+                
+                {/* 2. Added flex, flex-1, and flex-col */}
+                <div className="flex flex-1 flex-col p-4">
                   <p className="font-semibold text-[#3b2a22]">{p.name}</p>
+                  
                   {p.short_description ? (
                     <p className="mt-1 line-clamp-2 text-xs text-[#7a5c4e]">{p.short_description}</p>
                   ) : null}
-                  {price ? <p className="mt-2 text-sm text-[#c45c26]">{price}</p> : null}
+                  
+                  {/* 3. Added mt-auto to push price to the bottom */}
+                  {price ? <p className="mt-auto pt-3 text-sm text-[#c45c26]">{price}</p> : null}
                 </div>
               </Link>
             </li>
