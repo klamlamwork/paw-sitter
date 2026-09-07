@@ -47,7 +47,7 @@ export default async function ShopBrandDetailPage({ params }) {
       <Link href="/shop/brands" className="text-sm font-semibold text-[#c45c26] hover:underline">
         &larr; All brands
       </Link>
-      <header className="mt-4 flex flex-wrap items-start gap-4">
+      <div className="mt-4 flex flex-wrap items-start gap-4">
         {brand.logo_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={brand.logo_url} alt="" className="h-16 w-16 rounded-2xl object-cover" />
@@ -65,7 +65,7 @@ export default async function ShopBrandDetailPage({ params }) {
             </Link>
           </p>
         </div>
-      </header>
+      </div>
 
       <h2 className="mt-10 text-lg font-bold text-[#3b2a22]">Products</h2>
       <p className="mt-1 text-xs text-[#7a5c4e]">Approved products created by {brand.name}.</p>
