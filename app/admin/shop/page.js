@@ -26,13 +26,18 @@ export default async function AdminShopPage() {
     { href: "/admin/shop/categories", label: "Categories", desc: "Catalog tree", ready: true },
     { href: "/admin/shop/longevity", label: "Longevity highlights", desc: "Choices and icons shops pick on products", ready: true },
     { href: "/admin/shop/products", label: "Products", desc: "Approve listings and eligible retailers", ready: true },
+    { href: "/admin/discounts", label: "Products", desc: "Create shop order discounts", ready: true },
+    { href: "/admin/shop/rating-options", label: "Rating Options", desc: "Create, edit customer rating options", ready: true },
+    { href: "/admin/shop/shop/kol", label: "Products", desc: "Approve product reviews", ready: true },
+    /admin/discounts
+
   ];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-bold text-[#3b2a22]">Shop admin</h1>
       <p className="mt-2 text-sm text-[#7a5c4e]">
-        Admin sets up shops, categories, and longevity highlights. Shops create products. You approve.
+        Admin sets up shops, categories, longevity highlights. Shops create products.
       </p>
       <dl className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
