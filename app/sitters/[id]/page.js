@@ -68,7 +68,7 @@ export default async function PublicSitterPage({ params }) {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <Link href="/sitters" className="text-sm font-semibold text-[#c45c26] hover:underline">
+      <Link href="/sitters" className="text-sm font-semibold text-[#5c5c5c] hover:underline">
         &larr; All sitters
       </Link>
 
